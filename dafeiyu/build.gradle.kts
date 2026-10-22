@@ -31,6 +31,15 @@ application {
     applicationDefaultJvmArgs = listOf("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Djava.awt.headless=true", "--enable-native-access=ALL-UNNAMED")
 }
 
+tasks.register<JavaExec>("pluginCheck") {
+    group = "verification"
+    description = "Runs a plugin-system acceptance check, e.g. -Pcheck=CheckP1"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass = providers.gradleProperty("check").map { "dafeiyu.plugin.$it" }.orElse("dafeiyu.plugin.CheckP1")
+    workingDir = projectDir
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "--enable-native-access=ALL-UNNAMED")
+}
+
 tasks.named<JavaExec>("run") {
     workingDir = projectDir
     standardInput = System.`in`

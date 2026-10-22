@@ -143,6 +143,7 @@ final class SessionHandler {
         if (session.startsWith("group:")) {
             body.add("speakers", gson.toJsonTree(directory.speakers(session.substring(6))));
         }
+        body.add("self", gson.toJsonTree(directory.self(session)));
         JsonArray active = new JsonArray();
         for (JsonElement t : agent.monitor().snapshot()) {
             if (t.getAsJsonObject().get("session").getAsString().equals(session)) {

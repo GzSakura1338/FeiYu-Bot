@@ -6,6 +6,7 @@ import dafeiyu.db.Database;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,25 @@ public final class MessageArchive {
     public record Stats(int today, int total) {}
 
     public record GroupActivity(String groupId, int lastHalfHour, int lastTwoHours, long lastMessageAt, List<String> speakers) {}
+
+    public String lastOwnName(String groupId) {
+        String name = db.one("""
+                SELECT sender_name FROM messages WHERE direction = 'out' AND message_type = 'group' AND group_id = ? AND sender_name <> ''
+                ORDER BY id DESC LIMIT 1
+                """, rs -> rs.getString(1), groupId);
+        return name == null ? "" : name;
+    }
+
+    public Map<String, String> recentSenders(String groupId, long since, int limit) {
+        Map<String, String> senders = new LinkedHashMap<>();
+        db.list("""
+                SELECT m.user_id, m.sender_name FROM messages m JOIN (
+                    SELECT user_id, MAX(id) AS last FROM messages
+                    WHERE direction = 'in' AND message_type = 'group' AND group_id = ? AND time >= ? GROUP BY user_id) t ON m.id = t.last
+                ORDER BY m.id DESC LIMIT ?
+                """, rs -> senders.put(rs.getString(1), rs.getString(2)), groupId, since, limit);
+        return senders;
+    }
 
     public Map<String, String> groupSenders(String groupId) {
         Map<String, String> senders = new HashMap<>();
@@ -71,10 +91,46 @@ public final class MessageArchive {
                 optString(event, "user_id"), name, optString(event, "message_id"), optString(event, "raw_message"));
     }
 
+    public java.util.Set<String> messageIdsSince(long since) {
+        return new java.util.HashSet<>(db.list("SELECT message_id FROM messages WHERE time >= ? AND message_id IS NOT NULL",
+                rs -> rs.getString(1), since));
+    }
+
+    public long lastIncomingAt() {
+        Long at = db.one("SELECT MAX(time) FROM messages WHERE direction = 'in'", rs -> rs.getLong(1));
+        return at == null ? 0 : at;
+    }
+
+    public List<String> activeGroups(long since, int limit) {
+        return db.list("""
+                SELECT group_id FROM messages WHERE message_type = 'group' AND time >= ? AND group_id IS NOT NULL
+                GROUP BY group_id ORDER BY MAX(time) DESC LIMIT ?
+                """, rs -> rs.getString(1), since, limit);
+    }
+
+    public List<String> privatePeers(long since, int limit) {
+        return db.list("""
+                SELECT user_id FROM messages WHERE message_type = 'private' AND direction = 'in' AND time >= ?
+                GROUP BY user_id ORDER BY MAX(time) DESC LIMIT ?
+                """, rs -> rs.getString(1), since, limit);
+    }
+
     public void recordOutgoing(String messageType, String groupId, String targetUserId, String selfId,
                                String selfName, String messageId, String content) {
         insert(System.currentTimeMillis(), "out", messageType,
                 messageType.equals("group") ? groupId : targetUserId, selfId, selfName, messageId, content);
+    }
+
+    public List<StoredMessage> conversation(boolean group, String peer, int limit) {
+        String where = group ? "message_type = 'group' AND group_id = ?"
+                : "message_type = 'private' AND ((direction = 'in' AND user_id = ?1) OR (direction = 'out' AND group_id = ?1))";
+        List<StoredMessage> rows = db.list("""
+                SELECT id, time, direction, message_type, group_id, user_id, sender_name, message_id, content
+                FROM messages WHERE %s ORDER BY id DESC LIMIT %d
+                """.formatted(where, Math.max(1, Math.min(200, limit))), rs -> new StoredMessage(rs.getLong("id"), rs.getLong("time"),
+                rs.getString("direction"), rs.getString("message_type"), rs.getString("group_id"), rs.getString("user_id"),
+                rs.getString("sender_name"), rs.getString("message_id"), rs.getString("content")), peer);
+        return rows.reversed();
     }
 
     public List<StoredMessage> recent(int limit) {

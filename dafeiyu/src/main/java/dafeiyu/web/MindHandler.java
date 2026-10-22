@@ -73,6 +73,8 @@ final class MindHandler {
         body.addProperty("name", persona == null ? "" : persona.name());
         Mood.State mood = agent.mood().current(persona == null ? null : persona.id());
         body.add("mood", gson.toJsonTree(mood));
+        body.add("commitments", gson.toJsonTree(agent.intercom().commitments()));
+        body.add("notes", gson.toJsonTree(agent.intercom().pending()));
         return body.toString();
     }
 

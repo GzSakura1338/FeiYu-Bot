@@ -3,9 +3,11 @@ package dafeiyu.agent;
 import dafeiyu.agent.context.Compaction;
 import dafeiyu.agent.context.Compactor;
 import dafeiyu.agent.context.ConversationMemory;
+import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
 import dafeiyu.agent.memory.Reflection;
+import dafeiyu.agent.memory.SkillStore;
 import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.model.Capabilities;
 import dafeiyu.agent.model.ModelLimits;
@@ -38,7 +40,10 @@ public final class ChatAgent {
     private final ContentGuard guard;
     private final MemoryStore memories;
     private final Reflection reflection;
+    private final SkillStore skills;
+    private volatile Extensions extensions = Extensions.NONE;
     private final StickerKeeper stickers;
+    private final Intercom intercom;
     private final SessionMonitor monitor = new SessionMonitor();
     private final Map<String, ReentrantLock> sessions = new ConcurrentHashMap<>();
 
@@ -52,8 +57,14 @@ public final class ChatAgent {
         this.mood = new Mood(db);
         this.guard = new ContentGuard(db.file().toAbsolutePath().getParent().resolve("content-guard.txt"));
         this.memories = new MemoryStore(db, guard);
-        this.reflection = new Reflection(this, memories);
+        this.skills = new SkillStore(db);
+        this.reflection = new Reflection(this, memories, skills);
         this.stickers = new StickerKeeper(this, new StickerStore(db, db.file().toAbsolutePath().getParent().resolve("stickers")), guard);
+        this.intercom = new Intercom(db);
+    }
+
+    public Intercom intercom() {
+        return intercom;
     }
 
     public StickerKeeper stickers() {
@@ -86,6 +97,18 @@ public final class ChatAgent {
 
     public Reflection reflection() {
         return reflection;
+    }
+
+    public SkillStore skills() {
+        return skills;
+    }
+
+    public Extensions extensions() {
+        return extensions;
+    }
+
+    public void setExtensions(Extensions extensions) {
+        this.extensions = extensions == null ? Extensions.NONE : extensions;
     }
 
     public AgentStore store() {
@@ -181,6 +204,9 @@ public final class ChatAgent {
         } finally {
             lock.unlock();
         }
+        if (message.isAssistant()) {
+            monitor.said(session, message.content());
+        }
     }
 
     private <T> T locked(ChatTurn turn, StreamListener listener, Work<T> work, java.util.function.Function<T, ChatResult> asResult)
@@ -243,7 +269,7 @@ public final class ChatAgent {
     }
 
     public long compactAt(String session) {
-        long at = Compaction.threshold(contextWindow(), session.startsWith("mind:"));
+        long at = Compaction.threshold(contextWindow());
         return at == Long.MAX_VALUE ? 0 : at;
     }
 

@@ -16,6 +16,7 @@ public final class NapCatService {
 
     private final LogBuffer log;
     private final List<Consumer<JsonObject>> listeners = new CopyOnWriteArrayList<>();
+    private final List<Runnable> connectListeners = new CopyOnWriteArrayList<>();
     private NapCatServer server;
     private WsSettings settings;
 
@@ -26,6 +27,22 @@ public final class NapCatService {
 
     public void addEventListener(Consumer<JsonObject> listener) {
         listeners.add(listener);
+    }
+
+    public void addConnectListener(Runnable listener) {
+        connectListeners.add(listener);
+    }
+
+    private void connected() {
+        for (Runnable listener : connectListeners) {
+            Thread.ofVirtual().start(() -> {
+                try {
+                    listener.run();
+                } catch (RuntimeException e) {
+                    log.error("connect listener failed: " + e);
+                }
+            });
+        }
     }
 
     private void dispatch(JsonObject event) {
@@ -39,7 +56,7 @@ public final class NapCatService {
     }
 
     public synchronized void start() {
-        server = new NapCatServer(settings, log, this::dispatch);
+        server = new NapCatServer(settings, log, this::dispatch, this::connected);
         server.start();
     }
 
@@ -61,12 +78,12 @@ public final class NapCatService {
         try {
             checkBindable(next);
         } catch (IllegalArgumentException e) {
-            server = new NapCatServer(previous, log, this::dispatch);
+            server = new NapCatServer(previous, log, this::dispatch, this::connected);
             server.start();
             throw e;
         }
         settings = next;
-        server = new NapCatServer(next, log, this::dispatch);
+        server = new NapCatServer(next, log, this::dispatch, this::connected);
         server.start();
         log.info("ws listening on " + next.url() + (next.token().isEmpty() ? " (no token check)" : ""));
     }

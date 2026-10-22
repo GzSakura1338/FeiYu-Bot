@@ -1,0 +1,9 @@
+{
+  "id": "webpage",
+  "name": "带页面的插件",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：提供自定义页面和页面接口",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] }
+}

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>插件页面</title></head>
+<body>
+<h1>插件自己的页面</h1>
+<pre id="out"></pre>
+<script>
+fetch('api/hello?x=1').then(r => r.json()).then(j => { document.getElementById('out').textContent = JSON.stringify(j); });
+</script>
+</body>
+</html>

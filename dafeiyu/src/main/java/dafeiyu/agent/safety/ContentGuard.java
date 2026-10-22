@@ -61,8 +61,10 @@ public final class ContentGuard {
             "你是 QQ 聊天机器人的内容审核员。判断下面这条机器人准备发出的消息发出去是否违规：",
             "- sexual：色情、露骨的性暗示、低俗擦边、描写性行为或身体隐私部位",
             "- political：提到或影射国家领导人和政治人物（不论褒贬，含谐音、外号），政治事件、政权和政治制度、领土主权、民族宗教争议、群体性事件、翻墙",
-            "- illegal：暴力恐怖、赌博、毒品、诈骗、教唆自残自杀、违法犯罪的方法",
+            "- illegal：宣扬或教唆现实中的暴力恐怖，现实中的赌博、毒品、诈骗、买卖枪支，教唆自残自杀，能照着做的违法犯罪方法",
             "普通聊天、撒娇斗嘴、学习工作、一般的历史文化和科学常识，以及拒绝、岔开敏感话题的话，都不算违规。",
+            "游戏、小说、影视和它们的玩法设定也不算违规：比如 CS2、和平精英这类射击游戏里的买枪、开枪、爆头、恐怖分子和反恐阵营、C4 炸弹，"
+                    + "狼人杀里的杀人、毒药，写这类游戏的代码、讲怎么玩，都是正常内容。只有说的是现实中真去做的事才算。",
             "",
             "对方刚说的话（只作参考）：",
             "%s",
@@ -72,7 +74,7 @@ public final class ContentGuard {
             "",
             "只输出一个 JSON：{\"block\": true 或 false, \"category\": \"sexual\" 或 \"political\" 或 \"illegal\" 或 \"none\"}"));
 
-    private record Term(String text, Category category) {}
+    private record Term(String text, Category category, boolean soft) {}
 
     private final List<Term> terms;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -105,16 +107,22 @@ public final class ContentGuard {
         }
         String normalized = normalize(text);
         for (Term term : terms) {
-            if (normalized.contains(term.text())) {
+            if (!term.soft() && normalized.contains(term.text())) {
                 return new Verdict(term.category(), term.text(), false);
             }
         }
         return null;
     }
 
+    public boolean suspicious(String text) {
+        String normalized = normalize(text);
+        return terms.stream().anyMatch(t -> t.soft() && normalized.contains(t.text()));
+    }
+
     public Verdict review(ModelProfile profile, String context, String reply) {
         Verdict local = scan(reply);
-        if (local != null || profile == null || normalize(reply).length() < MIN_REVIEW_CHARS || DEFLECTIONS.contains(reply)) {
+        if (local != null || profile == null || DEFLECTIONS.contains(reply)
+                || (normalize(reply).length() < MIN_REVIEW_CHARS && !suspicious(reply))) {
             return local;
         }
         String recent = context == null ? "" : context.strip();
@@ -191,9 +199,10 @@ public final class ContentGuard {
                 };
                 continue;
             }
-            String term = normalize(line);
+            boolean soft = line.startsWith("?");
+            String term = normalize(soft ? line.substring(1) : line);
             if (category != null && !term.isEmpty()) {
-                out.add(new Term(term, category));
+                out.add(new Term(term, category, soft));
             }
         }
     }

@@ -31,6 +31,7 @@ final class NapCatServer extends WebSocketServer {
     private final LogBuffer log;
     private final PendingActions pending = new PendingActions();
     private final Consumer<JsonObject> events;
+    private final Runnable onReady;
 
     private volatile WebSocket conn;
     private volatile String selfId;
@@ -39,9 +40,10 @@ final class NapCatServer extends WebSocketServer {
     private volatile Instant connectedAt;
     private volatile Instant lastHeartbeat;
 
-    NapCatServer(WsSettings settings, LogBuffer log, Consumer<JsonObject> events) {
+    NapCatServer(WsSettings settings, LogBuffer log, Consumer<JsonObject> events, Runnable onReady) {
         super(settings.address());
         this.events = events;
+        this.onReady = onReady;
         this.path = settings.path();
         this.token = settings.token();
         this.log = log;
@@ -107,8 +109,10 @@ final class NapCatServer extends WebSocketServer {
                 nickname = optString(data, "nickname");
                 log.info("logged in as " + nickname + " (" + optString(data, "user_id") + ")");
             }
+            onReady.run();
         }).exceptionally(e -> {
             log.warn("get_login_info failed: " + e.getMessage());
+            onReady.run();
             return null;
         });
     }

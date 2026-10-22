@@ -1,0 +1,7 @@
+{
+  "name": "feiyu-plugin-sdk",
+  "version": "0.2.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "feiyu_plugin.js"
+}

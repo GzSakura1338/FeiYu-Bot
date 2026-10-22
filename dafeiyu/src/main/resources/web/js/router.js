@@ -1,7 +1,7 @@
 import { $, $$ } from './dom.js';
 import { setIcon, hasIcon } from './icons.js';
 
-const PAGES = ['overview', 'logs', 'agent', 'usage', 'settings'];
+const PAGES = ['overview', 'logs', 'agent', 'plugins', 'usage', 'settings'];
 const listeners = [];
 const subListeners = [];
 let current = null;

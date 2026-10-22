@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="css/layout.css">
 <link rel="stylesheet" href="css/motion.css">
 <link rel="stylesheet" href="css/usage.css">
+<link rel="stylesheet" href="css/plugins.css">
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -37,8 +38,13 @@
       <span class="badge label-small" id="logs-badge" hidden></span>
     </a>
     <a class="rail-item" href="#agent" data-page="agent">
-      <span class="rail-indicator state-layer"><svg data-icon="auto_awesome"></svg></span>
+      <span class="rail-indicator state-layer"><svg data-icon="lightbulb"></svg></span>
       <span class="rail-label">智能体</span>
+    </a>
+    <a class="rail-item" href="#plugins" data-page="plugins">
+      <span class="rail-indicator state-layer"><svg data-icon="extension"></svg></span>
+      <span class="rail-label">插件</span>
+      <span class="badge label-small" id="plugins-badge" hidden></span>
     </a>
     <a class="rail-item" href="#usage" data-page="usage">
       <span class="rail-indicator state-layer"><svg data-icon="monitor_heart"></svg></span>
@@ -156,7 +162,7 @@
       <div>
         <h1 class="display-page">智能体</h1>
         <p class="body-hero">接入兼容 OpenAI 接口的大模型，在 QQ 里回复私聊和群消息。</p>
-        <p class="body-medium hero-mood" id="agent-mood" hidden></p>
+        <p class="body-medium hero-mood empty" id="agent-mood"></p>
       </div>
       <div class="hero-switches">
         <div class="switch-field">
@@ -338,13 +344,14 @@
                 <button type="button" class="chip-button label-large state-layer" id="chat-persona" title="切换人格"><svg data-icon="theater_comedy" class="icon-18"></svg><span>不使用人格</span><svg data-icon="arrow_drop_down" class="icon-18"></svg></button>
                 <button type="button" class="chip-button label-large state-layer" id="chat-model" title="切换模型"><svg data-icon="memory" class="icon-18"></svg><span>未选择模型</span><svg data-icon="arrow_drop_down" class="icon-18"></svg></button>
               </div>
-              <button class="tonal-button label-large state-layer" id="mind-think" hidden><svg data-icon="auto_awesome" class="icon-18"></svg><span>马上想下一个念头</span></button>
+              <button class="tonal-button label-large state-layer" id="mind-think" hidden><svg data-icon="lightbulb" class="icon-18"></svg><span>马上想下一个念头</span></button>
               <button class="tonal-button stop-button label-large state-layer" id="session-stop" hidden><svg data-icon="stop_circle" class="icon-18"></svg>停止</button>
               <button class="icon-button state-layer" id="session-clear" title="清空这个会话的记忆" aria-label="清空这个会话的记忆"><svg data-icon="delete_sweep"></svg></button>
             </header>
             <div class="mind-status session-stats body-medium" id="session-stats"></div>
             <div class="mind-bar" id="mind-bar" hidden>
               <div class="mind-status body-medium" id="mind-status"></div>
+              <ul class="mind-hung body-medium" id="mind-hung" hidden></ul>
               <div class="session-filter label-large mind-pace" role="radiogroup" aria-label="思考节奏" id="mind-pace">
                 <span class="mind-pace-label">思考节奏</span>
                 <button class="state-layer" role="radio" data-pace="fast" aria-checked="false">快（约 15 秒一个念头）</button>
@@ -397,11 +404,11 @@
             <div class="switch-field">
               <div>
                 <div class="title-small">自动回顾</div>
-                <div class="body-small switch-hint" id="memory-auto-hint">聊过一阵后自己总结、记日记</div>
+                <div class="body-small switch-hint" id="memory-auto-hint">聊过一阵后自己总结、写日记、学技能</div>
               </div>
               <button class="switch" type="button" role="switch" id="memory-auto" aria-checked="true" aria-label="自动回顾"><span class="switch-handle"></span></button>
             </div>
-            <button class="tonal-button label-large state-layer" id="memory-reflect"><svg data-icon="auto_awesome" class="icon-18"></svg><span>现在回顾</span></button>
+            <button class="tonal-button label-large state-layer" id="memory-reflect"><svg data-icon="psychology" class="icon-18"></svg><span>现在回顾</span></button>
             <div class="body-small memory-pending" id="memory-pending"></div>
           </div>
           <ul class="session-list" id="memory-scopes" role="listbox" aria-label="记忆分区"></ul>
@@ -414,6 +421,7 @@
               <div class="title-large session-name" id="memory-title"></div>
               <div class="body-small session-sub" id="memory-sub"></div>
             </div>
+            <a class="tonal-button label-large state-layer" id="memory-download-all" href="/api/agent/memory/skills/download" download hidden><svg data-icon="download" class="icon-18"></svg><span>全部下载</span></a>
           </header>
           <div class="chat-list memory-list" id="memory-list"></div>
           <form class="composer session-composer" id="memory-form">
@@ -421,6 +429,73 @@
             <button class="send-button state-layer" id="memory-add" type="submit" aria-label="保存" disabled><svg data-icon="add"></svg></button>
           </form>
         </section>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-plugins" data-title="插件" hidden>
+    <div class="panel page-hero">
+      <div>
+        <h1 class="display-page">插件</h1>
+        <p class="body-hero">给她加自定义功能：命令、工具、定时任务、事件和过滤。插件是独立的小程序，默认关在沙盒里，崩了也不影响她。</p>
+      </div>
+    </div>
+
+    <div class="tab-bar sub-tabs" id="plugin-tabs" role="tablist" aria-label="插件分类">
+      <span class="tab-indicator" aria-hidden="true"></span>
+      <button class="tab state-layer" role="tab" data-tab="installed" aria-selected="true"><svg data-icon="extension"></svg>已安装</button>
+      <button class="tab state-layer" role="tab" data-tab="mcp" aria-selected="false"><svg data-icon="lan"></svg>MCP 服务</button>
+      <button class="tab state-layer" role="tab" data-tab="settings" aria-selected="false"><svg data-icon="settings"></svg>设置</button>
+    </div>
+
+    <div class="plugin-view" data-view="installed">
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">已安装</h2>
+          <button class="icon-button state-layer" id="plugin-refresh" title="重新扫描" aria-label="重新扫描"><svg data-icon="refresh"></svg></button>
+          <button class="tonal-button label-large state-layer" id="plugin-install"><svg data-icon="add" class="icon-18"></svg><span>安装插件</span></button>
+        </div>
+        <div class="plugin-panel-body">
+          <div class="empty-state" id="plugin-empty" hidden><svg data-icon="extension"></svg><p class="body-medium">还没有插件。点「安装插件」上传压缩包，或者把插件文件夹放进 <code id="plugin-dir"></code> 再点刷新</p></div>
+          <div class="plugin-grid" id="plugin-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="plugin-view" data-view="mcp" hidden>
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">MCP 服务</h2>
+          <button class="tonal-button label-large state-layer" id="mcp-add"><svg data-icon="add" class="icon-18"></svg><span>添加服务</span></button>
+        </div>
+        <div class="plugin-panel-body">
+          <p class="body-medium plugin-intro">MCP 是通用的工具服务协议，不用写代码就能把现成的服务接给她用。</p>
+          <div class="empty-state" id="mcp-empty" hidden><svg data-icon="lan"></svg><p class="body-medium">还没有 MCP 服务</p></div>
+          <div class="plugin-grid" id="mcp-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="plugin-view" data-view="settings" hidden>
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">设置</h2>
+        </div>
+        <div class="plugin-panel-body plugin-settings-panel">
+          <label class="field">
+            <span class="label-medium">QQ 里的命令前缀</span>
+            <input id="plugin-prefix" class="body-large" maxlength="3" />
+            <span class="body-small field-hint">群里或私聊发「前缀+命令名」时交给插件处理，比如 #今日人品</span>
+          </label>
+          <div class="switch-field">
+            <div>
+              <div class="title-small">开发模式</div>
+              <div class="body-small switch-hint">插件文件改动后自动重新加载，方便自己写插件时调试</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="plugin-dev" aria-checked="false"><span class="switch-handle"></span></button>
+          </div>
+          <div class="body-small plugin-meta" id="plugin-host-info"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -580,7 +655,7 @@
 
 <dialog class="dialog" id="model-dialog" aria-labelledby="model-dialog-title">
   <form method="dialog" class="dialog-form" id="model-form" novalidate autocomplete="off">
-    <span class="dialog-icon"><svg data-icon="auto_awesome"></svg></span>
+    <span class="dialog-icon"><svg data-icon="memory"></svg></span>
     <h2 class="dialog-title headline-small" id="model-dialog-title">添加模型</h2>
     <div class="dialog-body">
       <div class="text-field" data-field="name">
@@ -692,11 +767,136 @@
   </form>
 </dialog>
 
+<dialog class="dialog dialog-wide plugin-dialog" id="plugin-detail-dialog" aria-labelledby="plugin-detail-title">
+  <form method="dialog" class="dialog-form">
+    <header class="plugin-dialog-head">
+      <span class="plugin-icon plugin-icon-large" id="plugin-detail-icon"></span>
+      <div>
+        <h2 class="headline-small" id="plugin-detail-title"></h2>
+        <div class="body-small plugin-meta" id="plugin-detail-sub"></div>
+      </div>
+    </header>
+    <div class="dialog-body plugin-detail-body" id="plugin-detail-body"></div>
+    <div class="dialog-actions">
+      <button type="button" class="text-button label-large state-layer danger-text" id="plugin-detail-uninstall">卸载</button>
+      <a class="text-button label-large state-layer" id="plugin-detail-page" target="_blank" rel="noopener" hidden>打开插件页面</a>
+      <span class="dialog-spacer"></span>
+      <button type="button" class="text-button label-large state-layer" id="plugin-detail-reload">重新加载</button>
+      <button type="button" class="tonal-button label-large state-layer" id="plugin-detail-toggle">启用</button>
+      <button class="text-button label-large state-layer" value="close">关闭</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dialog plugin-dialog" id="plugin-install-dialog" aria-labelledby="plugin-install-title">
+  <form method="dialog" class="dialog-form">
+    <span class="dialog-icon"><svg data-icon="extension"></svg></span>
+    <h2 class="dialog-title headline-small" id="plugin-install-title">安装插件</h2>
+    <div class="dialog-body">
+      <div id="install-pick">
+        <div class="session-filter label-large" role="radiogroup" id="install-source">
+          <button type="button" role="radio" data-source="upload" aria-checked="true">上传压缩包</button>
+          <button type="button" role="radio" data-source="url" aria-checked="false">网址</button>
+          <button type="button" role="radio" data-source="git" aria-checked="false">Git 仓库</button>
+        </div>
+        <label class="field" id="install-upload-field">
+          <span class="label-medium">插件压缩包（.zip）</span>
+          <input type="file" id="install-file" accept=".zip,application/zip" class="body-medium" />
+          <span class="body-small field-hint">压缩包里要有 plugin.json。上传后先给你看清单和权限，确认了才安装</span>
+        </label>
+        <label class="field" id="install-url-field" hidden>
+          <span class="label-medium">地址</span>
+          <input id="install-url" class="body-large" spellcheck="false" placeholder="https://" />
+          <span class="body-small field-hint" id="install-url-hint"></span>
+        </label>
+      </div>
+      <div id="install-preview" class="install-preview" hidden></div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="text-button label-large state-layer" id="install-back" hidden>上一步</button>
+      <span class="dialog-spacer"></span>
+      <button class="text-button label-large state-layer" value="cancel">取消</button>
+      <button type="button" class="filled-button filled-button-medium label-large state-layer" id="install-go">下一步</button>
+      <button type="button" class="text-button label-large state-layer" id="install-only" hidden>只安装</button>
+      <button type="button" class="filled-button filled-button-medium label-large state-layer" id="install-confirm" hidden>同意权限并启用</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dialog plugin-dialog" id="mcp-dialog" aria-labelledby="mcp-title">
+  <form method="dialog" class="dialog-form" autocomplete="off">
+    <span class="dialog-icon"><svg data-icon="lan"></svg></span>
+    <h2 class="dialog-title headline-small" id="mcp-title">添加 MCP 服务</h2>
+    <div class="dialog-body">
+      <label class="field">
+        <span class="label-medium">名字</span>
+        <input id="mcp-name" class="body-large" maxlength="24" spellcheck="false" placeholder="比如 github" />
+        <span class="body-small field-hint">小写字母、数字、- 和 _，会出现在工具名里：mcp__名字__工具</span>
+      </label>
+      <div class="session-filter label-large" role="radiogroup" id="mcp-type">
+        <button type="button" role="radio" data-type="stdio" aria-checked="true">本地程序（stdio）</button>
+        <button type="button" role="radio" data-type="http" aria-checked="false">网址（HTTP）</button>
+      </div>
+      <div id="mcp-stdio">
+        <label class="field">
+          <span class="label-medium">启动命令</span>
+          <input id="mcp-command" class="body-large" spellcheck="false" placeholder="npx、uvx、python 或程序路径" />
+        </label>
+        <label class="field">
+          <span class="label-medium">参数（一行一个）</span>
+          <textarea id="mcp-args" class="body-medium" rows="3" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;D:\某个目录"></textarea>
+        </label>
+        <div class="field">
+          <span class="label-medium">环境变量</span>
+          <div class="pair-list" id="mcp-env"></div>
+          <button type="button" class="text-button label-medium state-layer" id="mcp-env-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+        </div>
+        <div class="switch-field">
+          <div><div class="title-small">关在沙盒里</div><div class="body-small switch-hint">只能读写自己的数据目录和参数里提到的文件夹</div></div>
+          <button class="switch" type="button" role="switch" id="mcp-sandbox" aria-checked="true"><span class="switch-handle"></span></button>
+        </div>
+        <div class="switch-field">
+          <div><div class="title-small">允许上网</div><div class="body-small switch-hint">沙盒里默认断网；需要联网的服务（比如 npx 下载、查网页）要打开</div></div>
+          <button class="switch" type="button" role="switch" id="mcp-network" aria-checked="false"><span class="switch-handle"></span></button>
+        </div>
+      </div>
+      <div id="mcp-http" hidden>
+        <label class="field">
+          <span class="label-medium">网址</span>
+          <input id="mcp-url" class="body-large" spellcheck="false" placeholder="https://example.com/mcp" />
+        </label>
+        <div class="field">
+          <span class="label-medium">请求头</span>
+          <div class="pair-list" id="mcp-headers"></div>
+          <button type="button" class="text-button label-medium state-layer" id="mcp-header-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+        </div>
+      </div>
+      <label class="field">
+        <span class="label-medium">工具超时（秒）</span>
+        <input id="mcp-timeout" type="number" min="1" max="600" class="body-large" />
+      </label>
+      <div class="switch-field">
+        <div><div class="title-small">QQ 聊天里也能用</div><div class="body-small switch-hint">默认只在网页测试对话里用</div></div>
+        <button class="switch" type="button" role="switch" id="mcp-qq" aria-checked="false"><span class="switch-handle"></span></button>
+      </div>
+      <div class="switch-field">
+        <div><div class="title-small">内心也能用</div><div class="body-small switch-hint">她自由活动时也能调用这些工具</div></div>
+        <button class="switch" type="button" role="switch" id="mcp-mind" aria-checked="false"><span class="switch-handle"></span></button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="text-button label-large state-layer" value="cancel">取消</button>
+      <button type="button" class="filled-button filled-button-medium label-large state-layer" id="mcp-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog class="dialog dialog-small" id="confirm-dialog" aria-labelledby="confirm-title">
   <form method="dialog" class="dialog-form">
     <span class="dialog-icon"><svg data-icon="help" id="confirm-icon"></svg></span>
     <h2 class="dialog-title headline-small" id="confirm-title"></h2>
     <p class="dialog-text body-medium" id="confirm-text"></p>
+    <div class="dialog-extra" id="confirm-extra" hidden></div>
     <div class="dialog-actions">
       <button class="text-button label-large state-layer" value="cancel">取消</button>
       <button class="text-button label-large state-layer" value="confirm" id="confirm-ok">确定</button>

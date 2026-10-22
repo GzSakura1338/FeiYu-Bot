@@ -9,6 +9,7 @@ import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ChatResult;
 import dafeiyu.agent.ChatTurn;
+import dafeiyu.agent.Extensions;
 import dafeiyu.agent.ImagePart;
 import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.ToolCall;
@@ -359,7 +360,11 @@ final class AgentHandler {
         WorkspaceStore workspaces = agent.workspaces();
         JsonObject body = gson.toJsonTree(workspaces.config()).getAsJsonObject();
         body.addProperty("problem", workspaces.problem());
-        body.add("tools", gson.toJsonTree(Toolbox.names()));
+        List<String> names = new ArrayList<>(Toolbox.names());
+        List<Extensions.ToolInfo> extra = agent.extensions().catalog();
+        extra.forEach(t -> names.add(t.name()));
+        body.add("tools", gson.toJsonTree(names));
+        body.add("extraTools", gson.toJsonTree(extra));
         return body.toString();
     }
 

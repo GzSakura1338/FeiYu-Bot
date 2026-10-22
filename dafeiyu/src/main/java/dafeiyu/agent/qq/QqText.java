@@ -10,6 +10,13 @@ public final class QqText {
     private static final Pattern LIST_LINE = Pattern.compile("(?m)^\\s*(\\d+[.、)]|[-*•·])\\s");
     private static final Pattern LINE_BREAKS = Pattern.compile("\\s*\\n\\s*");
     private static final Pattern EXTRA_BLANK_LINES = Pattern.compile("\\n{3,}");
+    private static final Pattern STRAY_TAIL = Pattern.compile("(^|[^\\p{IsHan}\\p{L}\\p{N}）)])#\\d{4}(?!\\d)");
+    private static final Pattern HTML_BREAK = Pattern.compile("(?i)<br\\s*/?>");
+    private static final Pattern HTML_TAG = Pattern.compile(
+            "(?i)</?(kbd|b|i|u|s|em|strong|code|pre|sup|sub|span|small|mark|del|ins|p|div|font|center|h[1-6]|ul|ol|li|a)(\\s[^<>]*)?/?>");
+    private static final Pattern MD_LINK = Pattern.compile("\\[([^\\[\\]]+)]\\((https?://[^)\\s]+)\\)");
+    private static final Pattern INLINE_CODE = Pattern.compile("(?<!`)`([^`\\n]+)`(?!`)");
+    private static final Pattern SPACES = Pattern.compile("[ \\t]{2,}");
 
     private QqText() {}
 
@@ -38,6 +45,9 @@ public final class QqText {
                 fence = !fence;
             } else if (!fence) {
                 line = HEADING.matcher(line).replaceFirst("").replace("**", "").replace("__", "");
+                line = HTML_TAG.matcher(HTML_BREAK.matcher(line).replaceAll(" ")).replaceAll("");
+                line = INLINE_CODE.matcher(MD_LINK.matcher(line).replaceAll("$1 $2")).replaceAll("$1");
+                line = SPACES.matcher(STRAY_TAIL.matcher(line).replaceAll("$1")).replaceAll(" ").stripTrailing();
             }
             out.append(out.isEmpty() ? "" : "\n").append(line);
         }

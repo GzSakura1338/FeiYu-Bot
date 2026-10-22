@@ -1,0 +1,216 @@
+{
+  "id": "bigtool",
+  "name": "工具太多",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：声明 25 个工具",
+  "host": ">=0.2.0",
+  "run": {
+    "command": "python",
+    "args": [
+      "main.py"
+    ]
+  },
+  "tools": [
+    {
+      "name": "t0",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t1",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t2",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t3",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t4",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t5",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t6",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t7",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t8",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t9",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t10",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t11",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t12",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t13",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t14",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t15",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t16",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t17",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t18",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t19",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t20",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t21",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t22",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t23",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "t24",
+      "description": "tool",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

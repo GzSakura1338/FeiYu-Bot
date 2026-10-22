@@ -29,6 +29,7 @@ public final class QqMessages {
     private static final int MAX_NAME = 24;
     private static final String MENTION_STOP = " \t\n，,。.！!？?：:；;、";
     private static final Pattern LABEL_TAIL = Pattern.compile("(?<=[\\p{IsHan}\\p{L}\\p{N}）)])#\\d{4}(?!\\d)");
+    private static final Pattern STRAY_TAIL = Pattern.compile("[ \\t]?#\\d{4}(?!\\d)");
 
     private QqMessages() {}
 
@@ -228,7 +229,7 @@ public final class QqMessages {
     }
 
     static String withoutTails(String text) {
-        return LABEL_TAIL.matcher(text).replaceAll("");
+        return STRAY_TAIL.matcher(LABEL_TAIL.matcher(text).replaceAll("")).replaceAll("");
     }
 
     private record Mention(String name, int length) {}

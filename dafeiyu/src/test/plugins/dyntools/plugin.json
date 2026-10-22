@@ -1,0 +1,10 @@
+{
+  "id": "dyntools",
+  "name": "动态工具",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：启动后上报 30 个工具（其中一个说明超长），提示词补充 1000 字",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "prompt": true
+}

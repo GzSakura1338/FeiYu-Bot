@@ -10,9 +10,20 @@ import java.util.stream.Stream;
 
 public final class Compaction {
 
+    public enum Style {
+        TASK, CHAT, MIND;
+
+        public static Style of(String session) {
+            if (session.startsWith("mind:")) {
+                return MIND;
+            }
+            return session.startsWith("group:") || session.startsWith("private:") ? CHAT : TASK;
+        }
+    }
+
     static final int KEEP_TOKENS = 15_000;
-    public static final int MIND_BUDGET = 32_000;
-    static final int MIND_KEEP_TOKENS = 6_000;
+    static final int CHAT_KEEP_TOKENS = 10_000;
+    static final int MIND_KEEP_TOKENS = 15_000;
     static final int RESERVE_MIN = 16_000;
     static final double RESERVE_SHARE = 0.15;
     static final int UNKNOWN_WINDOW = 200_000;
@@ -85,11 +96,44 @@ public final class Compaction {
 
     private Compaction() {}
 
-    static String buildPrompt(boolean update, boolean mind) {
-        if (mind) {
-            return update ? MIND_UPDATE + "\n\n" + MIND_SUMMARY : MIND_SUMMARY;
-        }
-        return buildPrompt(update);
+    private static final String CHAT_SUMMARY = """
+            把上面这段聊天整理成一份给自己看的聊天纪要，用第一人称“我”。要写到：
+            - 现在在聊什么话题，最近几轮是谁在跟我说话、说了什么、我是怎么回的
+            - 出现过的人怎么称呼（QQ 名），他们和我的关系、最近的状态和喜好
+            - 我答应过谁什么事、还没回答的问题、正在进行的游戏或活动
+            - 如果在帮人做事（写文件、做游戏等），做到哪一步了、相关的文件路径
+            - 已经聊完、过去了的话题一句带过，不用细写
+            保留具体的人名、群名和大概时间。写成几段短话，不用标题和模板，不超过 600 字。
+            不要提“纪要”“总结”“压缩”这些字眼，不要接着聊天，也不要调用工具，只输出这份纪要。""";
+
+    private static final String CHAT_UPDATE = """
+            上面 <conversation-checkpoint> 里是我之前写的聊天纪要，后面是之后的新聊天。
+            把两者合成一份新的纪要：新的内容优先，已经过去、不再重要的话题删掉或一句带过，还没了结的事和还在聊的话题要留着。""";
+
+    static final String CHAT_NUDGE = "刚才没有写出纪要。不要调用工具，直接用第一人称把这段聊天的纪要写出来。";
+
+    static String buildPrompt(boolean update, Style style) {
+        return switch (style) {
+            case MIND -> update ? MIND_UPDATE + "\n\n" + MIND_SUMMARY : MIND_SUMMARY;
+            case CHAT -> update ? CHAT_UPDATE + "\n\n" + CHAT_SUMMARY : CHAT_SUMMARY;
+            case TASK -> buildPrompt(update);
+        };
+    }
+
+    static int keep(Style style) {
+        return switch (style) {
+            case MIND -> MIND_KEEP_TOKENS;
+            case CHAT -> CHAT_KEEP_TOKENS;
+            case TASK -> KEEP_TOKENS;
+        };
+    }
+
+    static String nudge(Style style) {
+        return switch (style) {
+            case MIND -> MIND_NUDGE;
+            case CHAT -> CHAT_NUDGE;
+            case TASK -> NUDGE;
+        };
     }
 
     static String buildPrompt(boolean update) {
@@ -109,12 +153,12 @@ public final class Compaction {
         return String.join("\n\n", Stream.concat(lead.stream(), shared.stream()).toList());
     }
 
-    static boolean filled(String summary, boolean mind) {
-        return mind ? summary.strip().length() >= 20 : summary.lines().map(String::strip).anyMatch(HEADINGS::contains);
+    static boolean filled(String summary, Style style) {
+        return style != Style.TASK ? summary.strip().length() >= 20 : summary.lines().map(String::strip).anyMatch(HEADINGS::contains);
     }
 
-    public static long threshold(int window, boolean mind) {
-        return mind ? Math.min(ceiling(window), MIND_BUDGET) : ceiling(window);
+    public static long threshold(int window) {
+        return ceiling(window);
     }
 
     public static String checkpointMessage(String summary, String recent) {

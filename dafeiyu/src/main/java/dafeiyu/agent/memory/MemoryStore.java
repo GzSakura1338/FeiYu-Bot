@@ -9,13 +9,16 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static dafeiyu.util.Texts.abbreviate;
@@ -26,14 +29,21 @@ public final class MemoryStore {
 
     public record Scope(String scope, String label, int count, long updatedAt) {}
 
-    public record Turn(long id, String role, String content, long createdAt) {}
+    public record Turn(long id, String role, String content, long createdAt, String toolCalls, String toolName, boolean toolError) {}
 
     public static final String SELF = "self";
     public static final String DIARY = "diary";
+    public static final List<String> SELF_TOPICS = List.of("性格", "喜好", "习惯", "经历", "心愿和约定");
     public static final int MAX_CONTENT = 200;
+    public static final int MAX_TOPIC = 800;
+    public static final int MAX_DIARY = 2000;
     private static final Pattern SCOPE = Pattern.compile("self|diary|(user|group):\\d{5,12}");
+    private static final Pattern DAY_LABEL = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
+    private static final Pattern TAIL = Pattern.compile("#(\\d{4})(?!\\d)");
+    private static final String PEER = "群友";
     private static final String AUTO_KEY = "agent.memory.auto";
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("M月d日", Locale.CHINA);
+    private static final DateTimeFormatter FULL_DAY = DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.CHINA);
     private static final String COLUMNS = "id, scope, label, content, source, created_at, updated_at";
 
     private static final long LATELY_MS = 6 * 3_600_000L;
@@ -70,8 +80,94 @@ public final class MemoryStore {
     }
 
     public List<Memory> list(String personaId, String scope) {
-        return db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? ORDER BY updated_at DESC, id DESC",
+        String order = scope.equals(DIARY) ? "label DESC, id DESC" : "updated_at DESC, id DESC";
+        return db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? ORDER BY " + order,
                 MemoryStore::map, personaId, scope);
+    }
+
+    public List<Memory> selfTopics(String personaId) {
+        return list(personaId, SELF).stream().filter(m -> SELF_TOPICS.contains(m.label()))
+                .sorted(Comparator.comparingInt(m -> SELF_TOPICS.indexOf(m.label()))).toList();
+    }
+
+    public List<Memory> looseSelf(String personaId) {
+        return list(personaId, SELF).stream().filter(m -> !SELF_TOPICS.contains(m.label())).toList();
+    }
+
+    public void writeSelf(String personaId, String topic, String content, String source) {
+        if (!SELF_TOPICS.contains(topic)) {
+            throw new IllegalArgumentException("没有这个主题：" + topic);
+        }
+        upsert(personaId, SELF, topic, clean(content, MAX_TOPIC, true), source);
+    }
+
+    public Memory diary(String personaId, String day) {
+        return db.one("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? AND label = ? ORDER BY id LIMIT 1",
+                MemoryStore::map, personaId, DIARY, day);
+    }
+
+    public void writeDiary(String personaId, String day, String content, String source) {
+        if (!DAY_LABEL.matcher(day).matches()) {
+            throw new IllegalArgumentException("日期不对：" + day);
+        }
+        upsert(personaId, DIARY, day, clean(content, MAX_DIARY, true), source);
+    }
+
+    public void appendDiary(String personaId, long at, String content, String source) {
+        String day = dayLabel(at);
+        Memory old = diary(personaId, day);
+        String text = clean(content, MAX_DIARY, true);
+        writeDiary(personaId, day, old == null ? text : old.content() + "\n" + text, source);
+    }
+
+    public List<String> scatteredDays(String personaId) {
+        return db.list("""
+                SELECT label FROM memories WHERE persona_id = ? AND scope = ? GROUP BY label HAVING COUNT(*) > 1 OR label NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                """, rs -> rs.getString(1), personaId, DIARY);
+    }
+
+    public void relabelDiaries(String personaId) {
+        for (Memory m : list(personaId, DIARY)) {
+            if (!DAY_LABEL.matcher(m.label()).matches()) {
+                db.update("UPDATE memories SET label = ? WHERE id = ?", dayLabel(m.createdAt()), m.id());
+            }
+        }
+    }
+
+    public List<Memory> diaryPieces(String personaId, String day) {
+        return db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? AND label = ? ORDER BY created_at, id",
+                MemoryStore::map, personaId, DIARY, day);
+    }
+
+    public void replaceDiary(String personaId, String day, String content, List<Memory> pieces) {
+        long created = pieces.isEmpty() ? System.currentTimeMillis() : pieces.getFirst().createdAt();
+        String text = clean(untail(content), MAX_DIARY, true);
+        db.transaction(c -> {
+            for (Memory m : pieces) {
+                Database.update(c, "DELETE FROM memories WHERE persona_id = ? AND id = ?", personaId, m.id());
+            }
+            Database.update(c, "INSERT INTO memories (persona_id, scope, label, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    personaId, DIARY, day, text, "", created, System.currentTimeMillis());
+            return null;
+        });
+    }
+
+    private void upsert(String personaId, String scope, String label, String content, String source) {
+        String text = untail(content);
+        if (text.isEmpty()) {
+            throw new IllegalArgumentException("记忆内容不能为空");
+        }
+        long now = System.currentTimeMillis();
+        db.transaction(c -> {
+            int changed = Database.update(c, "UPDATE memories SET content = ?, source = ?, updated_at = ? WHERE persona_id = ? AND scope = ? AND label = ?",
+                    text, nonNull(source), now, personaId, scope, label);
+            if (changed == 0) {
+                Database.update(c, "INSERT INTO memories (persona_id, scope, label, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        personaId, scope, label, text, nonNull(source), now, now);
+            }
+            return null;
+        });
+        prune(personaId, scope);
     }
 
     List<Memory> recent(String personaId, String scope, int limit) {
@@ -87,11 +183,15 @@ public final class MemoryStore {
         if (!validScope(scope)) {
             throw new IllegalArgumentException("记忆分区不对：" + scope);
         }
-        String text = clean(content);
+        String text = clean(untail(content));
         if (text.isEmpty()) {
             throw new IllegalArgumentException("记忆内容不能为空");
         }
         long now = System.currentTimeMillis();
+        if (scope.equals(DIARY)) {
+            appendDiary(personaId, now, content, source);
+            return diary(personaId, dayLabel(now));
+        }
         String name = abbreviate(QqMessages.unforgeable(nonNull(label)).replaceAll("\\s+", " ").strip(), 60);
         long id = db.transaction(c -> {
             Database.update(c, "INSERT INTO memories (persona_id, scope, label, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -110,7 +210,13 @@ public final class MemoryStore {
     }
 
     public boolean update(String personaId, long id, String content) {
-        String text = clean(content);
+        Memory old = get(personaId, id);
+        if (old == null) {
+            return false;
+        }
+        String plain = untail(content);
+        String text = old.scope().equals(DIARY) ? clean(plain, MAX_DIARY, true)
+                : SELF_TOPICS.contains(old.label()) && old.scope().equals(SELF) ? clean(plain, MAX_TOPIC, true) : clean(plain);
         if (text.isEmpty()) {
             throw new IllegalArgumentException("记忆内容不能为空");
         }
@@ -134,7 +240,13 @@ public final class MemoryStore {
 
     public String recall(String personaId, String session, List<String> people, Set<String> owners) {
         StringBuilder out = new StringBuilder();
-        section(out, "关于你自己", recall(personaId, SELF, session, owners, 6));
+        List<Memory> topics = selfTopics(personaId);
+        if (!topics.isEmpty()) {
+            out.append("关于你自己：\n");
+            topics.forEach(m -> out.append("- ").append(m.label()).append("：").append(m.content().replace("\n", " ")).append('\n'));
+        }
+        section(out, topics.isEmpty() ? "关于你自己" : "关于你自己（最近新想到的）",
+                recall(personaId, SELF, session, owners, 12).stream().filter(m -> !SELF_TOPICS.contains(m.label())).limit(5).toList());
         if (session.startsWith("group:")) {
             section(out, "关于这个群", recall(personaId, session, session, owners, 5));
         }
@@ -145,11 +257,11 @@ public final class MemoryStore {
                 section(out, "关于" + name + "（QQ " + qq + (owners.contains(qq) ? "，你的主人" : "") + "）", about);
             }
         }
-        List<Memory> diary = recall(personaId, DIARY, session, owners, 2);
+        List<Memory> diary = list(personaId, DIARY).stream().filter(m -> visible(m, session, owners)).limit(2).toList();
         if (!diary.isEmpty()) {
             out.append("你最近的日记：\n");
             for (Memory m : diary.reversed()) {
-                out.append("- ").append(day(m.createdAt())).append("：").append(m.content()).append('\n');
+                out.append("【").append(fullDay(m.label())).append("】\n").append(m.content()).append('\n');
             }
         }
         lately(out, session, people);
@@ -184,7 +296,7 @@ public final class MemoryStore {
                         + (s.who().isEmpty() ? "你说" : s.who() + "说") + "：" + s.text())
                 .toList();
         if (!lines.isEmpty()) {
-            out.append("最近在别处（群里大家都看得到的）：\n").append(String.join("\n", lines)).append('\n');
+            out.append("最近在别处（只是背景，别主动拿到这里说）：\n").append(String.join("\n", lines)).append('\n');
         }
     }
 
@@ -211,9 +323,10 @@ public final class MemoryStore {
 
     List<Turn> unreflected(String session) {
         return db.list("""
-                SELECT id, role, content, created_at FROM conversation_turns
-                WHERE session = ? AND id > ? AND role <> 'tool' AND content <> '' ORDER BY id
-                """, rs -> new Turn(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getLong(4)), session, checkpoint(session));
+                SELECT id, role, content, created_at, tool_calls, tool_name, tool_error FROM conversation_turns
+                WHERE session = ? AND id > ? AND (content <> '' OR tool_calls <> '') ORDER BY id
+                """, rs -> new Turn(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getLong(4), rs.getString(5),
+                rs.getString(6), rs.getInt(7) != 0), session, checkpoint(session));
     }
 
     public int pending(String session) {
@@ -254,8 +367,27 @@ public final class MemoryStore {
         return Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(DAY);
     }
 
+    public static String dayLabel(long millis) {
+        return Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate().toString();
+    }
+
+    public static String fullDay(String label) {
+        try {
+            return LocalDate.parse(label).format(FULL_DAY);
+        } catch (DateTimeParseException e) {
+            return label;
+        }
+    }
+
+    public static String line(Memory m) {
+        if (m.scope().equals(DIARY)) {
+            return "【" + fullDay(m.label()) + "】" + m.content().replace("\n", " ");
+        }
+        return (m.scope().equals(SELF) && SELF_TOPICS.contains(m.label()) ? m.label() + "：" : "") + m.content().replace("\n", " ");
+    }
+
     private void prune(String personaId, String scope) {
-        int keep = scope.equals(DIARY) ? 120 : scope.equals(SELF) ? 40 : 30;
+        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : 30;
         db.update("""
                 DELETE FROM memories WHERE persona_id = ? AND scope = ? AND id NOT IN (
                     SELECT id FROM memories WHERE persona_id = ? AND scope = ? ORDER BY updated_at DESC, id DESC LIMIT ?)
@@ -272,8 +404,53 @@ public final class MemoryStore {
         }
     }
 
+    public String untail(String text) {
+        Matcher m = TAIL.matcher(nonNull(text));
+        StringBuilder out = new StringBuilder();
+        int last = 0;
+        while (m.find()) {
+            out.append(text, last, m.start());
+            last = m.end();
+            String name = tailName(m.group(1));
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            if (out.toString().endsWith(name)) {
+                out.setLength(out.length() - name.length());
+            }
+            out.append(out.toString().endsWith(PEER) ? "" : PEER).append(name);
+        }
+        return out.append(text, last, text.length()).toString();
+    }
+
+    public int untailAll(String personaId) {
+        int changed = 0;
+        for (Memory m : db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND content GLOB '*#[0-9][0-9][0-9][0-9]*'",
+                MemoryStore::map, personaId)) {
+            String text = untail(m.content());
+            if (!text.equals(m.content())) {
+                changed += db.update("UPDATE memories SET content = ? WHERE id = ?", text, m.id());
+            }
+        }
+        return changed;
+    }
+
+    private String tailName(String digits) {
+        List<String[]> people = db.list("""
+                SELECT user_id, sender_name FROM messages WHERE id IN (
+                    SELECT MAX(id) FROM messages WHERE direction = 'in' AND user_id LIKE ? GROUP BY user_id) LIMIT 2
+                """, rs -> new String[] {rs.getString(1), rs.getString(2)}, "%" + digits);
+        return people.size() == 1 ? QqMessages.unforgeable(nonNull(people.getFirst()[1])).strip() : null;
+    }
+
     private static String clean(String content) {
-        return abbreviate(nonNull(content).replaceAll("\\s+", " ").strip(), MAX_CONTENT);
+        return clean(content, MAX_CONTENT, false);
+    }
+
+    private static String clean(String content, int max, boolean lines) {
+        String text = nonNull(content).replace("\r\n", "\n");
+        text = lines ? text.replaceAll("[ \\t\\x0B\\f]+", " ").replaceAll(" *\n[ \n]*", "\n") : text.replaceAll("\\s+", " ");
+        return abbreviate(text.strip(), max);
     }
 
     private static String nonNull(String s) {

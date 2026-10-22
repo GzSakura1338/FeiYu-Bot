@@ -4,10 +4,12 @@ import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public final class WorkspaceStore {
@@ -26,16 +28,27 @@ public final class WorkspaceStore {
 
     private final Settings settings;
     private final List<Path> protectedDirs;
+    private volatile Supplier<List<String>> extraTools = List::of;
 
     public WorkspaceStore(Database db, List<Path> protectedDirs) {
         this.settings = new Settings(db);
         this.protectedDirs = List.copyOf(protectedDirs);
     }
 
+    public void setExtraTools(Supplier<List<String>> extraTools) {
+        this.extraTools = extraTools == null ? List::of : extraTools;
+    }
+
+    private List<String> allTools() {
+        List<String> all = new ArrayList<>(Toolbox.names());
+        all.addAll(extraTools.get());
+        return all;
+    }
+
     public synchronized Config config() {
         Set<String> disabled = split(settings.get(DISABLED_KEY));
         Set<String> optedIn = split(settings.get(OPT_IN_KEY));
-        List<String> enabled = Toolbox.names().stream().filter(n -> !disabled.contains(n) && (!OPT_IN.contains(n) || optedIn.contains(n))).toList();
+        List<String> enabled = allTools().stream().filter(n -> !disabled.contains(n) && (!OPT_IN.contains(n) || optedIn.contains(n))).toList();
         QqAccess access;
         try {
             access = QqAccess.valueOf(value(QQ_ACCESS_KEY, "OFF"));
@@ -51,11 +64,14 @@ public final class WorkspaceStore {
             dir = open(dir).root().toString();
         }
         Set<String> enabled = next.enabled() == null ? Set.of() : Set.copyOf(next.enabled());
+        List<String> known = allTools();
         for (String name : enabled) {
-            if (!Toolbox.exists(name)) {
+            if (!known.contains(name)) {
                 throw new IllegalArgumentException("没有这个工具：" + name);
             }
         }
+        Set<String> disabled = new LinkedHashSet<>(known.stream().filter(n -> !enabled.contains(n)).toList());
+        split(settings.get(DISABLED_KEY)).stream().filter(n -> !known.contains(n)).forEach(disabled::add);
         List<String> users = next.qqUsers() == null ? List.of() : next.qqUsers().stream().map(String::strip).filter(s -> !s.isEmpty()).distinct().toList();
         for (String user : users) {
             if (!user.matches("\\d{5,12}")) {
@@ -67,7 +83,7 @@ public final class WorkspaceStore {
         }
         QqAccess access = next.qqAccess() == null ? QqAccess.OFF : next.qqAccess();
         settings.put(DIR_KEY, dir);
-        settings.put(DISABLED_KEY, Toolbox.names().stream().filter(n -> !enabled.contains(n)).collect(Collectors.joining(",")));
+        settings.put(DISABLED_KEY, String.join(",", disabled));
         settings.put(OPT_IN_KEY, OPT_IN.stream().filter(enabled::contains).sorted().collect(Collectors.joining(",")));
         settings.put(QQ_ACCESS_KEY, access.name());
         settings.put(QQ_USERS_KEY, String.join(",", users));

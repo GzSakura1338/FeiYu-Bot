@@ -1,0 +1,16 @@
+{
+  "id": "crash",
+  "name": "爱崩溃",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：收到 #die 立刻退出；设置 die_on_start 时一启动就退出",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "permissions": ["qq.reply"],
+  "commands": [{ "name": "die", "description": "立刻退出" }],
+  "tools": [{ "name": "die", "description": "立刻退出", "parameters": { "type": "object", "properties": {} } }],
+  "settings": {
+    "type": "object",
+    "properties": { "die_on_start": { "type": "boolean", "default": false } }
+  }
+}

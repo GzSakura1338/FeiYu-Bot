@@ -9,6 +9,8 @@ import dafeiyu.config.WsProfileStore;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.onebot.NapCatService;
+import dafeiyu.plugin.PluginHost;
+import dafeiyu.plugin.install.PluginInstaller;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -21,7 +23,8 @@ public final class WebConsole {
     private final HttpServer server;
 
     public WebConsole(InetSocketAddress address, Path webDir, NapCatService napcat, WsProfileStore profiles,
-                      ChatAgent agent, QqChatBridge bridge, Mind mind, MessageArchive archive, UsageStore usage, LogBuffer log) throws IOException {
+                      ChatAgent agent, QqChatBridge bridge, Mind mind, MessageArchive archive, UsageStore usage, PluginHost plugins,
+                      PluginInstaller installer, LogBuffer log) throws IOException {
         ApiHandler api = new ApiHandler(napcat, archive, log);
         server = HttpServer.create(address, 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
@@ -43,6 +46,9 @@ public final class WebConsole {
         server.createContext("/api/agent/files", new FilesHandler(agent, log)::handle);
         server.createContext("/api/usage", new UsageHandler(agent, usage, directory, napcat)::handle);
         server.createContext("/api/personas",new PersonaHandler(agent.personas(), log)::handle);
+        server.createContext("/api/plugins", new PluginHandler(plugins, installer, bridge, usage, log)::handle);
+        server.createContext("/api/mcp", new McpHandler(plugins.mcp(), log)::handle);
+        server.createContext("/plugins/", new PluginPageHandler(plugins)::handle);
     }
 
     public void start() {

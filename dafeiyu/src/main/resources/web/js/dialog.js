@@ -74,7 +74,7 @@ export function enhanceDialog(dialog) {
 
 let confirmReady = false;
 
-export async function confirmDialog({ title, text, confirm = '确定', icon = 'help' }) {
+export async function confirmDialog({ title, text, confirm = '确定', icon = 'help', node = null, danger = false }) {
   const dialog = document.getElementById('confirm-dialog');
   if (!confirmReady) {
     enhanceDialog(dialog);
@@ -82,7 +82,13 @@ export async function confirmDialog({ title, text, confirm = '确定', icon = 'h
   }
   dialog.querySelector('#confirm-title').textContent = title;
   dialog.querySelector('#confirm-text').textContent = text;
-  dialog.querySelector('#confirm-ok').textContent = confirm;
+  const ok = dialog.querySelector('#confirm-ok');
+  ok.textContent = confirm;
+  ok.classList.toggle('danger-button', danger);
+  const extra = dialog.querySelector('#confirm-extra');
+  if (node) extra.replaceChildren(node);
+  else extra.replaceChildren();
+  extra.hidden = !node;
   setIcon(dialog.querySelector('#confirm-icon'), icon);
   return (await openDialog(dialog)) === 'confirm';
 }

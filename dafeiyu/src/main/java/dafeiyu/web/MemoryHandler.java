@@ -10,12 +10,14 @@ import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.MemoryStore.Memory;
 import dafeiyu.agent.memory.MemoryStore.Scope;
 import dafeiyu.agent.memory.Reflection;
+import dafeiyu.agent.memory.SkillStore;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.db.DatabaseException;
 import dafeiyu.log.LogBuffer;
 
 import java.io.IOException;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,6 +30,8 @@ final class MemoryHandler {
     private static final String PREFIX = "/api/agent/memory";
 
     private record ItemRequest(String scope, String content) {}
+
+    private record SkillRequest(String name, String description, String content) {}
 
     private record ReflectRequest(String session) {}
 
@@ -47,11 +51,12 @@ final class MemoryHandler {
     }
 
     static String describe(Reflection.Outcome outcome) {
-        if (outcome.added() + outcome.updated() + outcome.deleted() == 0 && outcome.diary().isEmpty()) {
+        if (outcome.added() + outcome.updated() + outcome.deleted() + outcome.skills() == 0 && outcome.diary().isEmpty()) {
             return "回顾完了，这段聊天没什么新的要记";
         }
-        String changes = "新记 " + outcome.added() + " 条，改了 " + outcome.updated() + " 条，删了 " + outcome.deleted() + " 条";
-        return "回顾完了：" + changes + (outcome.diary().isEmpty() ? "" : "。日记：" + outcome.diary());
+        String changes = "新记 " + outcome.added() + " 条，改了 " + outcome.updated() + " 条，删了 " + outcome.deleted() + " 条"
+                + (outcome.skills() > 0 ? "，学会/改进了 " + outcome.skills() + " 个技能" : "");
+        return "回顾完了：" + changes + (outcome.diary().isEmpty() ? "" : "，今天的日记也更新了");
     }
 
     void handle(HttpExchange ex) throws IOException {
@@ -77,6 +82,26 @@ final class MemoryHandler {
                 Memory old = require(rest.substring("/items/".length()));
                 memories.delete(persona().id(), old.id());
                 HttpResponses.json(ex, items(old.scope()));
+            } else if (rest.equals("/skills") && method.equals("GET")) {
+                HttpResponses.json(ex, skills());
+            } else if (rest.equals("/skills") && method.equals("POST")) {
+                SkillRequest req = Requests.readJson(ex, SkillRequest.class);
+                SkillStore.Skill added = agent.skills().add(persona().id(), req.name(), req.description(), req.content(), "manual");
+                log.info("agent: skill added by hand: " + added.name());
+                HttpResponses.json(ex, skills());
+            } else if (rest.equals("/skills/download") && method.equals("GET")) {
+                download(ex, persona().name() + "-skills.zip", "application/zip", agent.skills().zip(persona().id()));
+            } else if (rest.matches("/skills/\\d+/download") && method.equals("GET")) {
+                SkillStore.Skill skill = requireSkill(rest.substring(8, rest.lastIndexOf('/')));
+                download(ex, SkillStore.fileName(skill.name()) + ".md", "text/markdown; charset=utf-8", skill.markdown().getBytes(StandardCharsets.UTF_8));
+            } else if (rest.matches("/skills/\\d+") && method.equals("PUT")) {
+                SkillStore.Skill old = requireSkill(rest.substring(8));
+                SkillRequest req = Requests.readJson(ex, SkillRequest.class);
+                agent.skills().update(persona().id(), old.id(), req.name(), req.description(), req.content());
+                HttpResponses.json(ex, skills());
+            } else if (rest.matches("/skills/\\d+") && method.equals("DELETE")) {
+                agent.skills().delete(persona().id(), requireSkill(rest.substring(8)).id());
+                HttpResponses.json(ex, skills());
             } else if (rest.equals("/reflect") && method.equals("POST")) {
                 reflect(ex, Requests.readJson(ex, ReflectRequest.class).session());
             } else if (rest.equals("/auto") && method.equals("PUT")) {
@@ -133,6 +158,16 @@ final class MemoryHandler {
             item.addProperty("name", name(scope.scope(), scope.label(), names));
             list.add(item);
         }
+        JsonObject skill = new JsonObject();
+        skill.addProperty("scope", "skill");
+        skill.addProperty("kind", "skill");
+        skill.addProperty("target", "");
+        skill.addProperty("owner", false);
+        skill.addProperty("name", "技能");
+        skill.addProperty("label", "");
+        skill.addProperty("count", agent.skills().count(persona.id()));
+        skill.addProperty("updatedAt", agent.skills().latest(persona.id()));
+        list.add(skill);
         body.add("scopes", list);
         JsonArray pending = new JsonArray();
         Set<String> running = agent.reflection().running();
@@ -154,15 +189,49 @@ final class MemoryHandler {
         }
         QqDirectory.Names names = directory.names();
         JsonArray list = new JsonArray();
-        for (Memory m : memories.list(persona().id(), scope)) {
+        String personaId = persona().id();
+        List<Memory> all = new ArrayList<>(scope.equals(MemoryStore.SELF) ? memories.selfTopics(personaId) : memories.list(personaId, scope));
+        if (scope.equals(MemoryStore.SELF)) {
+            all.addAll(memories.looseSelf(personaId));
+        }
+        for (Memory m : all) {
             JsonObject item = gson.toJsonTree(m).getAsJsonObject();
             item.addProperty("sourceName", m.source().equals("manual") ? "手动添加" : m.source().isEmpty() ? "" : names.of(m.source()));
+            item.addProperty("title", m.scope().equals(MemoryStore.DIARY) ? MemoryStore.fullDay(m.label())
+                    : m.scope().equals(MemoryStore.SELF) && MemoryStore.SELF_TOPICS.contains(m.label()) ? m.label() : "");
             list.add(item);
         }
         JsonObject body = new JsonObject();
         body.addProperty("scope", scope);
         body.add("items", list);
         return body.toString();
+    }
+
+    private String skills() {
+        QqDirectory.Names names = directory.names();
+        JsonArray list = new JsonArray();
+        for (SkillStore.Skill s : agent.skills().list(persona().id())) {
+            JsonObject item = gson.toJsonTree(s).getAsJsonObject();
+            item.addProperty("sourceName", s.source().equals("manual") ? "手动添加" : s.source().isEmpty() ? "" : names.of(s.source()));
+            list.add(item);
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("scope", "skill");
+        body.add("items", list);
+        return body.toString();
+    }
+
+    private SkillStore.Skill requireSkill(String raw) {
+        SkillStore.Skill skill = agent.skills().get(persona().id(), Long.parseLong(raw));
+        if (skill == null) {
+            throw new IllegalArgumentException("这个技能不存在");
+        }
+        return skill;
+    }
+
+    private static void download(HttpExchange ex, String name, String type, byte[] body) throws IOException {
+        ex.getResponseHeaders().set("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20"));
+        HttpResponses.send(ex, 200, type, body);
     }
 
     private void reflect(HttpExchange ex, String session) throws IOException {

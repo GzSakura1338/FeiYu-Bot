@@ -5,7 +5,9 @@ import dafeiyu.db.Settings;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public final class AgentStore {
@@ -18,6 +20,8 @@ public final class AgentStore {
     private static final String MIND_PACE_KEY = "agent.mindPace";
     private static final List<String> PACES = List.of("fast", "normal", "slow");
     private static final String EFFORT_KEY = "agent.reasoningEffort";
+    private static final String REPLYING_KEY = "agent.replying";
+    private static final com.google.gson.Gson GSON = new com.google.gson.Gson();
     private static final List<String> EFFORTS = List.of("default", "none", "low", "medium", "high", "max");
     private static final List<String> DEFAULT_WAKE_WORDS = List.of("小鲸鱼", "大肥鱼");
     private static final String COLUMNS = "id, name, protocol, base_url, api_key, model, temperature, max_tokens, context_window";
@@ -157,6 +161,47 @@ public final class AgentStore {
             throw new IllegalArgumentException("思考节奏只能是 fast、normal 或 slow");
         }
         settings.put(MIND_PACE_KEY, pace);
+    }
+
+    public record Replying(String session, String userId, String messageId, String speaker, String line, long at) {}
+
+    public synchronized void markReplying(Replying replying) {
+        Map<String, Replying> all = replyingMap();
+        all.put(replying.session(), replying);
+        settings.put(REPLYING_KEY, GSON.toJson(all.values()));
+    }
+
+    public synchronized void clearReplying(String session) {
+        Map<String, Replying> all = replyingMap();
+        if (all.remove(session) != null) {
+            settings.put(REPLYING_KEY, GSON.toJson(all.values()));
+        }
+    }
+
+    public synchronized List<Replying> takeReplying() {
+        List<Replying> all = List.copyOf(replyingMap().values());
+        settings.put(REPLYING_KEY, "[]");
+        return all;
+    }
+
+    private Map<String, Replying> replyingMap() {
+        Map<String, Replying> out = new LinkedHashMap<>();
+        String raw = settings.get(REPLYING_KEY);
+        if (raw == null || raw.isBlank()) {
+            return out;
+        }
+        try {
+            Replying[] list = GSON.fromJson(raw, Replying[].class);
+            if (list != null) {
+                for (Replying r : list) {
+                    if (r != null && r.session() != null) {
+                        out.put(r.session(), r);
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return out;
     }
 
     public String reasoningEffort() {

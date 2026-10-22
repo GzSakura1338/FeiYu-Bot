@@ -53,6 +53,12 @@ public final class UsageStore {
         return key.startsWith("mind:") ? "mind" : "chat";
     }
 
+    public long tokensToday(String purpose) {
+        Long n = db.one("SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) FROM token_usage WHERE day = ? AND purpose = ?",
+                rs -> rs.getLong(1), LocalDate.now().toString(), purpose);
+        return n == null ? 0 : n;
+    }
+
     public List<Day> days(String since) {
         return db.list("""
                 SELECT day, SUM(prompt_tokens + completion_tokens), COUNT(*) FROM token_usage WHERE day >= ? GROUP BY day ORDER BY day

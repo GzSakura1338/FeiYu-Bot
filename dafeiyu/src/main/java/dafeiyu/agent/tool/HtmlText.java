@@ -22,7 +22,7 @@ final class HtmlText {
     private static final Pattern ENTITY = Pattern.compile("&(#x[0-9a-fA-F]+|#\\d+|[a-zA-Z]+);");
     private static final Pattern TITLE = Pattern.compile("(?is)<title\\b[^>]*>(.*?)</title\\s*>");
     private static final Map<String, String> ENTITIES = Map.ofEntries(Map.entry("amp", "&"), Map.entry("lt", "<"), Map.entry("gt", ">"),
-            Map.entry("quot", "\""), Map.entry("apos", "'"), Map.entry("nbsp", " "), Map.entry("mdash", "—"), Map.entry("ndash", "–"),
+            Map.entry("quot", "\""), Map.entry("apos", "'"), Map.entry("nbsp", " "), Map.entry("ensp", " "), Map.entry("emsp", " "), Map.entry("thinsp", " "), Map.entry("mdash", "—"), Map.entry("ndash", "–"),
             Map.entry("hellip", "…"), Map.entry("copy", "©"), Map.entry("reg", "®"), Map.entry("middot", "·"), Map.entry("laquo", "«"),
             Map.entry("raquo", "»"), Map.entry("ldquo", "“"), Map.entry("rdquo", "”"), Map.entry("lsquo", "‘"), Map.entry("rsquo", "’"));
 
@@ -93,7 +93,7 @@ final class HtmlText {
         return out.toString().strip();
     }
 
-    private static String decode(String text) {
+    static String decode(String text) {
         return ENTITY.matcher(text).replaceAll(m -> {
             String name = m.group(1);
             try {

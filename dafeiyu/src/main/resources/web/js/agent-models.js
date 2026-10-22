@@ -171,7 +171,7 @@ function renderSwitch() {
     ? `已开启 · 被 @、回复、叫“${(state.wakeWords ?? []).join('/')}”时回，其他看心情`
     : '已关闭 · 群里只回复 @';
   $('#agent-free-switch').setAttribute('aria-checked', String(Boolean(state.freeWill)));
-  $('#agent-free-hint').textContent = state.freeWill ? '已开启 · 一直在想，想去哪个群就去哪个群' : '已关闭 · 念头暂停，只在有人找她时说话';
+  $('#agent-free-hint').textContent = state.freeWill ? '已开启 · 一直自己想事情，想聊天就去群里说、去私聊找人' : '已关闭 · 念头暂停，只在有人找她时说话';
   renderMood(state.mood);
 }
 
@@ -185,7 +185,14 @@ async function toggleFreeWill() {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
     state.freeWill = json.enabled;
-    showSnackbar(state.freeWill ? '她的念头开始转了' : '念头暂停了', 'success');
+    const name = json.name || '她';
+    if (state.freeWill && json.why) {
+      showSnackbar(`自由活动开了，但${json.why}，${name}暂时还想不了事情`, 'error');
+    } else if (state.freeWill) {
+      showSnackbar(`${name}开始自由活动了：会一直自己想事情，有人叫她马上就会注意到，想聊天了会自己去群里说、去私聊找人。在「会话 › 内心」能看她在想什么`, 'success', 6000);
+    } else {
+      showSnackbar(`${name}的自由活动关了：念头先停下来，有人找她时照常回复`, 'success');
+    }
   } catch (err) {
     showSnackbar(`切换失败：${err.message}`, 'error');
   }
@@ -271,7 +278,7 @@ async function toggleQq() {
       return;
     }
     const ok = await confirmDialog({
-      icon: 'auto_awesome',
+      icon: 'lightbulb',
       title: '开启 QQ 自动回复？',
       text: `开启后，私聊消息和群里 @ 这个账号的消息都会由「${active.name}」（${active.model}）自动回复，回复会以当前登录的 QQ 号发出。`,
       confirm: '开启',

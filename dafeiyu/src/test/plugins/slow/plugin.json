@@ -1,0 +1,23 @@
+{
+  "id": "slow",
+  "name": "慢吞吞",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：每个调用都先睡一会儿",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "permissions": ["qq.reply", "qq.filter"],
+  "commands": [{ "name": "slow", "description": "睡 delay 秒再回复" }],
+  "events": ["message.group"],
+  "intercept": true,
+  "prompt": true,
+  "filter": true,
+  "toolTimeout": 2,
+  "tools": [
+    { "name": "wait", "description": "睡 seconds 秒", "parameters": { "type": "object", "properties": { "seconds": { "type": "number" } }, "required": ["seconds"] } }
+  ],
+  "settings": {
+    "type": "object",
+    "properties": { "delay": { "type": "number", "title": "睡几秒", "default": 10 } }
+  }
+}

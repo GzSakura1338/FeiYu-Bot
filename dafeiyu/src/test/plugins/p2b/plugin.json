@@ -1,0 +1,12 @@
+{
+  "id": "p2b",
+  "name": "P2 第二个拦截",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：优先级更低的拦截插件，记录自己有没有被调用",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "events": ["message.group"],
+  "intercept": true,
+  "priority": 20
+}

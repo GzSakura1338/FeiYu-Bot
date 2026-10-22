@@ -44,8 +44,33 @@ function renderStatus() {
   chips.push(chip('neurology', `这次开机想了 ${status.thoughts} 个念头`));
   chips.push(chip('send', `今天主动去群里说了 ${status.spokeToday} 次`));
   $('#mind-status').replaceChildren(...chips);
+  renderHung();
   for (const b of $$('#mind-pace button')) b.setAttribute('aria-checked', String(b.dataset.pace === status.pace));
   if (status.mood) renderMood(status.mood);
+}
+
+const placeOf = session => (session?.startsWith('group:') ? `群 ${session.slice(6)}` : session?.startsWith('private:') ? '私聊' : session ?? '');
+
+function hungItem(icon, text, meta, tone = '') {
+  const item = el('li', `mind-hung-item ${tone}`);
+  item.append(createIcon(icon, 'icon-18'), el('span', 'mind-hung-text', text), el('span', 'mind-hung-meta label-small', meta));
+  return item;
+}
+
+function renderHung() {
+  const list = $('#mind-hung');
+  const notes = status.notes ?? [];
+  const commitments = status.commitments ?? [];
+  const open = commitments.filter(c => c.status === 'open');
+  const closed = commitments.filter(c => c.status !== 'open').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
+  const items = [
+    ...notes.map(n => hungItem('send', `交给${placeOf(n.session)}去说：${n.intent}`, `等那边说 · ${formatTime(n.at)}`, 'tone-note')),
+    ...open.map(c => hungItem('schedule', `#${c.id} ${c.what}`, `${c.who} · ${placeOf(c.session)} · ${formatTime(c.createdAt)}`)),
+    ...closed.map(c => hungItem(c.status === 'done' ? 'check_circle' : 'close', `#${c.id} ${c.what}${c.result ? ` → ${c.result}` : ''}`,
+      `${c.status === 'done' ? '办完了' : '不办了'} · ${formatTime(c.updatedAt)}`, 'tone-closed')),
+  ];
+  list.hidden = !items.length;
+  list.replaceChildren(...items);
 }
 
 export async function loadMindStatus() {
@@ -69,11 +94,15 @@ export function showMindBar(on) {
   }, 5_000);
 }
 
+export const QUIET = /^(没什么新动静。|四周安静。)/;
+
 export function mindMoment(content, time) {
   const text = content.replace(/^【[^】]*】\s*/, '').trim();
-  const quiet = !text || text === '没什么新动静。';
-  const node = el('div', `mind-moment new${quiet ? ' quiet' : ''}`);
-  node.append(createIcon(quiet ? 'schedule' : 'neurology', 'icon-18'), el('span', 'body-medium mind-moment-text', quiet ? '外面没什么动静' : text));
+  const wander = text.replace(QUIET, '').trim();
+  const quiet = !text || QUIET.test(text);
+  const node = el('div', `mind-moment new${quiet && !wander ? ' quiet' : ''}`);
+  const icon = !quiet ? 'neurology' : wander ? 'psychology' : 'schedule';
+  node.append(createIcon(icon, 'icon-18'), el('span', 'body-medium mind-moment-text', quiet ? wander || '外面没什么动静' : text));
   if (time) node.append(el('span', 'label-small mind-moment-time', formatTime(time)));
   return node;
 }

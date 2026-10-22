@@ -1,5 +1,5 @@
 import { $, el } from './dom.js';
-import { createIcon } from './icons.js';
+import { createIcon, setIcon } from './icons.js';
 import { MIND_TOOLS, TOOLS } from './agent-workspace.js';
 
 export function formatTokens(n) {
@@ -64,10 +64,14 @@ export function toolTitle(name, args) {
   const label = toolMeta(name)?.label ?? name;
   if (name === 'say_in_group') return `${label}（${args.group_id ?? ''}）：${args.text ?? ''}`;
   if (name === 'say_private') return `${label}（QQ ${args.user_id ?? ''}）：${args.text ?? ''}`;
+  if (name === 'tell_group') return `${label}（${args.group_id ?? ''}）：${args.intent ?? ''}`;
+  if (name === 'tell_private') return `${label}（QQ ${args.user_id ?? ''}）：${args.intent ?? ''}`;
+  if (name === 'settle') return `${label} #${args.id ?? ''}${args.result ? `：${args.result}` : ''}`;
   if (name === 'find_person') return `${label}「${args.name ?? ''}」`;
   if (name === 'read_group') return `${label} ${args.group_id ?? ''}`;
   if (name === 'recall' || name === 'remember') return `${label} ${args.about ?? ''}${args.text ? `：${args.text}` : ''}`;
   if (name === 'webfetch') return `${label} ${args.url ?? ''}`;
+  if (name === 'websearch' || name === 'search') return `${label}「${args.query ?? ''}」`;
   if (name === 'shell') return `${label} ${args.description || args.command || ''}`;
   if (name === 'todowrite') {
     const todos = Array.isArray(args.todos) ? args.todos : [];
@@ -108,12 +112,20 @@ const INNER_CLOSE = '</内心>';
 const NOTE = /<记住(?:\s+关于\s*=\s*["'“”]?([^"'“”>]*)["'“”]?)?\s*>([\s\S]*?)(?:<\/记住>|$)/g;
 
 const ERRAND = /<去做>([\s\S]*?)(?:<\/去做>|$)/g;
+const PROMISE = /<承诺>([\s\S]*?)(?:<\/承诺>|$)/g;
+const DONE = /<完成>([\s\S]*?)(?:<\/完成>|$)/g;
 const POKE = /<拍一拍\s*\/>|<拍一拍>([\s\S]*?)(?:<\/拍一拍>|$)/g;
 
 export function splitInner(raw) {
   const notes = [];
   const text = raw.replace(ERRAND, (_, body) => {
     if (body.trim()) notes.push({ errand: true, text: body.trim() });
+    return '';
+  }).replace(PROMISE, (_, body) => {
+    if (body.trim()) notes.push({ promise: true, text: body.trim() });
+    return '';
+  }).replace(DONE, (_, body) => {
+    if (body.trim()) notes.push({ done: true, text: body.trim() });
     return '';
   }).replace(POKE, (_, body) => {
     notes.push({ poke: true, text: (body ?? '').trim() || '对方' });
@@ -132,7 +144,14 @@ export function splitInner(raw) {
 }
 
 export function noteChips(notes) {
-  return notes.map(n => el('div', 'memory-note label-medium', n.poke ? `拍了拍 ${n.text}` : n.errand ? `交给内心去办：${n.text}` : `记下了${n.about ? `（${n.about}）` : ''}：${n.text}`));
+  const label = n => {
+    if (n.poke) return `拍了拍 ${n.text}`;
+    if (n.errand) return `交给内心去办：${n.text}`;
+    if (n.promise) return `答应要做：${n.text}`;
+    if (n.done) return `办完了：${n.text}`;
+    return `记下了${n.about ? `（${n.about}）` : ''}：${n.text}`;
+  };
+  return notes.map(n => el('div', 'memory-note label-medium', label(n)));
 }
 
 const STICKER = /\[表情包[:：#]#?(\d+)(?:[：:]([^\]]*))?\]/g;
@@ -155,7 +174,7 @@ export function fillSaid(node, said) {
 export function reasoningBlock(text) {
   const block = el('details', 'thinking');
   const summary = el('summary', 'thinking-summary label-large');
-  summary.append(createIcon('auto_awesome', 'icon-18'), el('span', 'thinking-label', '推理过程'));
+  summary.append(createIcon('lightbulb', 'icon-18'), el('span', 'thinking-label', '推理过程'));
   block.append(summary, el('div', 'thinking-text body-medium', text));
   return block;
 }
@@ -247,6 +266,8 @@ export function createReply(list, attach) {
     flushNow();
     if (!thinking) return;
     thinking.open = false;
+    thinking.classList.remove('live');
+    setIcon($('.thinking-summary svg', thinking), 'lightbulb');
     $('.thinking-label', thinking).textContent = `已思考 ${((performance.now() - thinkStart) / 1000).toFixed(1)} 秒`;
     thinking = null;
   };
@@ -263,10 +284,10 @@ export function createReply(list, attach) {
     wrap,
     reasoning(delta) {
       if (!thinking) {
-        thinking = el('details', 'thinking');
+        thinking = el('details', 'thinking live');
         thinking.open = true;
         const summary = el('summary', 'thinking-summary label-large');
-        summary.append(createIcon('auto_awesome', 'icon-18'), el('span', 'thinking-label', '思考中…'));
+        summary.append(createIcon('lightbulb_fill', 'icon-18'), el('span', 'thinking-label', '思考中…'));
         thinking.append(summary, el('div', 'thinking-text body-medium'));
         thinkStart = performance.now();
         hideTyping();

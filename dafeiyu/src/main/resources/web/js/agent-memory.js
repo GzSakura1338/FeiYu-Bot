@@ -7,14 +7,15 @@ import { ago, formatTime } from './format.js';
 import { onAgentViewChange } from './agent-page.js';
 
 const GROUPS = [
-  { title: '她自己', test: s => s.kind === 'self' || s.kind === 'diary' },
+  { title: '她自己', test: s => s.kind === 'self' || s.kind === 'diary' || s.kind === 'skill' },
   { title: '主人', test: s => s.owner },
   { title: '认识的人', test: s => s.kind === 'user' && !s.owner },
   { title: '群', test: s => s.kind === 'group' },
 ];
 const HINTS = {
-  self: '她对自己的认识：喜好、经历、心情变化',
-  diary: '每次回顾时写的小日记，聊天时会想起最近两篇',
+  self: '她对自己的认识，按性格、喜好、习惯、经历、心愿和约定整理，零散的想法回顾时会并进去',
+  diary: '每天一篇，回顾时把当天的事合进去，聊天时会想起最近两天',
+  skill: '她在聊天里学会的本事：不会的、被人教会的、自己摸索出来的，回顾时自动总结，以后聊天照着做',
   user: '她记得的关于这个人的事，聊天时对方在场就会想起来',
   group: '这个群的梗和氛围，在这个群聊天时会想起来',
 };
@@ -45,7 +46,7 @@ function scopeAvatar(s, className = 'avatar') {
     img.alt = '';
     node.append(img);
   } else {
-    node.append(createIcon(s.kind === 'diary' ? 'auto_stories' : 'psychology', 'icon-18'));
+    node.append(createIcon({ diary: 'auto_stories', skill: 'build' }[s.kind] ?? 'psychology', 'icon-18'));
   }
   return node;
 }
@@ -79,7 +80,8 @@ function renderScopes() {
       const head = el('div', 'session-item-head');
       head.append(el('span', 'title-small session-item-name', scopeName(s)));
       head.append(el('span', 'label-small session-item-time', s.updatedAt ? ago(s.updatedAt) : ''));
-      text.append(head, el('div', 'body-small session-item-preview', s.count ? `${s.count} 条` : '还没有'));
+      const unit = { diary: ' 天', skill: ' 个' }[s.kind] ?? ' 条';
+      text.append(head, el('div', 'body-small session-item-preview', s.count ? `${s.count}${unit}` : '还没有'));
       item.append(scopeAvatar(s), text);
       const open = () => select(s.scope);
       item.addEventListener('click', open);
@@ -97,7 +99,7 @@ function renderScopes() {
 
 function renderControls() {
   $('#memory-auto').setAttribute('aria-checked', String(Boolean(state?.auto)));
-  $('#memory-auto-hint').textContent = state?.auto ? '聊过一阵后自己总结、记日记' : '已关闭，只在手动回顾时记';
+  $('#memory-auto-hint').textContent = state?.auto ? '聊过一阵后自己总结、写日记、学技能' : '已关闭，只在手动回顾时记';
   const pending = state?.pending ?? [];
   const messages = pending.reduce((sum, p) => sum + p.count, 0);
   const busy = pending.some(p => p.running);
@@ -119,18 +121,65 @@ function renderHeader() {
   const parts = [HINTS[s.kind] ?? ''];
   if (s.kind === 'user' || s.kind === 'group') parts.push(`${s.kind === 'user' ? 'QQ' : '群号'} ${s.target}`);
   $('#memory-sub').textContent = parts.filter(Boolean).join(' · ');
-  $('#memory-input').placeholder = s.kind === 'diary' ? '替她补一篇日记，Enter 保存' : '手动加一条记忆，Enter 保存';
+  $('#memory-input').placeholder = {
+    diary: '替她往今天的日记里补一段，Enter 保存',
+    skill: '教她一个技能：第一行写名字，Shift+Enter 换行写怎么做，Enter 保存',
+  }[s.kind] ?? '手动加一条记忆，Enter 保存';
+  $('#memory-download-all').hidden = s.kind !== 'skill' || !items.length;
+}
+
+function sourceMeta(m) {
+  if (!m.sourceName) return [];
+  return [m.source === 'manual' ? m.sourceName : `来自 ${m.sourceName}`];
+}
+
+function clampable(content) {
+  content.classList.add('clamped');
+  const more = el('button', 'memory-item-more label-medium', '展开');
+  more.type = 'button';
+  more.hidden = true;
+  requestAnimationFrame(() => {
+    more.hidden = content.scrollHeight <= content.clientHeight + 2;
+  });
+  more.addEventListener('click', () => {
+    const clamped = content.classList.toggle('clamped');
+    more.textContent = clamped ? '展开' : '收起';
+  });
+  return more;
 }
 
 function memoryItem(m) {
   const row = el('div', 'memory-item new');
   const text = el('div', 'memory-item-text');
+  if (m.title) text.append(el('div', 'memory-item-title title-small', m.title));
   const content = el('div', 'memory-item-content body-large', m.content);
-  const meta = [selected === 'diary' ? formatTime(m.createdAt) : ago(m.updatedAt)];
-  if (m.sourceName) meta.push(m.source === 'manual' ? m.sourceName : `来自 ${m.sourceName}`);
-  text.append(content, el('div', 'memory-item-meta body-small', meta.join(' · ')));
+  text.append(content);
+  if (selected === 'diary') text.append(clampable(content));
+  const meta = [selected === 'diary' ? `更新于 ${ago(m.updatedAt)}` : ago(m.updatedAt), ...sourceMeta(m)];
+  text.append(el('div', 'memory-item-meta body-small', meta.join(' · ')));
   const actions = el('div', 'memory-item-actions');
-  actions.append(iconButton('edit', '修改', () => edit(m, row, text)), iconButton('delete', '删除', () => remove(m)));
+  actions.append(iconButton('edit', '修改', () => edit(m, row)), iconButton('delete', '删除', () => remove(m)));
+  row.append(text, actions);
+  return row;
+}
+
+function skillItem(s) {
+  const row = el('div', 'memory-item new');
+  const text = el('div', 'memory-item-text');
+  text.append(el('div', 'memory-item-title title-small', s.name));
+  if (s.description) text.append(el('div', 'memory-item-desc body-medium', `什么时候用：${s.description}`));
+  const content = el('div', 'memory-item-content body-large', s.content);
+  text.append(content, clampable(content));
+  const meta = [`学会于 ${formatTime(s.createdAt)}`];
+  if (s.updatedAt - s.createdAt > 60_000) meta.push(`改进于 ${ago(s.updatedAt)}`);
+  text.append(el('div', 'memory-item-meta body-small', [...meta, ...sourceMeta(s)].join(' · ')));
+  const actions = el('div', 'memory-item-actions');
+  const download = el('a', 'icon-button state-layer');
+  download.href = `/api/agent/memory/skills/${s.id}/download`;
+  download.setAttribute('download', '');
+  download.title = download.ariaLabel = '下载';
+  download.append(createIcon('download'));
+  actions.append(iconButton('edit', '修改', () => editSkill(s, row)), download, iconButton('delete', '删除', () => removeSkill(s)));
   row.append(text, actions);
   return row;
 }
@@ -150,33 +199,71 @@ function renderItems() {
     list.replaceChildren();
     return;
   }
+  const empty = {
+    diary: '还没有日记，回顾一次就会写',
+    skill: '还没学会什么技能。聊天里遇到不会的事、被人教会了，回顾时就会总结成技能',
+  }[selected] ?? '这里还没有记忆';
   list.replaceChildren(...(items.length
-    ? items.map(memoryItem)
-    : [el('div', 'empty-state body-medium', selected === 'diary' ? '还没有日记，回顾一次就会写' : '这里还没有记忆')]));
+    ? items.map(selected === 'skill' ? skillItem : memoryItem)
+    : [el('div', 'empty-state body-medium', empty)]));
+  $('#memory-download-all').hidden = selected !== 'skill' || !items.length;
 }
 
-function edit(m, row, text) {
-  const area = el('textarea', 'body-large');
-  area.value = m.content;
+function editor(row, fields, onSave) {
   const save = el('button', 'filled-button filled-button-medium label-large state-layer', '保存');
   const cancel = el('button', 'text-button label-large state-layer', '取消');
   save.type = cancel.type = 'button';
   const bar = el('div', 'dialog-actions');
   bar.append(cancel, save);
-  const editor = el('div', 'memory-item-text');
-  editor.append(area, bar);
-  row.replaceChildren(editor);
-  area.focus();
+  const box = el('div', 'memory-item-text');
+  box.append(...fields, bar);
+  row.replaceChildren(box);
+  fields[0].focus();
   cancel.addEventListener('click', () => renderItems());
   save.addEventListener('click', async () => {
     try {
-      items = (await request('PUT', `/items/${m.id}`, { content: area.value })).items;
+      items = (await onSave()).items;
       renderItems();
       await loadState();
     } catch (err) {
       showSnackbar(`保存失败：${err.message}`, 'error');
     }
   });
+}
+
+function field(tag, value, placeholder) {
+  const node = el(tag, 'body-large');
+  node.value = value ?? '';
+  node.placeholder = placeholder;
+  return node;
+}
+
+function edit(m, row) {
+  const area = field('textarea', m.content, '内容');
+  if (selected === 'diary' || m.title) area.style.minHeight = '240px';
+  editor(row, [area], () => request('PUT', `/items/${m.id}`, { content: area.value }));
+}
+
+function editSkill(s, row) {
+  const name = field('input', s.name, '技能名字');
+  const description = field('input', s.description, '什么时候用');
+  const content = field('textarea', s.content, '具体怎么做');
+  content.style.minHeight = '240px';
+  editor(row, [name, description, content], () => request('PUT', `/skills/${s.id}`, {
+    name: name.value, description: description.value, content: content.value,
+  }));
+}
+
+async function removeSkill(s) {
+  const ok = await confirmDialog({ icon: 'delete', title: `忘掉「${s.name}」这个技能？`, text: s.description || s.content, confirm: '删除' });
+  if (!ok) return;
+  try {
+    items = (await request('DELETE', `/skills/${s.id}`, {})).items;
+    renderItems();
+    await loadState();
+  } catch (err) {
+    showSnackbar(`删除失败：${err.message}`, 'error');
+  }
 }
 
 async function remove(m) {
@@ -195,7 +282,7 @@ async function loadItems() {
   if (!state?.persona) return;
   const scope = selected;
   try {
-    const data = await request('GET', `/items?scope=${encodeURIComponent(scope)}`);
+    const data = await request('GET', scope === 'skill' ? '/skills' : `/items?scope=${encodeURIComponent(scope)}`);
     if (scope !== selected) return;
     items = data.items;
   } catch (err) {
@@ -232,7 +319,13 @@ async function add(e) {
   const content = input.value.trim();
   if (!content) return;
   try {
-    items = (await request('POST', '/items', { scope: selected, content })).items;
+    if (selected === 'skill') {
+      const [name, ...rest] = content.split('\n');
+      if (!rest.join('\n').trim()) throw new Error('第一行写名字，下面换行写具体怎么做');
+      items = (await request('POST', '/skills', { name, description: '', content: rest.join('\n') })).items;
+    } else {
+      items = (await request('POST', '/items', { scope: selected, content })).items;
+    }
     input.value = '';
     input.style.height = 'auto';
     $('#memory-add').disabled = true;

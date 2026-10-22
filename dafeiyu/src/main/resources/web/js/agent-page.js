@@ -13,8 +13,10 @@ export function onAgentViewChange(fn) {
 
 export function renderMood(mood) {
   const node = $('#agent-mood');
-  node.hidden = !mood?.text;
-  if (mood?.text) node.textContent = `此刻的心情：${mood.text} · ${ago(mood.at)}`;
+  const text = mood?.text ? `此刻的心情：${mood.text} · ${ago(mood.at)}` : '';
+  node.classList.toggle('empty', !text);
+  node.textContent = text;
+  node.title = text;
 }
 
 function show(view) {

@@ -1,0 +1,11 @@
+{
+  "id": "flood",
+  "name": "刷屏",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：一秒内调 100 次 qq/send",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "permissions": ["qq.send"],
+  "tools": [{ "name": "flood", "description": "往群里狂发", "parameters": { "type": "object", "properties": { "group": { "type": "string" } }, "required": ["group"] } }]
+}

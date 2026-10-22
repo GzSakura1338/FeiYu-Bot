@@ -17,6 +17,8 @@ import { initAgentMind } from './agent-mind.js';
 import { initWorkspaceFiles } from './workspace-files.js';
 import { initAgentStickers } from './agent-stickers.js';
 import { initUsage } from './usage.js';
+import { initLightbox } from './lightbox.js';
+import { initPlugins } from './plugins.js';
 
 hydrateIcons();
 hydrateShapes();
@@ -36,4 +38,6 @@ initAgentMind();
 initWorkspaceFiles();
 initAgentStickers();
 initUsage();
+initLightbox();
+initPlugins();
 initRouter();

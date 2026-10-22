@@ -12,29 +12,24 @@ import dafeiyu.agent.SessionDetail;
 import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.TurnRunner;
-import dafeiyu.agent.memory.Mood;
+import dafeiyu.agent.intercom.Intercom;
+import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.model.ImageLoader;
 import dafeiyu.agent.qq.GroupState.Line;
 import dafeiyu.agent.qq.QqMessages.Incoming;
-import dafeiyu.agent.safety.ContentGuard;
+import dafeiyu.agent.qq.QqOutbox.Target;
+import dafeiyu.agent.reply.Markup;
 import dafeiyu.agent.sticker.StickerStore;
-import dafeiyu.agent.tool.FileSink;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.onebot.NapCatService;
 import dafeiyu.util.Clock;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Deque;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,24 +41,22 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-import static dafeiyu.agent.qq.QqMessages.segment;
 import static dafeiyu.agent.qq.QqMessages.senderName;
 import static dafeiyu.agent.qq.QqMessages.unforgeable;
-import static dafeiyu.util.Jsons.optObject;
 import static dafeiyu.util.Jsons.optString;
 import static dafeiyu.util.Texts.abbreviate;
 
 public final class QqChatBridge {
 
-    private static final int MAX_REPLY_LENGTH = 3000;
     private static final int MAX_IMAGES = 4;
-    private static final long MAX_INLINE_IMAGE = 10L * 1024 * 1024;
-    private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(3);
-    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
     private static final String OWNER_TAG = "【主人】";
     private static final String POKE_TAG = "【拍一拍】";
     private static final long POKE_GAP_MS = 20_000;
     private static final String CONSOLE_TAG = "【控制台】";
+    private static final long RESUME_WINDOW_MS = 10 * 60_000L;
+    private static final String RESUMED = "你刚才正在回这条，回到一半被重启打断了，对方还没收到你的回复。接着把它回完；刚才在做的事（写文件、调工具）如果没做完，"
+            + "看看聊天记录里做到哪一步了，接着做完，别从头重来。";
+    private static final String FOCUS ="对方在说什么就接什么，先回应这条，别答非所问；别扯回前面已经聊完的话题，也别突然提起很久以前的事或者别处的事，除非对方自己提到。";
     private static final long AMBIENT_QUIET_MIN_MS = 4_000;
     private static final long AMBIENT_QUIET_MAX_MS = 12_000;
     private static final long AMBIENT_MAX_WAIT_MS = 25_000;
@@ -71,11 +64,13 @@ public final class QqChatBridge {
     private static final long AMBIENT_COOLDOWN_MS = 20_000;
     private static final int AMBIENT_HOURLY_LIMIT = 30;
     private static final long RECENT_TALK_MS = 10 * 60_000;
+    private static final long CONVERSATION_MS = 3 * 60_000;
+    private static final long ACTIVE_MEMBERS_MS = 3 * 86_400_000L;
+    private static final int ACTIVE_MEMBERS = 12;
     private static final String SEEN_MARK = "（以上是你刚才看过的）";
     private static final long FAVORITES_EVERY_MS = 6 * 3_600_000L;
-    private static final long GROUP_NAMES_TTL_MS = 10 * 60_000;
 
-    private enum Mode { ADDRESSED, AMBIENT }
+    private enum Mode { ADDRESSED, AMBIENT, NOTE }
 
     public interface Observer {
 
@@ -84,10 +79,186 @@ public final class QqChatBridge {
         void said(String where, String text);
     }
 
+    private static final class Inbox {
+        boolean busy;
+        boolean pending;
+        Target target;
+        final List<String> images = new ArrayList<>();
+        final List<String> lines = new ArrayList<>();
+        boolean resumed;
+    }
+
+    private final ChatAgent agent;
+    private final NapCatService napcat;
+    private final MessageArchive archive;
+    private final LogBuffer log;
+    private final Map<String, GroupState> groups = new ConcurrentHashMap<>();
+    private final Map<String, Inbox> inboxes = new ConcurrentHashMap<>();
+    private final Set<String> resumedGroups = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> latestInGroup = new ConcurrentHashMap<>();
+    private final Set<String> ownerNames = ConcurrentHashMap.newKeySet();
+    private final Map<String, Long> pokedAt = new ConcurrentHashMap<>();
+    private final Deque<Long> proactive = new ArrayDeque<>();
+    private final QqOutbox outbox;
+    private final QqContacts contacts;
+    private final QqBackfill backfill;
     private volatile Observer observer;
+    private volatile MessageGate gate = MessageGate.NONE;
+    private volatile long lastActivity = System.currentTimeMillis();
+    private volatile long favoritesSyncedAt;
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "group-chat");
+        t.setDaemon(true);
+        return t;
+    });
+
+    public QqChatBridge(ChatAgent agent, NapCatService napcat, MessageArchive archive, LogBuffer log) {
+        this.agent = agent;
+        this.napcat = napcat;
+        this.archive = archive;
+        this.log = log;
+        this.outbox = new QqOutbox(agent, napcat, archive, log, groups);
+        this.contacts = new QqContacts(agent, napcat, archive, outbox, log);
+        this.backfill = new QqBackfill(agent, archive, outbox, log);
+        agent.setPoker((session, userId) -> {
+            try {
+                return poke(session, userId);
+            } catch (ToolFailure e) {
+                log.info("agent [" + session + "] poke skipped: " + e.getMessage());
+                return null;
+            }
+        });
+        agent.intercom().onNotes(this::deliverNotes);
+    }
+
+    public String whyNotTell(String session) {
+        if (!agent.store().qqReply()) {
+            return "QQ 自动回复没开";
+        }
+        if (!napcat.status().connected()) {
+            return "QQ 没连上";
+        }
+        if (session.startsWith("group:")) {
+            if (!agent.store().groupMode()) {
+                return "群聊模式没开";
+            }
+            Map<String, String> names = contacts.groups();
+            return !names.isEmpty() && !names.containsKey(session.substring(6)) ? "不在这个群里" : null;
+        }
+        if (session.startsWith("private:")) {
+            String userId = session.substring(8);
+            if (!userId.matches("\\d{5,12}")) {
+                return "QQ 号不对";
+            }
+            return contacts.canMessage(userId) ? null : "不是好友，也没私聊过，去你们都在的群里 @ 他吧";
+        }
+        return "只能交给群聊或私聊";
+    }
+
+    private void deliverNotes(String session) {
+        String selfId = outbox.selfId();
+        if (session.startsWith("group:")) {
+            startGroupTurn(groups.computeIfAbsent(session.substring(6), GroupState::new), selfId, Mode.NOTE);
+            return;
+        }
+        if (!session.startsWith("private:")) {
+            return;
+        }
+        Inbox inbox = inboxes.computeIfAbsent(session, k -> new Inbox());
+        synchronized (inbox) {
+            if (inbox.target == null) {
+                inbox.target = Target.direct(session.substring(8), selfId, "");
+            }
+            if (inbox.busy) {
+                return;
+            }
+            inbox.busy = true;
+        }
+        executor.submit(() -> runPrivate(session, inbox));
+    }
+
+    private static String notePrompt(List<Intercom.Note> notes) {
+        return "（你心里想到要在这里说：" + String.join("；", notes.stream().map(Intercom.Note::intent).toList())
+                + "。这是你自己的念头，不是别人问的。结合现在的聊天，像平时一样自然地说出来，可以 @ 相关的人；"
+                + "现在说不合适、或者刚才已经说过了，就只写 " + TurnRunner.SILENCE + "。）";
+    }
+
+    private void countProactive() {
+        synchronized (proactive) {
+            proactive.addLast(System.currentTimeMillis());
+        }
+    }
+
+    private void runPrivateNotes(String session, Target target) {
+        List<Intercom.Note> notes = agent.intercom().takeNotes(session);
+        if (notes.isEmpty()) {
+            return;
+        }
+        String why = whyNotTell(session);
+        if (why != null) {
+            agent.intercom().receipt(notes, "私聊", null, why);
+            return;
+        }
+        ChatTurn turn = new ChatTurn(session, ChatMessage.user(notePrompt(notes)), target.userId(), outbox.files(target), "note",
+                List.of(target.userId()), Map.of(), true);
+        String sent = reply(target, turn, true);
+        agent.intercom().receipt(notes, "私聊", sent, "看了看私聊，觉得现在不说比较好");
+        if (sent != null) {
+            countProactive();
+        }
+    }
 
     public void setObserver(Observer observer) {
         this.observer = observer;
+    }
+
+    public void setGate(MessageGate gate) {
+        this.gate = gate == null ? MessageGate.NONE : gate;
+        outbox.setGate(this.gate);
+    }
+
+    public String pluginSend(String session, String text, String imageUrl, String quote, String label) throws ToolFailure {
+        if (!napcat.status().connected()) {
+            throw new ToolFailure("QQ is not connected");
+        }
+        Target target = outbox.targetOf(session);
+        if (target == null) {
+            throw new ToolFailure("unknown session " + session);
+        }
+        String formatted = text == null || text.isBlank() ? "" : outbox.prepare(text);
+        outbox.deliverForPlugin(target, formatted, imageUrl, quote);
+        try {
+            agent.hear(session, "【插件·" + label + "】：" + (formatted.isEmpty() ? "[图片]" : formatted.replace("\n", " / ")));
+        } catch (RuntimeException ignored) {
+        }
+        return formatted;
+    }
+
+    public JsonArray groupMembers(String groupId) throws ToolFailure {
+        JsonObject params = new JsonObject();
+        params.addProperty("group_id", Long.parseLong(groupId));
+        JsonObject response = outbox.call("get_group_member_list", params, Duration.ofSeconds(15));
+        JsonArray out = new JsonArray();
+        if (response.has("data") && response.get("data").isJsonArray()) {
+            for (var e : response.getAsJsonArray("data")) {
+                if (!e.isJsonObject()) {
+                    continue;
+                }
+                JsonObject m = e.getAsJsonObject();
+                JsonObject item = new JsonObject();
+                item.addProperty("userId", optString(m, "user_id"));
+                item.addProperty("nickname", optString(m, "nickname"));
+                item.addProperty("card", optString(m, "card"));
+                item.addProperty("role", optString(m, "role"));
+                out.add(item);
+            }
+        }
+        return out;
+    }
+
+    public boolean connected() {
+        return napcat.status().connected();
     }
 
     private void observeHeard(String where, String who, String text, boolean toMe) {
@@ -110,64 +281,65 @@ public final class QqChatBridge {
         }
     }
 
-    private final ChatAgent agent;
-    private final NapCatService napcat;
-    private final MessageArchive archive;
-    private final LogBuffer log;
-    private final Set<String> busy = ConcurrentHashMap.newKeySet();
-    private final Map<String, String> latestInGroup = new ConcurrentHashMap<>();
-    private final Map<String, GroupState> groups = new ConcurrentHashMap<>();
-    private final Set<String> ownerNames = ConcurrentHashMap.newKeySet();
-    private final Deque<Long> proactive = new ArrayDeque<>();
-    private volatile Map<String, String> groupNames = Map.of();
-    private volatile long groupNamesAt;
-    private final Map<String, Long> pokedAt = new ConcurrentHashMap<>();
-    private volatile Map<String, String> friends = Map.of();
-    private volatile long friendsAt;
-    private volatile long lastActivity = System.currentTimeMillis();
-    private volatile long favoritesSyncedAt;
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "group-chat");
-        t.setDaemon(true);
-        return t;
-    });
-
-    private record Target(String messageType, String groupId, String userId, String selfId, String messageId, String where) {
-
-        boolean group() {
-            return messageType.equals("group");
-        }
-    }
-
-    public QqChatBridge(ChatAgent agent, NapCatService napcat, MessageArchive archive, LogBuffer log) {
-        this.agent = agent;
-        this.napcat = napcat;
-        this.archive = archive;
-        this.log = log;
-        agent.setPoker((session, userId) -> {
-            try {
-                return poke(session, userId);
-            } catch (ToolFailure e) {
-                log.info("agent [" + session + "] poke skipped: " + e.getMessage());
-                return null;
-            }
-        });
-    }
-
     public void onEvent(JsonObject event) {
         if (optString(event, "post_type").equals("notice") && optString(event, "sub_type").equals("poke")) {
             onPoke(event);
             return;
         }
-        if (!optString(event, "post_type").equals("message")) {
-            return;
+        if (optString(event, "post_type").equals("message")) {
+            ingest(event, true);
         }
+    }
+
+    public void onConnected() {
+        resumeInterrupted();
+        backfill.run(this::ingest);
+    }
+
+    private void resumeInterrupted() {
+        long now = System.currentTimeMillis();
+        String selfId = outbox.selfId();
+        int resumed = 0;
+        for (AgentStore.Replying r : agent.store().takeReplying()) {
+            if (now - r.at() > RESUME_WINDOW_MS || !agent.store().qqReply()) {
+                continue;
+            }
+            if (r.session().startsWith("private:")) {
+                Inbox inbox = inboxes.computeIfAbsent(r.session(), k -> new Inbox());
+                synchronized (inbox) {
+                    inbox.target = Target.direct(r.userId(), selfId, r.messageId());
+                    inbox.lines.addAll(List.of(r.line().split("\n")));
+                    inbox.resumed = true;
+                    if (inbox.busy) {
+                        inbox.pending = true;
+                        resumed++;
+                        continue;
+                    }
+                    inbox.busy = true;
+                }
+                executor.submit(() -> runPrivate(r.session(), inbox));
+            } else if (r.session().startsWith("group:")) {
+                String groupId = r.session().substring(6);
+                GroupState state = groups.computeIfAbsent(groupId, GroupState::new);
+                state.add(new Line(r.messageId(), r.userId(), r.speaker(), r.line(), now, true, List.of(), false));
+                resumedGroups.add(groupId);
+                startGroupTurn(state, selfId, Mode.ADDRESSED);
+            }
+            resumed++;
+        }
+        if (resumed > 0) {
+            log.info("agent: picked up " + resumed + " reply(ies) interrupted by the restart");
+        }
+    }
+
+    private void ingest(JsonObject event, boolean react) {
         String messageType = optString(event, "message_type");
         if (messageType.equals("group")) {
             latestInGroup.put(optString(event, "group_id"), optString(event, "message_id"));
         }
-        if (!agent.store().qqReply()) {
+        boolean replying = agent.store().qqReply();
+        MessageGate plugins = gate;
+        if (!replying && plugins == MessageGate.NONE) {
             return;
         }
         String selfId = optString(event, "self_id");
@@ -186,13 +358,32 @@ public final class QqChatBridge {
             ownerNames.add(senderName(event).strip());
         }
         String text = owner ? incoming.text() : unforgeable(incoming.text());
+        MessageGate.Verdict verdict = MessageGate.Verdict.PASS;
+        if (messageType.equals("group") || messageType.equals("private")) {
+            try {
+                verdict = plugins.incoming(new MessageGate.Message(messageType, optString(event, "group_id"), userId,
+                        unforgeable(senderName(event)), owner, text, incoming.attachments(), incoming.mentionedMe(),
+                        optString(event, "message_id"), System.currentTimeMillis(), react));
+            } catch (RuntimeException e) {
+                log.warn("plugins: message dispatch failed: " + e);
+            }
+        }
+        if (!replying) {
+            return;
+        }
+        if (verdict.drop()) {
+            react = false;
+        } else if (verdict.text() != null) {
+            text = verdict.text();
+        }
         if (state != null) {
-            onGroupMessage(event, state, incoming, text, owner, selfId, userId);
+            onGroupMessage(event, state, incoming, text, owner, selfId, userId, react);
         } else if (messageType.equals("private")) {
-            lastActivity = System.currentTimeMillis();
-            observeHeard("private:" + userId, owner ? "主人" : unforgeable(senderName(event)), text, true);
-            Target target = new Target("private", "", userId, selfId, optString(event, "message_id"), "private " + userId);
-            replyOnce("private:" + userId, target, (owner ? OWNER_TAG : "") + text, incoming.imageUrls(), incoming.attachments());
+            if (react) {
+                observeHeard("private:" + userId, owner ? "主人" : unforgeable(senderName(event)), text, true);
+            }
+            onPrivate(Target.direct(userId, selfId, optString(event, "message_id")), (owner ? OWNER_TAG : "") + text,
+                    incoming.imageUrls(), incoming.attachments(), react);
         }
     }
 
@@ -227,11 +418,9 @@ public final class QqChatBridge {
         attachments.add(poke);
         String groupId = optString(event, "group_id");
         if (groupId.isEmpty() || groupId.equals("0")) {
-            String line = POKE_TAG + (owner ? "主人" : "对方") + " " + action + " 你" + suffix;
-            lastActivity = System.currentTimeMillis();
+            String line = (owner ? OWNER_TAG : "") + POKE_TAG + (owner ? "主人" : "对方") + " " + action + " 你" + suffix;
             observeHeard("private:" + userId, owner ? "主人" : "对方", action + " 你" + suffix, true);
-            Target target = new Target("private", "", userId, selfId, "", "private " + userId);
-            replyOnce("private:" + userId, target, (owner ? OWNER_TAG : "") + line, List.of(), attachments.toString());
+            onPrivate(Target.direct(userId, selfId, ""), line, List.of(), attachments.toString(), true);
             return;
         }
         GroupState state = groups.computeIfAbsent(groupId, GroupState::new);
@@ -247,6 +436,44 @@ public final class QqChatBridge {
         if (!agent.store().groupMode() || state.tooChatty()) {
             return;
         }
+        react(state, selfId, addressed);
+    }
+
+    private void onGroupMessage(JsonObject event, GroupState state, Incoming incoming, String text, boolean owner, String selfId, String userId,
+                                boolean react) {
+        String groupId = state.groupId;
+        String messageId = optString(event, "message_id");
+        String name = state.label(unforgeable(senderName(event)), userId, owner, this::reservedName);
+        String quote = incoming.replyTo().isEmpty() ? "" : state.quote(incoming.replyTo());
+        String flat = text.strip().replaceAll("\\s*\\R+\\s*", " / ");
+        String line = (owner ? OWNER_TAG : "") + name + quote + "：" + flat;
+        state.heard(messageId, userId, name, line);
+        if (!react) {
+            hear(state, line, userId, incoming.attachments());
+            return;
+        }
+        boolean toOthers = incoming.mentionedOthers() || (!incoming.replyTo().isEmpty() && !state.isBotMessage(incoming.replyTo()));
+        boolean continuing = !toOthers && (state.talkingWith(userId, CONVERSATION_MS)
+                || (owner && System.currentTimeMillis() - state.lastSpoke() < CONVERSATION_MS));
+        boolean addressed = agent.store().groupMode()
+                ? (incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()) || (!incoming.mentionedOthers() && calledByName(incoming.text()))
+                        || continuing)
+                        && !looksLikeMe(name) && (owner || !state.cooling(userId))
+                : incoming.mentionedMe();
+        observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, flat,
+                addressed || incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()));
+        state.add(new Line(messageId, userId, name, line, System.currentTimeMillis(), addressed, incoming.imageUrls(), false));
+        hear(state, line, userId, incoming.attachments());
+        if (state.tooChatty()) {
+            log.info("agent [group " + groupId + "] said a lot just now, holding back");
+            return;
+        }
+        if (agent.store().groupMode() || addressed) {
+            react(state, selfId, addressed);
+        }
+    }
+
+    private void react(GroupState state, String selfId, boolean addressed) {
         if (addressed) {
             lastActivity = System.currentTimeMillis();
             startGroupTurn(state, selfId, Mode.ADDRESSED);
@@ -255,37 +482,83 @@ public final class QqChatBridge {
         }
     }
 
-    private void onGroupMessage(JsonObject event, GroupState state, Incoming incoming, String text, boolean owner, String selfId, String userId) {
-        String groupId = state.groupId;
-        String messageId = optString(event, "message_id");
-        String name = state.label(unforgeable(senderName(event)), userId, owner, this::reservedName);
-        String quote = incoming.replyTo().isEmpty() ? "" : state.quote(incoming.replyTo());
-        String line = (owner ? OWNER_TAG : "") + name + quote + "：" + text.strip().replaceAll("\\s*\\R+\\s*", " / ");
-        state.heard(messageId, userId, name, line);
-        observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, text.strip().replaceAll("\\s*\\R+\\s*", " / "),
-                incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()));
-        Target target = new Target("group", groupId, userId, selfId, messageId, "group " + groupId);
-
-        if (!agent.store().groupMode()) {
-            if (incoming.mentionedMe()) {
-                replyOnce("group:" + groupId, target, line, incoming.imageUrls(), incoming.attachments());
+    private void onPrivate(Target target, String line, List<String> images, String attachments, boolean react) {
+        String session = target.session();
+        try {
+            agent.hear(session, line, target.userId(), attachments);
+        } catch (RuntimeException e) {
+            log.warn("agent [" + target.where() + "] saving a private message failed: " + e.getMessage());
+            return;
+        }
+        if (!react) {
+            return;
+        }
+        lastActivity = System.currentTimeMillis();
+        Inbox inbox = inboxes.computeIfAbsent(session, k -> new Inbox());
+        synchronized (inbox) {
+            inbox.target = target;
+            inbox.images.addAll(images);
+            inbox.lines.add(line);
+            if (inbox.busy) {
+                inbox.pending = true;
+                return;
             }
-            return;
+            inbox.busy = true;
         }
-        boolean addressed = (incoming.mentionedMe() || state.isBotMessage(incoming.replyTo())
-                || (!incoming.mentionedOthers() && calledByName(incoming.text())))
-                && !looksLikeMe(name) && !state.cooling(userId);
-        state.add(new Line(messageId, userId, name, line, System.currentTimeMillis(), addressed, incoming.imageUrls(), false));
-        hear(state, line, userId, incoming.attachments());
-        if (state.tooChatty()) {
-            log.info("agent [" + target.where() + "] said a lot just now, holding back");
-            return;
-        }
-        if (addressed) {
-            lastActivity = System.currentTimeMillis();
-            startGroupTurn(state, selfId, Mode.ADDRESSED);
-        } else {
-            scheduleAmbient(state, selfId);
+        executor.submit(() -> runPrivate(session, inbox));
+    }
+
+    private void runPrivate(String session, Inbox inbox) {
+        while (true) {
+            Target target;
+            List<String> images;
+            List<String> latest;
+            boolean resumed;
+            synchronized (inbox) {
+                target = inbox.target;
+                images = List.copyOf(inbox.images.subList(Math.max(0, inbox.images.size() - MAX_IMAGES), inbox.images.size()));
+                latest = List.copyOf(inbox.lines.subList(Math.max(0, inbox.lines.size() - 3), inbox.lines.size()));
+                resumed = inbox.resumed;
+                inbox.images.clear();
+                inbox.lines.clear();
+                inbox.pending = false;
+                inbox.resumed = false;
+            }
+            if (latest.isEmpty()) {
+                try {
+                    runPrivateNotes(session, target);
+                } catch (RuntimeException e) {
+                    log.error("agent [" + target.where() + "] note turn crashed: " + e);
+                }
+                synchronized (inbox) {
+                    if (!inbox.pending && !agent.intercom().hasNotes(session)) {
+                        inbox.busy = false;
+                        return;
+                    }
+                }
+                continue;
+            }
+            String quoted = String.join("", latest.stream().map(l -> "「" + abbreviate(l, 200) + "」").toList());
+            String prompt = "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）";
+            agent.store().markReplying(new AgentStore.Replying(session, target.userId(), target.messageId(), "", String.join("\n", latest),
+                    System.currentTimeMillis()));
+            try {
+                ChatTurn turn = new ChatTurn(session, ChatMessage.user(prompt, download(target, images)), target.userId(),
+                        outbox.files(target), "qq", List.of(target.userId()), Map.of(), true);
+                if (reply(target, turn, true) != null) {
+                    agent.intercom().report(session, "你在私聊里回了 QQ " + target.userId() + " 一句（私聊的内容留在私聊里）");
+                }
+            } catch (RuntimeException e) {
+                log.error("agent [" + target.where() + "] reply crashed: " + e);
+            } finally {
+                agent.store().clearReplying(session);
+            }
+            synchronized (inbox) {
+                if (!inbox.pending && !agent.intercom().hasNotes(session)) {
+                    inbox.busy = false;
+                    return;
+                }
+            }
         }
     }
 
@@ -299,11 +572,6 @@ public final class QqChatBridge {
         }
     }
 
-    private void flushHeld(GroupState state) {
-        state.held.forEach(h -> heardNow(state, h.line(), h.userId(), h.attachments()));
-        state.held.clear();
-    }
-
     private void heardNow(GroupState state, String line, String userId, String attachments) {
         try {
             agent.hear("group:" + state.groupId, line, userId, attachments);
@@ -312,56 +580,44 @@ public final class QqChatBridge {
         }
     }
 
-    private String stickerLabel(String file, String url) {
-        StickerStore.Sticker sticker = agent.stickers().noticed(file, url);
-        return sticker == null ? null : sticker.label();
-    }
-
-    private boolean calledByName(String text) {
-        String lower = text.toLowerCase(Locale.ROOT);
-        return agent.store().wakeWords().stream().map(String::strip).filter(w -> !w.isEmpty())
-                .anyMatch(w -> lower.contains(w.toLowerCase(Locale.ROOT)));
-    }
-
-    private boolean looksLikeMe(String label) {
-        String nickname = napcat.status().nickname();
-        return label.contains("#") && (calledByName(label) || nickname != null && !nickname.isBlank() && label.startsWith(nickname + "#"));
-    }
-
-    private boolean reservedName(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        return name.contains("主人") || name.equals(napcat.status().nickname()) || calledByName(name)
-                || ownerNames.stream().anyMatch(o -> o.length() >= 2 ? lower.contains(o.toLowerCase(Locale.ROOT)) : name.equals(o));
-    }
-
-    private void replyOnce(String session, Target target, String prompt, List<String> imageUrls, String attachments) {
-        if (!busy.add(session)) {
-            log.info("agent [" + target.where() + "] still replying, message skipped");
-            return;
-        }
-        executor.submit(() -> {
-            try {
-                List<ImagePart> images = download(target, imageUrls);
-                reply(target, new ChatTurn(session, ChatMessage.user(prompt, images), target.userId(), files(target), "qq").withAttachments(attachments), true);
-            } catch (RuntimeException e) {
-                log.error("agent [" + target.where() + "] reply crashed: " + e);
-            } finally {
-                busy.remove(session);
-            }
-        });
-    }
-
-    private void startGroupTurn(GroupState state, String selfId, Mode mode) {
+    private boolean claim(GroupState state) {
         synchronized (state) {
             if (state.busy) {
-                state.pendingAddressed |= mode == Mode.ADDRESSED;
-                return;
+                return false;
             }
             state.busy = true;
             if (state.ambient != null) {
                 state.ambient.cancel(false);
                 state.ambient = null;
             }
+            return true;
+        }
+    }
+
+    private void release(GroupState state, String selfId) {
+        boolean again;
+        synchronized (state) {
+            state.held.forEach(h -> heardNow(state, h.line(), h.userId(), h.attachments()));
+            state.held.clear();
+            state.busy = false;
+            again = state.pendingAddressed;
+            state.pendingAddressed = false;
+        }
+        if (again) {
+            startGroupTurn(state, selfId, Mode.ADDRESSED);
+        } else if (agent.intercom().hasNotes("group:" + state.groupId)) {
+            startGroupTurn(state, selfId, Mode.NOTE);
+        } else if (state.hasNewLines()) {
+            scheduleAmbient(state, selfId);
+        }
+    }
+
+    private void startGroupTurn(GroupState state, String selfId, Mode mode) {
+        if (!claim(state)) {
+            synchronized (state) {
+                state.pendingAddressed |= mode == Mode.ADDRESSED;
+            }
+            return;
         }
         executor.submit(() -> {
             try {
@@ -369,26 +625,30 @@ public final class QqChatBridge {
             } catch (RuntimeException e) {
                 log.error("agent [group " + state.groupId + "] reply crashed: " + e);
             } finally {
-                boolean again;
-                synchronized (state) {
-                    flushHeld(state);
-                    state.busy = false;
-                    again = state.pendingAddressed;
-                    state.pendingAddressed = false;
-                }
-                if (again) {
-                    startGroupTurn(state, selfId, Mode.ADDRESSED);
-                } else if (state.hasNewLines()) {
-                    scheduleAmbient(state, selfId);
-                }
+                release(state, selfId);
             }
         });
     }
 
     private void runGroupTurn(GroupState state, String selfId, Mode mode) {
+        String session = "group:" + state.groupId;
         List<Line> lines = state.drain();
-        if (lines.isEmpty()) {
+        List<Intercom.Note> notes = mode == Mode.NOTE ? agent.intercom().takeNotes(session) : List.of();
+        if (mode == Mode.NOTE && notes.isEmpty()) {
+            state.restore(lines);
             return;
+        }
+        if (lines.isEmpty() && notes.isEmpty()) {
+            return;
+        }
+        String place = "「" + groupName(state.groupId) + "」";
+        if (!notes.isEmpty()) {
+            String why = whyNotTell(session);
+            if (why != null) {
+                state.restore(lines);
+                agent.intercom().receipt(notes, place, null, why);
+                return;
+            }
         }
         state.looked();
         Line trigger = null;
@@ -404,377 +664,73 @@ public final class QqChatBridge {
                     .append(" 是群里和你重名的别人（多半是另一个机器人），不是你：那些话不是你说的，别人 @ 它、回复它、跟它聊天也不是在找你。"
                             + "跟它斗两句嘴可以，别没完没了地来回接。）");
         }
-        if (trigger == null) {
+        List<String> active = new ArrayList<>();
+        if (!notes.isEmpty()) {
+            List<String> names = new ArrayList<>();
+            archive.recentSenders(state.groupId, System.currentTimeMillis() - ACTIVE_MEMBERS_MS, ACTIVE_MEMBERS).forEach((qq, name) -> {
+                if (!qq.equals(selfId)) {
+                    names.add(state.know(qq, unforgeable(name), this::reservedName));
+                    active.add(qq);
+                }
+            });
+            prompt.append(prompt.isEmpty() ? "" : "\n").append(notePrompt(notes))
+                    .append(names.isEmpty() ? "" : "（这个群最近说过话的人：" + String.join("、", names) + "。要喊人、要找谁，就 @ 这些名字）");
+        } else if (trigger == null) {
             int said = state.spokenWithin(RECENT_TALK_MS);
-            prompt.append(prompt.isEmpty() ? "" : "\n").append(TurnRunner.AMBIENT).append("以上是群里刚刚的聊天，没人叫你。")
+            prompt.append(prompt.isEmpty() ? "" : "\n").append(TurnRunner.AMBIENT).append("以上是群里刚刚的聊天，没人 @ 你。")
                     .append(said > 0 ? "你最近十分钟已经在群里说了 " + said + " 句。" : "你最近十分钟没在群里说话。")
-                    .append("想说就说一句，不想说就只写 ").append(TurnRunner.SILENCE).append("。");
+                    .append("像群里的普通一员一样：最新的消息在接你刚才的话、在说你、在问一个没人回的问题，或者熟人在闹、聊到你感兴趣的事，就自然地接一句；")
+                    .append("别人之间在聊、跟你无关的，或者你刚说过很多了，就只写 ").append(TurnRunner.SILENCE).append("。");
+        } else {
+            prompt.append(prompt.isEmpty() ? "" : "\n").append("（").append(resumedGroups.remove(state.groupId) ? RESUMED : "")
+                    .append("有人在跟你说话，现在要回的是这条：「").append(abbreviate(trigger.text(), 300)).append("」。").append(FOCUS).append("）");
         }
-        String where = "group " + state.groupId;
         Target target = trigger == null
-                ? new Target("group", state.groupId, "", selfId, "", where)
-                : new Target("group", state.groupId, trigger.userId(), selfId, trigger.messageId(), where);
+                ? Target.group(state.groupId, "", selfId, "")
+                : Target.group(state.groupId, trigger.userId(), selfId, trigger.messageId());
         List<ImagePart> images = trigger == null ? List.of() : download(target, trigger.imageUrls());
         List<String> people = new ArrayList<>();
         if (trigger != null) {
             people.add(trigger.userId());
         }
         lines.reversed().forEach(l -> people.add(l.userId()));
+        people.addAll(active);
         List<String> present = people.stream().distinct().limit(6).toList();
         Map<String, String> roster = state.roster(people.stream().distinct().toList());
-        String source = trigger == null ? "ambient" : "qq";
-        String session = "group:" + state.groupId;
         ChatTurn turn = trigger == null
-                ? new ChatTurn(session, ChatMessage.user(prompt.toString()), "0", null, source, present, roster, true)
-                : new ChatTurn(session, ChatMessage.user(prompt.toString(), images), trigger.userId(), files(target), source, present, roster, true);
-        String sent = reply(target, turn, true);
+                ? new ChatTurn(session, ChatMessage.user(prompt.toString()), "0", null, notes.isEmpty() ? "ambient" : "note", present, roster, true)
+                : new ChatTurn(session, ChatMessage.user(prompt.toString(), images), trigger.userId(), outbox.files(target), "qq", present, roster, true);
+        if (trigger != null) {
+            agent.store().markReplying(new AgentStore.Replying(session, trigger.userId(), trigger.messageId(), trigger.speaker(), trigger.text(),
+                    System.currentTimeMillis()));
+        }
+        String sent;
+        try {
+            sent = reply(target, turn, true);
+        } finally {
+            if (trigger != null) {
+                agent.store().clearReplying(session);
+            }
+        }
         if (sent == null) {
             state.restore(lines);
-            if (!lines.isEmpty() && lines.stream().anyMatch(l -> !l.seen())) {
+            if (lines.stream().anyMatch(l -> !l.seen())) {
                 heardNow(state, SEEN_MARK, "", "");
             }
         } else if (trigger != null) {
             state.repliedTo(trigger.userId());
         }
-    }
-
-    public void startLife() {
-        scheduler.scheduleWithFixedDelay(() -> {
-            if (napcat.status().connected() && System.currentTimeMillis() - favoritesSyncedAt > FAVORITES_EVERY_MS) {
-                try {
-                    syncFavorites();
-                } catch (ToolFailure | RuntimeException e) {
-                    log.warn("stickers: syncing favorite stickers failed: " + e.getMessage());
-                }
+        if (!notes.isEmpty()) {
+            agent.intercom().receipt(notes, place, sent, "看了看群里的情况，觉得现在不说比较好");
+            if (sent != null) {
+                countProactive();
             }
-        }, 2, 30, TimeUnit.MINUTES);
-    }
-
-    public long lastActivity() {
-        return lastActivity;
-    }
-
-    public List<MessageArchive.GroupActivity> activity(long since) {
-        return archive.groupActivity(since);
-    }
-
-    public boolean connected() {
-        return napcat.status().connected();
-    }
-
-    public Map<String, String> groupNames() {
-        long now = System.currentTimeMillis();
-        if (now - groupNamesAt > GROUP_NAMES_TTL_MS && napcat.status().connected()) {
-            groupNamesAt = now;
-            try {
-                JsonObject response = call("get_group_list", new JsonObject(), Duration.ofSeconds(10));
-                Map<String, String> names = new LinkedHashMap<>();
-                if (response.has("data") && response.get("data").isJsonArray()) {
-                    response.getAsJsonArray("data").forEach(e -> {
-                        if (e.isJsonObject()) {
-                            names.put(optString(e.getAsJsonObject(), "group_id"), optString(e.getAsJsonObject(), "group_name"));
-                        }
-                    });
-                }
-                groupNames = Map.copyOf(names);
-            } catch (ToolFailure | RuntimeException e) {
-                log.warn("agent: reading the group list failed: " + e.getMessage());
-            }
+        } else if (sent != null) {
+            String flat = abbreviate(sent.replace('\n', ' '), 80);
+            agent.intercom().report(session, trigger != null
+                    ? place + "：" + trigger.speaker() + " 跟你说「" + abbreviate(trigger.text().replace('\n', ' '), 50) + "」，你回：" + flat
+                    : place + "：你插了一句：" + flat);
         }
-        return groupNames;
-    }
-
-    public String groupName(String groupId) {
-        String name = groupNames().get(groupId);
-        return name == null || name.isBlank() ? "群 " + groupId : name;
-    }
-
-    public Map<String, String> friends() {
-        long now = System.currentTimeMillis();
-        if (now - friendsAt > GROUP_NAMES_TTL_MS && napcat.status().connected()) {
-            friendsAt = now;
-            try {
-                JsonObject response = call("get_friend_list", new JsonObject(), Duration.ofSeconds(10));
-                Map<String, String> names = new LinkedHashMap<>();
-                if (response.has("data") && response.get("data").isJsonArray()) {
-                    response.getAsJsonArray("data").forEach(e -> {
-                        if (e.isJsonObject()) {
-                            JsonObject f = e.getAsJsonObject();
-                            String remark = optString(f, "remark");
-                            names.put(optString(f, "user_id"), unforgeable(remark.isBlank() ? optString(f, "nickname") : remark));
-                        }
-                    });
-                }
-                friends = Map.copyOf(names);
-            } catch (ToolFailure | RuntimeException e) {
-                log.warn("agent: reading the friend list failed: " + e.getMessage());
-            }
-        }
-        return friends;
-    }
-
-    private boolean canMessage(String userId) {
-        return friends().containsKey(userId) || agent.session("private:" + userId, 0).totalTurns() > 0;
-    }
-
-    public String findPerson(String query) {
-        String q = query.strip();
-        if (q.isEmpty()) {
-            return "要找谁？写名字或者 QQ 号";
-        }
-        Map<String, List<String>> places = new LinkedHashMap<>();
-        Map<String, String> names = new LinkedHashMap<>();
-        Map<String, Long> lastAt = new HashMap<>();
-        for (MessageArchive.Seen s : archive.findPeople(q, 30)) {
-            names.putIfAbsent(s.userId(), unforgeable(s.name()));
-            lastAt.merge(s.userId(), s.lastAt(), Math::max);
-            if (s.groupId() != null && !s.groupId().isBlank()) {
-                places.computeIfAbsent(s.userId(), k -> new ArrayList<>()).add("「" + groupName(s.groupId()) + "」（群号 " + s.groupId() + "）");
-            }
-        }
-        friends().forEach((id, name) -> {
-            if (name.contains(q) || id.equals(q)) {
-                names.putIfAbsent(id, name);
-            }
-        });
-        if (names.isEmpty()) {
-            return "没找到叫「" + q + "」的人：你见过的群里没人用过这个名字，好友里也没有。可以问问托你办事的人他的 QQ 号或者在哪个群。";
-        }
-        List<String> lines = new ArrayList<>();
-        Set<String> owners = Set.copyOf(agent.personas().owners());
-        names.entrySet().stream().limit(8).forEach(e -> {
-            String id = e.getKey();
-            List<String> in = places.getOrDefault(id, List.of());
-            lines.add("- " + e.getValue() + "（QQ " + id + (owners.contains(id) ? "，你的主人" : "") + "）"
-                    + (in.isEmpty() ? "" : "：在" + String.join("、", in.stream().distinct().limit(3).toList()) + "说过话")
-                    + (lastAt.containsKey(id) ? "，最近一次是 " + Clock.ago(lastAt.get(id)) : "")
-                    + (canMessage(id) ? "；可以私聊（say_private）" : "；不是好友，只能去你们都在的群里 @ 他"));
-        });
-        return String.join("\n", lines);
-    }
-
-    public String poke(String session, String userId) throws ToolFailure {
-        if (!agent.store().qqReply()) {
-            throw new ToolFailure("现在不能拍：QQ 自动回复没开");
-        }
-        if (!napcat.status().connected()) {
-            throw new ToolFailure("现在不能拍：QQ 没连上");
-        }
-        if (userId == null || !userId.matches("\\d{5,12}") || userId.equals(String.valueOf(napcat.status().selfId()))) {
-            throw new ToolFailure("要拍的人不对：" + userId);
-        }
-        long now = System.currentTimeMillis();
-        Long last = pokedAt.get(userId);
-        if (last != null && now - last < POKE_GAP_MS) {
-            throw new ToolFailure("刚拍过 TA，等一会儿再拍");
-        }
-        boolean group = session.startsWith("group:");
-        String groupId = group ? session.substring(6) : "";
-        JsonObject params = new JsonObject();
-        params.addProperty("user_id", Long.parseLong(userId));
-        if (group) {
-            params.addProperty("group_id", Long.parseLong(groupId));
-        }
-        try {
-            call(group ? "group_poke" : "friend_poke", params, Duration.ofSeconds(10));
-        } catch (ToolFailure e) {
-            call("send_poke", params, Duration.ofSeconds(10));
-        }
-        pokedAt.put(userId, now);
-        lastActivity = now;
-        String name = group ? archive.groupSenders(groupId).getOrDefault(userId, "QQ " + userId) : "对方";
-        log.info("agent [" + (group ? "group " + groupId : "private " + userId) + "] poked " + userId);
-        return unforgeable(name);
-    }
-
-    public String speakPrivate(String userId, String text) throws ToolFailure {
-        if (!agent.store().qqReply()) {
-            throw new ToolFailure("现在不能去：QQ 自动回复没开");
-        }
-        if (!napcat.status().connected()) {
-            throw new ToolFailure("现在不能去：QQ 没连上");
-        }
-        if (!userId.matches("\\d{5,12}")) {
-            throw new ToolFailure("QQ 号不对：" + userId);
-        }
-        if (!canMessage(userId)) {
-            throw new ToolFailure("不能私聊 QQ " + userId + "：不是好友，也没私聊过。去你们都在的群里 @ 他吧");
-        }
-        String formatted = QqFaces.limit(QqText.format(abbreviate(text, MAX_REPLY_LENGTH)), false);
-        StickerStore store = agent.stickers().store();
-        formatted = StickerStore.limit(formatted, false, id -> {
-            StickerStore.Sticker s = store.get(id);
-            return s != null && s.usable();
-        });
-        String session = "private:" + userId;
-        String recent = agent.session(session, 6).turns().stream().map(SessionDetail.Entry::content).collect(java.util.stream.Collectors.joining("\n"));
-        ContentGuard.Verdict verdict = agent.guard().review(agent.store().active(), recent, formatted);
-        if (verdict != null) {
-            throw new ToolFailure("这句话不能发（涉及" + verdict.category().label() + "），换个说法或者别说了");
-        }
-        String words = StickerStore.withoutTags(formatted);
-        List<StickerStore.Sticker> stickers = StickerStore.tags(formatted).stream().limit(1).map(store::get).filter(s -> s != null && !s.file().isEmpty()).toList();
-        if (words.isEmpty() && stickers.isEmpty()) {
-            throw new ToolFailure("没有要发的内容");
-        }
-        Target target = new Target("private", "", userId, String.valueOf(napcat.status().selfId()), "", "private " + userId);
-        if (!words.isEmpty()) {
-            send(target, content(target, words), words);
-        }
-        for (StickerStore.Sticker sticker : stickers) {
-            sendSticker(target, sticker);
-        }
-        agent.record(session, ChatMessage.assistant(formatted, ""));
-        lastActivity = System.currentTimeMillis();
-        log.info("agent [private " + userId + "] went over and said: " + abbreviate(formatted.replace('\n', ' '), 120));
-        return formatted;
-    }
-
-    public int proactiveToday() {
-        synchronized (proactive) {
-            long now = System.currentTimeMillis();
-            while (!proactive.isEmpty() && now - proactive.peekFirst() > 24 * 3_600_000L) {
-                proactive.pollFirst();
-            }
-            return proactive.size();
-        }
-    }
-
-    public long lastSpokeIn(String groupId) {
-        GroupState state = groups.get(groupId);
-        return state == null ? 0 : state.lastSpoke();
-    }
-
-    public String whyNot(String groupId) {
-        if (!agent.store().qqReply() || !agent.store().groupMode()) {
-            return "QQ 自动回复或群聊模式没开";
-        }
-        if (!napcat.status().connected()) {
-            return "QQ 没连上";
-        }
-        if (!groupNames().isEmpty() && !groupNames().containsKey(groupId)) {
-            return "不在这个群里";
-        }
-        GroupState state = groups.get(groupId);
-        if (state != null && state.busy) {
-            return "正在这个群里发消息，等这句发完";
-        }
-        return null;
-    }
-
-    public String readGroup(String groupId, int count) {
-        List<String> lines = new ArrayList<>();
-        for (SessionDetail.Entry entry : agent.session("group:" + groupId, count).turns()) {
-            String at = Clock.stamp(entry.createdAt());
-            if (entry.role().equals("user")) {
-                if (!entry.content().equals(SEEN_MARK) && !Clock.isMarker(entry.content())) {
-                    lines.add("[" + at + "] " + entry.content());
-                }
-            } else if (entry.role().equals("assistant")) {
-                String said = Mood.split(entry.content()).said();
-                if (!said.isBlank()) {
-                    lines.add("[" + at + "] 你：" + said);
-                }
-            }
-        }
-        return lines.isEmpty() ? "（这个群还没有聊天记录）" : String.join("\n", lines);
-    }
-
-    public String speak(String groupId, String text) throws ToolFailure {
-        String reason = whyNot(groupId);
-        if (reason != null) {
-            throw new ToolFailure("现在不能去：" + reason);
-        }
-        GroupState state = groups.computeIfAbsent(groupId, GroupState::new);
-        String formatted = QqFaces.limit(QqText.format(abbreviate(text, MAX_REPLY_LENGTH)), false);
-        StickerStore store = agent.stickers().store();
-        formatted = StickerStore.limit(formatted, false, id -> {
-            StickerStore.Sticker s = store.get(id);
-            return s != null && s.usable();
-        });
-        ContentGuard.Verdict verdict = agent.guard().review(agent.store().active(), readGroup(groupId, 6), formatted);
-        if (verdict != null) {
-            throw new ToolFailure("这句话不能发（涉及" + verdict.category().label() + "），换个说法或者别说了");
-        }
-        String words = StickerStore.withoutTags(formatted);
-        List<StickerStore.Sticker> stickers = StickerStore.tags(formatted).stream().limit(1).map(store::get).filter(s -> s != null && !s.file().isEmpty()).toList();
-        if (words.isEmpty() && stickers.isEmpty()) {
-            throw new ToolFailure("没有要发的内容");
-        }
-        Target target = new Target("group", groupId, "", String.valueOf(napcat.status().selfId()), "", "group " + groupId);
-        synchronized (state) {
-            if (state.busy) {
-                throw new ToolFailure("现在不能去：正在这个群里聊着呢");
-            }
-            state.busy = true;
-        }
-        try {
-            if (!words.isEmpty()) {
-                send(target, content(target, words), words);
-            }
-            for (StickerStore.Sticker sticker : stickers) {
-                sendSticker(target, sticker);
-            }
-            agent.record("group:" + groupId, ChatMessage.assistant(formatted, ""));
-        } finally {
-            synchronized (state) {
-                flushHeld(state);
-                state.busy = false;
-            }
-        }
-        synchronized (proactive) {
-            proactive.addLast(System.currentTimeMillis());
-        }
-        lastActivity = System.currentTimeMillis();
-        log.info("agent [group " + groupId + "] went over and said: " + abbreviate(formatted.replace('\n', ' '), 120));
-        return formatted;
-    }
-
-    public int syncFavorites() throws ToolFailure {
-        JsonObject params = new JsonObject();
-        params.addProperty("count", 500);
-        JsonObject response = call("fetch_custom_face", params, Duration.ofSeconds(30));
-        List<String> urls = new ArrayList<>();
-        if (response.has("data") && response.get("data").isJsonArray()) {
-            response.getAsJsonArray("data").forEach(e -> {
-                if (e.isJsonPrimitive() && e.getAsString().startsWith("http")) {
-                    urls.add(e.getAsString());
-                }
-            });
-        }
-        int added = agent.stickers().importFavorites(urls);
-        favoritesSyncedAt = System.currentTimeMillis();
-        log.info("stickers: synced " + urls.size() + " favorite stickers (" + added + " new)");
-        return urls.size();
-    }
-
-    public void sendSticker(String session, long id) throws ToolFailure {
-        Target target = targetOf(session);
-        if (target == null) {
-            throw new IllegalArgumentException("只能发到 QQ 会话");
-        }
-        StickerStore.Sticker sticker = agent.stickers().store().get(id);
-        if (sticker == null || sticker.file().isEmpty()) {
-            throw new IllegalArgumentException("这张表情包还没下载好");
-        }
-        sendSticker(target, sticker);
-        agent.record(session, ChatMessage.assistant("[表情包:" + id + "]", ""));
-        log.info("agent [" + target.where() + "] console sent sticker #" + id);
-    }
-
-    private void sendSticker(Target target, StickerStore.Sticker sticker) throws ToolFailure {
-        Path file = agent.stickers().store().path(sticker);
-        JsonObject data = new JsonObject();
-        data.addProperty("file", "base64://" + Base64.getEncoder().encodeToString(read(file, sticker.file())));
-        data.addProperty("sub_type", 1);
-        data.addProperty("summary", "[动画表情]");
-        JsonObject segment = new JsonObject();
-        segment.addProperty("type", "image");
-        segment.add("data", data);
-        JsonArray message = new JsonArray();
-        message.add(segment);
-        send(target, message, "[表情包#" + sticker.id() + "]");
-        agent.stickers().store().sent(sticker.id());
     }
 
     private void scheduleAmbient(GroupState state, String selfId) {
@@ -800,64 +756,6 @@ public final class QqChatBridge {
             }
         }
         startGroupTurn(state, selfId, Mode.AMBIENT);
-    }
-
-    public void consoleTurn(String session, String text, boolean deliver) {
-        Target target = targetOf(session);
-        boolean toQq = deliver && target != null;
-        ChatTurn turn = new ChatTurn(session, ChatMessage.user(CONSOLE_TAG + text), null, toQq ? files(target) : null, "console",
-                target != null && !target.group() ? List.of(target.userId()) : List.of());
-        String where = target == null ? session : target.where();
-        log.info("agent [" + where + "] console message" + (toQq ? " (reply goes to QQ)" : "") + ": " + abbreviate(text.replace('\n', ' '), 120));
-        executor.submit(() -> {
-            try {
-                if (target == null) {
-                    agent.chat(turn, StreamListener.NONE);
-                } else {
-                    reply(target, turn, toQq);
-                }
-            } catch (AgentException e) {
-                log.warn("agent [" + where + "] console turn failed: " + e.getMessage());
-            } catch (RuntimeException e) {
-                log.error("agent [" + where + "] console turn crashed: " + e);
-            }
-        });
-    }
-
-    public void say(String session, String text) throws ToolFailure {
-        Target target = targetOf(session);
-        if (target == null) {
-            throw new IllegalArgumentException("只有 QQ 会话可以用 /say");
-        }
-        String clean = QqText.format(text);
-        send(target, content(target, clean), clean);
-        agent.record(session, ChatMessage.assistant(clean, ""));
-        log.info("agent [" + target.where() + "] console said: " + abbreviate(clean.replace('\n', ' '), 120));
-    }
-
-    private Target targetOf(String session) {
-        String selfId = String.valueOf(napcat.status().selfId());
-        if (session.startsWith("group:")) {
-            String id = session.substring(6);
-            return new Target("group", id, "", selfId, "", "group " + id);
-        }
-        if (session.startsWith("private:")) {
-            String id = session.substring(8);
-            return new Target("private", "", id, selfId, "", "private " + id);
-        }
-        return null;
-    }
-
-    private List<ImagePart> download(Target target, List<String> imageUrls) {
-        List<ImagePart> images = new ArrayList<>();
-        for (String url : imageUrls.subList(0, Math.min(MAX_IMAGES, imageUrls.size()))) {
-            try {
-                images.add(ImageLoader.download(url));
-            } catch (AgentException e) {
-                log.warn("agent [" + target.where() + "] image skipped: " + e.getMessage());
-            }
-        }
-        return images;
     }
 
     private String reply(Target target, ChatTurn turn, boolean deliver) {
@@ -892,28 +790,17 @@ public final class QqChatBridge {
             log.info("agent [" + target.where() + "] console reply kept in the console");
             return result.content();
         }
-        String text = QqText.format(abbreviate(result.content(), MAX_REPLY_LENGTH));
-        String words = StickerStore.withoutTags(text);
-        List<StickerStore.Sticker> stickers = StickerStore.tags(text).stream().limit(1)
-                .map(id -> agent.stickers().store().get(id)).filter(s -> s != null && !s.file().isEmpty()).toList();
-        if (words.isEmpty() && stickers.isEmpty()) {
+        String text = QqText.format(abbreviate(result.content(), QqOutbox.MAX_REPLY_LENGTH));
+        if (!outbox.hasContent(text)) {
             return null;
         }
         try {
+            String words = StickerStore.withoutTags(text);
             Thread.sleep(QqText.typingPause(words.isEmpty() ? "表情" : words, result.latencyMs()));
-            if (!words.isEmpty()) {
-                JsonArray message = new JsonArray();
-                if (target.group() && !target.messageId().isEmpty() && !target.messageId().equals(latestInGroup.get(target.groupId()))) {
-                    message.add(segment("reply", "id", target.messageId()));
-                }
-                message.addAll(content(target, words));
-                send(target, message, words);
-            }
-            for (StickerStore.Sticker sticker : stickers) {
-                sendSticker(target, sticker);
-            }
+            boolean quote = target.group() && !target.messageId().isEmpty() && !target.messageId().equals(latestInGroup.get(target.groupId()));
+            outbox.deliver(target, text, quote ? target.messageId() : null);
             lastActivity = System.currentTimeMillis();
-            observeSaid(target.group() ? "group:" + target.groupId() : "private:" + target.userId(), text);
+            observeSaid(target.session(), text);
         } catch (ToolFailure e) {
             log.warn("agent [" + target.where() + "] send failed: " + e.getMessage());
             return null;
@@ -921,97 +808,264 @@ public final class QqChatBridge {
             Thread.currentThread().interrupt();
             return null;
         }
-        log.info("agent [" + target.where() + "] " + ("ambient".equals(turn.source()) || "idle".equals(turn.source()) ? "chimed in" : "replied") + " in "
+        log.info("agent [" + target.where() + "] " + ("ambient".equals(turn.source()) ? "chimed in" : "replied") + " in "
                 + String.format("%.1f", result.latencyMs() / 1000.0) + "s: " + abbreviate(text.replace('\n', ' '), 120));
         return text;
     }
 
-    private JsonArray content(Target target, String text) {
-        GroupState state = target.group() ? groups.get(target.groupId()) : null;
-        return state == null ? QqFaces.segments(QqMessages.withoutTails(text)) : QqMessages.content(text, state.speakers());
+    public String speak(String groupId, String text) throws ToolFailure {
+        String reason = whyNot(groupId);
+        if (reason != null) {
+            throw new ToolFailure("现在不能去：" + reason);
+        }
+        String formatted = outbox.prepare(text);
+        outbox.review(readGroup(groupId, 6), formatted);
+        GroupState state = groups.computeIfAbsent(groupId, GroupState::new);
+        if (!claim(state)) {
+            throw new ToolFailure("现在不能去：正在这个群里聊着呢");
+        }
+        String selfId = outbox.selfId();
+        try {
+            outbox.deliver(Target.group(groupId, "", selfId, ""), formatted, null);
+            agent.record("group:" + groupId, ChatMessage.assistant(formatted, ""));
+        } finally {
+            release(state, selfId);
+        }
+        synchronized (proactive) {
+            proactive.addLast(System.currentTimeMillis());
+        }
+        lastActivity = System.currentTimeMillis();
+        log.info("agent [group " + groupId + "] went over and said: " + abbreviate(formatted.replace('\n', ' '), 120));
+        return formatted;
     }
 
-    private FileSink files(Target target) {
-        return (file, name) -> {
-            String extension = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
-            long size;
+    public String speakPrivate(String userId, String text) throws ToolFailure {
+        if (!agent.store().qqReply()) {
+            throw new ToolFailure("现在不能去：QQ 自动回复没开");
+        }
+        if (!napcat.status().connected()) {
+            throw new ToolFailure("现在不能去：QQ 没连上");
+        }
+        if (!userId.matches("\\d{5,12}")) {
+            throw new ToolFailure("QQ 号不对：" + userId);
+        }
+        if (!contacts.canMessage(userId)) {
+            throw new ToolFailure("不能私聊 QQ " + userId + "：不是好友，也没私聊过。去你们都在的群里 @ 他吧");
+        }
+        String session = "private:" + userId;
+        String formatted = outbox.prepare(text);
+        String recent = String.join("\n", agent.session(session, 6).turns().stream().map(SessionDetail.Entry::content).toList());
+        outbox.review(recent, formatted);
+        outbox.deliver(Target.direct(userId, outbox.selfId(), ""), formatted, null);
+        agent.record(session, ChatMessage.assistant(formatted, ""));
+        lastActivity = System.currentTimeMillis();
+        log.info("agent [private " + userId + "] went over and said: " + abbreviate(formatted.replace('\n', ' '), 120));
+        return formatted;
+    }
+
+    public String poke(String session, String userId) throws ToolFailure {
+        if (!agent.store().qqReply()) {
+            throw new ToolFailure("现在不能拍：QQ 自动回复没开");
+        }
+        if (!napcat.status().connected()) {
+            throw new ToolFailure("现在不能拍：QQ 没连上");
+        }
+        if (userId == null || !userId.matches("\\d{5,12}") || userId.equals(outbox.selfId())) {
+            throw new ToolFailure("要拍的人不对：" + userId);
+        }
+        long now = System.currentTimeMillis();
+        Long last = pokedAt.get(userId);
+        if (last != null && now - last < POKE_GAP_MS) {
+            throw new ToolFailure("刚拍过 TA，等一会儿再拍");
+        }
+        Target target = session.startsWith("group:") ? Target.group(session.substring(6), userId, outbox.selfId(), "")
+                : Target.direct(userId, outbox.selfId(), "");
+        outbox.poke(target, userId);
+        pokedAt.put(userId, now);
+        lastActivity = now;
+        log.info("agent [" + target.where() + "] poked " + userId);
+        return target.group() ? unforgeable(archive.groupSenders(target.groupId()).getOrDefault(userId, "QQ " + userId)) : "对方";
+    }
+
+    public void consoleTurn(String session, String text, boolean deliver) {
+        Target target = outbox.targetOf(session);
+        boolean toQq = deliver && target != null;
+        ChatTurn turn = new ChatTurn(session, ChatMessage.user(CONSOLE_TAG + text), null, toQq ? outbox.files(target) : null, "console",
+                target != null && !target.group() ? List.of(target.userId()) : List.of());
+        String where = target == null ? session : target.where();
+        log.info("agent [" + where + "] console message" + (toQq ? " (reply goes to QQ)" : "") + ": " + abbreviate(text.replace('\n', ' '), 120));
+        executor.submit(() -> {
             try {
-                size = Files.size(file);
-            } catch (IOException e) {
-                throw new ToolFailure("Unable to read " + name + ": " + e.getMessage());
+                if (target == null) {
+                    agent.chat(turn, StreamListener.NONE);
+                } else {
+                    reply(target, turn, toQq);
+                }
+            } catch (AgentException e) {
+                log.warn("agent [" + where + "] console turn failed: " + e.getMessage());
+            } catch (RuntimeException e) {
+                log.error("agent [" + where + "] console turn crashed: " + e);
             }
-            if (IMAGE_EXTENSIONS.contains(extension) && size <= MAX_INLINE_IMAGE) {
-                JsonArray message = new JsonArray();
-                message.add(segment("image", "file", "base64://" + Base64.getEncoder().encodeToString(read(file, name))));
-                send(target, message, "[图片] " + name);
-                log.info("agent [" + target.where() + "] sent image " + name);
-                return "Sent image " + name + " to the user.";
-            }
-            JsonObject params = destination(target);
-            params.addProperty("file", file.toAbsolutePath().toString());
-            params.addProperty("name", name);
-            call(target.group() ? "upload_group_file" : "upload_private_file", params, UPLOAD_TIMEOUT);
-            archiveOutgoing(target, null, "[文件] " + name);
-            log.info("agent [" + target.where() + "] sent file " + name + " (" + size / 1024 + " KB)");
-            return "Sent file " + name + " to the user.";
-        };
+        });
     }
 
-    private static JsonObject destination(Target target) {
+    public void say(String session, String text) throws ToolFailure {
+        Target target = outbox.targetOf(session);
+        if (target == null) {
+            throw new IllegalArgumentException("只有 QQ 会话可以用 /say");
+        }
+        String formatted = outbox.prepare(text);
+        outbox.deliver(target, formatted, null);
+        agent.record(session, ChatMessage.assistant(formatted, ""));
+        log.info("agent [" + target.where() + "] console said: " + abbreviate(formatted.replace('\n', ' '), 120));
+    }
+
+    public void sendSticker(String session, long id) throws ToolFailure {
+        Target target = outbox.targetOf(session);
+        if (target == null) {
+            throw new IllegalArgumentException("只能发到 QQ 会话");
+        }
+        StickerStore.Sticker sticker = agent.stickers().store().get(id);
+        if (sticker == null || sticker.file().isEmpty()) {
+            throw new IllegalArgumentException("这张表情包还没下载好");
+        }
+        outbox.sendSticker(target, sticker);
+        agent.record(session, ChatMessage.assistant("[表情包:" + id + "]", ""));
+        log.info("agent [" + target.where() + "] console sent sticker #" + id);
+    }
+
+    public int syncFavorites() throws ToolFailure {
         JsonObject params = new JsonObject();
-        String key = target.group() ? "group_id" : "user_id";
-        String id = target.group() ? target.groupId() : target.userId();
-        try {
-            params.addProperty(key, Long.parseLong(id));
-        } catch (NumberFormatException e) {
-            params.addProperty(key, id);
+        params.addProperty("count", 500);
+        JsonObject response = outbox.call("fetch_custom_face", params, Duration.ofSeconds(30));
+        List<String> urls = new ArrayList<>();
+        if (response.has("data") && response.get("data").isJsonArray()) {
+            response.getAsJsonArray("data").forEach(e -> {
+                if (e.isJsonPrimitive() && e.getAsString().startsWith("http")) {
+                    urls.add(e.getAsString());
+                }
+            });
         }
-        return params;
+        int added = agent.stickers().importFavorites(urls);
+        favoritesSyncedAt = System.currentTimeMillis();
+        log.info("stickers: synced " + urls.size() + " favorite stickers (" + added + " new)");
+        return urls.size();
     }
 
-    private void send(Target target, JsonArray message, String archiveText) throws ToolFailure {
-        JsonObject params = destination(target);
-        params.add("message", message);
-        JsonObject data = optObject(call(target.group() ? "send_group_msg" : "send_private_msg", params, Duration.ofSeconds(15)), "data");
-        String messageId = data == null ? null : optString(data, "message_id");
-        archiveOutgoing(target, messageId, archiveText);
-        if (target.group()) {
-            groups.computeIfAbsent(target.groupId(), GroupState::new).spoke(messageId, archiveText);
+    public void startLife() {
+        scheduler.scheduleWithFixedDelay(() -> {
+            if (napcat.status().connected() && System.currentTimeMillis() - favoritesSyncedAt > FAVORITES_EVERY_MS) {
+                try {
+                    syncFavorites();
+                } catch (ToolFailure | RuntimeException e) {
+                    log.warn("stickers: syncing favorite stickers failed: " + e.getMessage());
+                }
+            }
+        }, 2, 30, TimeUnit.MINUTES);
+    }
+
+    public String whyNot(String groupId) {
+        if (!agent.store().qqReply() || !agent.store().groupMode()) {
+            return "QQ 自动回复或群聊模式没开";
+        }
+        if (!napcat.status().connected()) {
+            return "QQ 没连上";
+        }
+        Map<String, String> names = contacts.groups();
+        if (!names.isEmpty() && !names.containsKey(groupId)) {
+            return "不在这个群里";
+        }
+        GroupState state = groups.get(groupId);
+        if (state != null && state.busy) {
+            return "正在这个群里发消息，等这句发完";
+        }
+        return null;
+    }
+
+    public String readGroup(String groupId, int count) {
+        List<String> lines = new ArrayList<>();
+        for (SessionDetail.Entry entry : agent.session("group:" + groupId, count).turns()) {
+            String at = Clock.stamp(entry.createdAt());
+            if (entry.role().equals("user")) {
+                if (!entry.content().equals(SEEN_MARK) && !Clock.isMarker(entry.content())) {
+                    lines.add("[" + at + "] " + entry.content());
+                }
+            } else if (entry.role().equals("assistant")) {
+                String said = Markup.saidOf(entry.content());
+                if (!said.isBlank()) {
+                    lines.add("[" + at + "] 你：" + said);
+                }
+            }
+        }
+        return lines.isEmpty() ? "（这个群还没有聊天记录）" : String.join("\n", lines);
+    }
+
+    public Map<String, String> groupNames() {
+        return contacts.groups();
+    }
+
+    public String groupName(String groupId) {
+        return contacts.groupName(groupId);
+    }
+
+    public String findPerson(String query) {
+        return contacts.findPerson(query);
+    }
+
+    public int proactiveToday() {
+        synchronized (proactive) {
+            long now = System.currentTimeMillis();
+            while (!proactive.isEmpty() && now - proactive.peekFirst() > 24 * 3_600_000L) {
+                proactive.pollFirst();
+            }
+            return proactive.size();
         }
     }
 
-    private JsonObject call(String action, JsonObject params, Duration timeout) throws ToolFailure {
-        JsonObject response;
-        try {
-            response = napcat.callAction(action, params, timeout).get(timeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ToolFailure("interrupted");
-        } catch (Exception e) {
-            throw new ToolFailure(e.getCause() != null ? String.valueOf(e.getCause().getMessage()) : e.toString());
-        }
-        if (!optString(response, "status").equals("ok")) {
-            String reason = optString(response, "wording").isEmpty() ? optString(response, "message") : optString(response, "wording");
-            throw new ToolFailure(reason.isEmpty() ? "QQ rejected the request" : reason);
-        }
-        return response;
+    public long lastSpokeIn(String groupId) {
+        GroupState state = groups.get(groupId);
+        return state == null ? 0 : state.lastSpoke();
     }
 
-    private void archiveOutgoing(Target target, String messageId, String text) {
+    public long lastActivity() {
+        return lastActivity;
+    }
+
+    public List<MessageArchive.GroupActivity> activity(long since) {
+        return archive.groupActivity(since);
+    }
+
+    private String stickerLabel(String file, String url) {
+        StickerStore.Sticker sticker = agent.stickers().noticed(file, url);
+        return sticker == null ? null : sticker.label();
+    }
+
+    private boolean calledByName(String text) {
+        String lower = text.toLowerCase(Locale.ROOT);
+        return agent.store().wakeWords().stream().map(String::strip).filter(w -> !w.isEmpty())
+                .anyMatch(w -> lower.contains(w.toLowerCase(Locale.ROOT)));
+    }
+
+    private boolean looksLikeMe(String label) {
         String nickname = napcat.status().nickname();
-        try {
-            archive.recordOutgoing(target.messageType(), target.groupId(), target.userId(), target.selfId(),
-                    nickname == null ? "大肥鱼" : nickname, messageId, text);
-        } catch (RuntimeException e) {
-            log.warn("agent: saving reply to database failed: " + e.getMessage());
-        }
+        return label.contains("#") && (calledByName(label) || nickname != null && !nickname.isBlank() && label.startsWith(nickname + "#"));
     }
 
-    private static byte[] read(Path file, String name) throws ToolFailure {
-        try {
-            return Files.readAllBytes(file);
-        } catch (IOException e) {
-            throw new ToolFailure("Unable to read " + name + ": " + e.getMessage());
+    private boolean reservedName(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        return name.contains("主人") || name.equals(napcat.status().nickname()) || calledByName(name)
+                || ownerNames.stream().anyMatch(o -> o.length() >= 2 ? lower.contains(o.toLowerCase(Locale.ROOT)) : name.equals(o));
+    }
+
+    private List<ImagePart> download(Target target, List<String> imageUrls) {
+        List<ImagePart> images = new ArrayList<>();
+        for (String url : imageUrls.subList(0, Math.min(MAX_IMAGES, imageUrls.size()))) {
+            try {
+                images.add(ImageLoader.download(url));
+            } catch (AgentException e) {
+                log.warn("agent [" + target.where() + "] image skipped: " + e.getMessage());
+            }
         }
+        return images;
     }
 }

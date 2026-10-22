@@ -22,18 +22,22 @@ public final class Compactor {
 
     public enum Trigger { AUTO, OVERFLOW, MANUAL }
 
-    public record Target(String session, ModelProfile profile, ModelProtocol protocol, Limits limits, List<ToolSpec> tools, boolean mind) {
+    public record Target(String session, ModelProfile profile, ModelProtocol protocol, Limits limits, List<ToolSpec> tools) {
 
         int window() {
             return limits.context() > 0 ? limits.context() : Compaction.UNKNOWN_WINDOW;
         }
 
+        Compaction.Style style() {
+            return Compaction.Style.of(session);
+        }
+
         int keep() {
-            return mind ? Compaction.MIND_KEEP_TOKENS : Compaction.KEEP_TOKENS;
+            return Compaction.keep(style());
         }
 
         String nudge() {
-            return mind ? Compaction.MIND_NUDGE : Compaction.NUDGE;
+            return Compaction.nudge(style());
         }
     }
 
@@ -59,7 +63,7 @@ public final class Compactor {
 
         long cap = Compaction.ceiling(target.window());
         long budget = trigger == Trigger.OVERFLOW ? Math.min(cap, (long) Math.floor(contextEstimate * Compaction.SHRINK_STEPS[0])) : cap;
-        String prompt = Compaction.buildPrompt(previous, target.mind());
+        String prompt = Compaction.buildPrompt(previous, target.style());
         long overhead = Compaction.estimate(prompt) + Compaction.estimate(target.nudge());
         long fit = (trigger == Trigger.OVERFLOW ? budget : Math.max(budget, Compaction.summaryRoom(target.window()))) - overhead;
         long aim = budget - overhead;
@@ -123,12 +127,12 @@ public final class Compactor {
         List<ChatMessage> prompted = new ArrayList<>(request);
         prompted.add(ChatMessage.user(prompt));
         String reply = send(target, prompted);
-        if (Compaction.filled(reply, target.mind())) {
+        if (Compaction.filled(reply, target.style())) {
             return reply;
         }
         prompted.add(ChatMessage.user(target.nudge()));
         String retry = send(target, prompted);
-        if (Compaction.filled(retry, target.mind())) {
+        if (Compaction.filled(retry, target.style())) {
             return retry;
         }
         throw new AgentException(Kind.LOCAL, retry.isBlank()

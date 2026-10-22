@@ -39,6 +39,13 @@ final class QqDirectory {
         return labels;
     }
 
+    Map<String, String> self(String session) {
+        String qq = napcat.status().selfId() == null ? "" : napcat.status().selfId();
+        String nickname = napcat.status().nickname() == null ? "" : napcat.status().nickname();
+        String name = session.startsWith("group:") ? archive.lastOwnName(session.substring(6)) : "";
+        return Map.of("qq", qq, "name", name.isBlank() ? nickname : name);
+    }
+
     Names names() {
         refresh();
         return new Names(groups, friends, archive.privateSenderNames());

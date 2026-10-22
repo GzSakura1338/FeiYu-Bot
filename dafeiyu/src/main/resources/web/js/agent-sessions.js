@@ -8,8 +8,9 @@ import { createReply, noteChips, reasoningBlock, renderContext, renderSaid, tool
 import { onAgentViewChange, renderMood } from './agent-page.js';
 import { COMMANDS, attachCommandHints, commandNote, helpText, parseCommand, runCommand } from './commands.js';
 import { attachmentCount, clearAttachments, initAttachments, streamTurn, takeAttachments, userBubble } from './web-chat.js';
-import { isMind, loadMindStatus, mindEntry, mindMoment, showMindBar } from './agent-mind.js';
+import { QUIET, isMind, loadMindStatus, mindEntry, mindMoment, showMindBar } from './agent-mind.js';
 import { attachmentNodes, isPoke, parseAttachments, pokeNote, stripPlaceholders } from './msg-attachments.js';
+import { stickToBottom } from './stick-bottom.js';
 
 const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '内心' };
 const TIME_MARK = /^【\d{1,2}月\d{1,2}日 [^】\n]{1,20}】$/;
@@ -27,6 +28,28 @@ let filter = 'all';
 let selected = null;
 let detail = null;
 let speakerIds = {};
+let fallbackSelf = { qq: '', name: '' };
+let self = fallbackSelf;
+
+const selfName = () => self.name || fallbackSelf.name || '我';
+const meText = text => text.replace(/@你(?=\s|$|[，。,.!！?？~])/g, `@${selfName()}`);
+const isQq = kind => kind === 'group' || kind === 'private';
+
+async function loadSelf() {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    const status = await res.json();
+    if (status.selfId) fallbackSelf = { qq: status.selfId, name: status.nickname ?? '' };
+  } catch {
+  }
+}
+
+function selfLabel(time) {
+  const label = el('div', 'msg-label label-small reply-label');
+  label.append(el('span', 'msg-time', time ? formatTime(time) : ''), el('span', 'msg-name', selfName()),
+    createAvatar(self.qq || fallbackSelf.qq, selfName(), 'avatar avatar-xs reply-avatar'));
+  return label;
+}
 
 const qqOf = name => (name ? speakerIds[name] ?? speakerIds[name.replace(/#\d{4}$/, '')] ?? null : null);
 let live = new Map();
@@ -34,6 +57,7 @@ let running = new Map();
 let source = null;
 let listTimer = 0;
 let started = false;
+let bottom = null;
 const drafts = new Map();
 const streaming = new Map();
 
@@ -72,11 +96,15 @@ function previewText(s) {
   if (s.kind === 'mind') {
     if (!s.preview) return s.busy ? '正在想…' : '她的念头还没开始转';
     const text = s.preview.replace(/^【[^】]*】\s*/, '').replace(/\s+/g, ' ');
-    return s.previewRole === 'assistant' ? text : `感觉到：${text === '没什么新动静。' || !text ? '外面没什么动静' : text}`;
+    if (s.previewRole === 'assistant') return text;
+    const wander = text.replace(QUIET, '').trim();
+    return QUIET.test(text) || !text ? wander || '外面没什么动静' : `感觉到：${text}`;
   }
   if (!s.preview) return s.busy ? '正在回复…' : '暂无记录';
-  const text = splitInner(s.preview).said.replace(/\s+/g, ' ');
-  return s.previewRole === 'assistant' ? `机器人：${text}` : text;
+  if (s.preview.trim() === SEEN_MARK) return '';
+  const text = meText(splitInner(s.preview).said.replace(/\s+/g, ' '));
+  if (s.previewRole !== 'assistant') return text;
+  return s.kind === 'web' ? `机器人：${text}` : `${selfName()}：${text}`;
 }
 
 function renderList() {
@@ -218,8 +246,7 @@ function userEntries(content, time, s, rawAttachments = '') {
   }
   const parsedList = parseUser(content, s.kind);
   const carrier = parsedList.findLast(p => !p.seen && !p.time && !p.console);
-  return parsedList.map(parsed => {
-    if (parsed.seen) return el('div', 'chat-divider label-small seen-divider', '她看过了，没接话');
+  return parsedList.filter(parsed => !parsed.seen).map(parsed => {
     if (parsed.time) return el('div', 'chat-divider label-small', parsed.time);
     if (parsed.console) {
       const row = el('div', 'msg msg-console new');
@@ -235,20 +262,22 @@ function userEntries(content, time, s, rawAttachments = '') {
     const label = el('div', 'msg-label label-small');
     label.append(el('span', 'msg-name', name));
     if (parsed.tag) label.append(el('span', 'owner-chip label-small', parsed.tag));
-    if (parsed.quote) label.append(el('span', 'msg-quote', parsed.quote));
+    if (parsed.quote) label.append(el('span', 'msg-quote', parsed.quote.replace(/^回复 你：/, `回复 ${selfName()}：`)));
     label.append(el('span', 'msg-time', time ? formatTime(time) : ''));
     body.append(label);
     const own = parsed === carrier ? attachments : [];
     const text = stripPlaceholders(parsed.text, own);
-    if (text) body.append(renderSaid(text, 'bubble bubble-in body-large'));
+    if (text) body.append(renderSaid(meText(text), 'bubble bubble-in body-large'));
     body.append(...attachmentNodes(own));
     row.append(body);
     return row;
   });
 }
 
-function botEntry(turn, cards) {
+function botEntry(turn, cards, s) {
   const wrap = el('div', 'reply reply-bot new');
+  const qq = isQq(s?.kind);
+  if (qq) wrap.append(selfLabel(turn.createdAt));
   if (turn.reasoning) wrap.append(reasoningBlock(turn.reasoning));
   const { inner, said, notes } = splitInner(turn.content ?? '');
   if (inner) wrap.append(el('div', 'inner-voice body-medium', inner));
@@ -259,7 +288,7 @@ function botEntry(turn, cards) {
     cards.set(call.id, card);
     wrap.append(card);
   }
-  wrap.append(el('div', 'bubble-meta label-small', formatTime(turn.createdAt)));
+  if (!qq) wrap.append(el('div', 'bubble-meta label-small', formatTime(turn.createdAt)));
   return wrap;
 }
 
@@ -288,7 +317,7 @@ function renderTimeline() {
   const cards = new Map();
   for (const turn of detail.turns) {
     if (turn.role === 'user') nodes.push(...userEntries(turn.content, turn.createdAt, s, turn.attachments));
-    else if (turn.role === 'assistant') nodes.push(mind ? mindEntry(turn, cards) : botEntry(turn, cards));
+    else if (turn.role === 'assistant') nodes.push(mind ? mindEntry(turn, cards) : botEntry(turn, cards, s));
     else if (turn.role === 'tool') {
       const card = cards.get(turn.toolCallId);
       if (card) settleToolCard(card, turn.content, turn.toolError);
@@ -300,24 +329,7 @@ function renderTimeline() {
   for (const turn of detail.active ?? []) {
     if (!ownsLive(turn.session)) startLive(turn, true);
   }
-  pinBottom(timeline);
-}
-
-function pinBottom(timeline) {
-  let pinned = true;
-  const pin = () => {
-    if (pinned) timeline.scrollTop = timeline.scrollHeight;
-  };
-  const release = () => {
-    pinned = false;
-  };
-  pin();
-  requestAnimationFrame(pin);
-  for (const type of ['wheel', 'touchstart', 'keydown', 'mousedown']) timeline.addEventListener(type, release, { once: true, passive: true });
-  for (const img of timeline.querySelectorAll('img')) {
-    if (!img.complete) img.addEventListener('load', pin, { once: true });
-  }
-  setTimeout(release, 4_000);
+  bottom.stick();
 }
 
 function ownsLive(session) {
@@ -326,10 +338,9 @@ function ownsLive(session) {
 
 function appendToTimeline(node) {
   const timeline = $('#session-timeline');
-  const follow = !isMind(selected) || timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 64;
+  if (!isMind(selected)) bottom.stick();
   timeline.querySelector(':scope > .empty-state')?.remove();
   timeline.append(node);
-  if (follow) timeline.scrollTop = timeline.scrollHeight;
   return node;
 }
 
@@ -348,6 +359,7 @@ function startLive(turn, replay = false) {
   if (turn.prompt) timeline.append(...userEntries(turn.prompt, turn.startedAt, currentSession()));
   const reply = createReply(timeline, node => {
     node.classList.add(isMind(turn.session) ? 'mind-step' : 'reply-bot');
+    if (isQq(currentSession().kind)) node.prepend(selfLabel(turn.startedAt ?? Date.now()));
     return appendToTimeline(node);
   });
   live.set(turn.turnId, reply);
@@ -362,6 +374,7 @@ async function loadDetail() {
     if (session !== selected) return;
     detail = data;
     speakerIds = data.speakers ?? {};
+    self = data.self?.name ? data.self : fallbackSelf;
   } catch (err) {
     showSnackbar(`读取会话失败：${err.message}`, 'error');
     return;
@@ -381,6 +394,7 @@ async function select(session) {
   $('#session-placeholder').hidden = true;
   $('#session-view').hidden = false;
   $('#session-timeline').replaceChildren();
+  bottom.stick();
   showMindBar(isMind(session));
   renderList();
   renderHeader(currentSession());
@@ -432,17 +446,37 @@ function onHeard(data) {
     if (name) speakerIds[name] = data.userId;
     const nodes = userEntries(data.text, data.time, currentSession(), data.attachments);
     const timeline = $('#session-timeline');
-    const near = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 48;
     timeline.querySelector(':scope > .empty-state')?.remove();
     timeline.append(...nodes);
     if (isMind(data.session)) pruneMind();
-    if (near) timeline.scrollTop = timeline.scrollHeight;
   }
+}
+
+function onSaid(data) {
+  const s = sessions.find(x => x.session === data.session);
+  if (s) {
+    s.preview = data.content;
+    s.previewRole = 'assistant';
+    s.lastActive = data.time;
+    renderList();
+  } else {
+    scheduleList();
+  }
+  if (data.session !== selected || isMind(data.session)) return;
+  const timeline = $('#session-timeline');
+  const near = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 64;
+  timeline.querySelector(':scope > .empty-state')?.remove();
+  timeline.append(botEntry({ role: 'assistant', content: data.content, createdAt: data.time }, new Map(), currentSession()));
+  if (near) timeline.scrollTop = timeline.scrollHeight;
 }
 
 function onEvent(type, data) {
   if (type === 'heard') {
     onHeard(data);
+    return;
+  }
+  if (type === 'said') {
+    onSaid(data);
     return;
   }
   if (type === 'turn-start' || type === 'turn-end') {
@@ -489,7 +523,7 @@ function onEvent(type, data) {
 function connect() {
   source?.close();
   source = new EventSource('/api/agent/sessions/stream');
-  const types = ['turn-start', 'turn-running', 'turn-end', 'text', 'reasoning', 'tool-call', 'tool-result', 'retry', 'compaction', 'blocked', 'heard'];
+  const types = ['turn-start', 'turn-running', 'turn-end', 'text', 'reasoning', 'tool-call', 'tool-result', 'retry', 'compaction', 'blocked', 'heard', 'said'];
   for (const type of types) {
     source.addEventListener(type, e => onEvent(type, JSON.parse(e.data)));
   }
@@ -531,7 +565,7 @@ async function command(text) {
   if (name === 'reflect') note(commandNote('正在回顾这段聊天…', 'info', 'psychology'));
   try {
     const message = await runCommand(selected, name, args);
-    if (['clear', 'compact', 'say'].includes(name)) {
+    if (['clear', 'compact'].includes(name)) {
       await loadDetail();
       await loadList();
     }
@@ -648,12 +682,16 @@ async function clearSession() {
 function start() {
   if (started) return;
   started = true;
+  loadSelf().then(() => {
+    if (detail) renderTimeline();
+  });
   connect();
   loadList();
   setInterval(renderList, 30_000);
 }
 
 export function initAgentSessions() {
+  bottom = stickToBottom($('#session-timeline'));
   onAgentViewChange(view => {
     if (view === 'sessions') start();
   });

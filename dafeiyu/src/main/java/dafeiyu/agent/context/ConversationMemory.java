@@ -7,7 +7,7 @@ import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.SessionDetail;
 import dafeiyu.agent.SessionSummary;
 import dafeiyu.agent.ToolCall;
-import dafeiyu.agent.memory.Mood;
+import dafeiyu.agent.reply.Markup;
 import dafeiyu.db.Database;
 
 import java.lang.reflect.Type;
@@ -164,9 +164,9 @@ public final class ConversationMemory {
                        COALESCE(s.compactions, 0) AS compactions, COALESCE(s.measured_tokens, 0) AS measured,
                        COALESCE(s.summary, '') <> '' AS has_summary,
                        (SELECT content FROM conversation_turns c WHERE c.session = k.session AND c.role <> 'tool' AND c.content <> ''
-                        ORDER BY c.id DESC LIMIT 1) AS preview,
+                        AND c.content <> '（以上是你刚才看过的）' ORDER BY c.id DESC LIMIT 1) AS preview,
                        (SELECT role FROM conversation_turns c WHERE c.session = k.session AND c.role <> 'tool' AND c.content <> ''
-                        ORDER BY c.id DESC LIMIT 1) AS preview_role,
+                        AND c.content <> '（以上是你刚才看过的）' ORDER BY c.id DESC LIMIT 1) AS preview_role,
                        (SELECT content FROM conversation_turns c WHERE c.session = k.session AND c.role = 'user' AND c.content <> ''
                         ORDER BY c.id LIMIT 1) AS title
                 FROM keys k
@@ -175,7 +175,7 @@ public final class ConversationMemory {
                 ORDER BY last_active DESC
                 """, rs -> new SessionSummary(rs.getString("session"), rs.getInt("turns"), rs.getLong("last_active"),
                 rs.getInt("compactions"), rs.getInt("measured"), rs.getInt("has_summary") == 1,
-                abbreviate(Mood.split(Objects.requireNonNullElse(rs.getString("preview"), "")).said(), 120),
+                abbreviate(Markup.saidOf(Objects.requireNonNullElse(rs.getString("preview"), "")), 120),
                 Objects.requireNonNullElse(rs.getString("preview_role"), ""),
                 abbreviate(Objects.requireNonNullElse(rs.getString("title"), "").replaceAll("\\s+", " ").strip(), 40)));
     }

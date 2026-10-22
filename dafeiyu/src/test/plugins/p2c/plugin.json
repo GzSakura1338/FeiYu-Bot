@@ -1,0 +1,10 @@
+{
+  "id": "p2c",
+  "name": "P2 慢旁听",
+  "version": "1.0.0",
+  "author": "test",
+  "description": "测试用：只旁听群消息，每条处理 10 秒",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "events": ["message.private"]
+}

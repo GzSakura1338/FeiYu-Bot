@@ -43,8 +43,7 @@ function image(a) {
   img.loading = 'lazy';
   img.referrerPolicy = 'no-referrer';
   img.src = a.url;
-  img.title = '点开看原图';
-  img.addEventListener('click', () => window.open(a.url, '_blank', 'noopener'));
+  img.title = a.name || '图片';
   img.addEventListener('error', () => img.replaceWith(card({ kind: 'image', name: '图片已过期，看不到了' }, 'image_search', '图片')));
   return img;
 }
@@ -96,7 +95,7 @@ export function isPoke(content, attachments) {
 
 export function pokeNote(content, time, formatTime) {
   const node = el('div', 'poke-note label-medium');
-  node.append(createIcon('auto_awesome', 'icon-18'), el('span', null, content.replace(/【主人】|【拍一拍】/g, '').trim()));
+  node.append(createIcon('mood', 'icon-18'), el('span', null, content.replace(/【主人】|【拍一拍】/g, '').trim()));
   if (time) node.append(el('span', 'poke-time', formatTime(time)));
   return node;
 }

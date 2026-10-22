@@ -14,6 +14,7 @@ export const TOOLS = {
   move: { icon: 'drive_file_move', label: '移动 / 重命名', desc: '把文件或文件夹挪到别处、改名，用来整理' },
   delete: { icon: 'delete', label: '删除', desc: '把文件挪进工作目录里的 .trash 回收站，可以恢复' },
   todowrite: { icon: 'check', label: '任务清单', desc: '步骤多的活先列清单，做完一项勾一项' },
+  websearch: { icon: 'travel_explore', label: '网络检索', desc: '上网搜索新闻、资料、教程和不认识的词，中文走必应、英文走 Exa，需要细节时再打开网页读' },
   webfetch: { icon: 'link', label: '读网页', desc: '打开公网网页转成文字来读；本机和内网地址一律拒绝' },
   shell: { icon: 'terminal', label: '沙盒执行', desc: '在 Windows 应用容器沙盒里跑命令（cmd / python）：只能读写工作目录、完全断网、限时限内存，默认关闭' },
   send_file: { icon: 'upload_file', label: '发送文件', desc: '把目录里的文件发给对方，图片直接显示' },
@@ -23,12 +24,16 @@ export const MIND_TOOLS = {
   look_around: { icon: 'groups', label: '看看各个群' },
   read_group: { icon: 'forum', label: '翻聊天记录' },
   recall: { icon: 'psychology', label: '回想' },
+  search: { icon: 'travel_explore', label: '上网搜' },
   stickers: { icon: 'mood', label: '看看表情包' },
   collect_sticker: { icon: 'add_photo_alternate', label: '收藏表情包' },
   say_in_group: { icon: 'send', label: '去群里说' },
   say_private: { icon: 'person', label: '私聊' },
+  tell_group: { icon: 'send', label: '交给群里去说' },
+  tell_private: { icon: 'person', label: '交给私聊去说' },
+  settle: { icon: 'check_circle', label: '了结一件事' },
   find_person: { icon: 'manage_search', label: '找人' },
-  poke: { icon: 'auto_awesome', label: '拍一拍' },
+  poke: { icon: 'mood', label: '拍一拍' },
   remember: { icon: 'note_add', label: '记下来' },
 };
 
@@ -85,8 +90,13 @@ function renderStatus() {
 
 function renderTools() {
   const list = $('#workspace-tools');
+  const extra = Object.fromEntries((state.extraTools ?? []).map(t => [t.name, {
+    icon: t.source.startsWith('mcp:') ? 'lan' : 'extension',
+    label: t.label,
+    desc: `${t.description}${t.qq ? '' : '（QQ 里没开，在插件页打开）'}`,
+  }]));
   list.replaceChildren(...state.tools.map(name => {
-    const meta = TOOLS[name] ?? { icon: 'build', label: name, desc: '' };
+    const meta = TOOLS[name] ?? extra[name] ?? { icon: 'build', label: name, desc: '' };
     const item = el('li', 'list-item');
     const icon = el('span', 'list-icon');
     icon.append(createIcon(meta.icon));

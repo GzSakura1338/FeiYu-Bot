@@ -103,6 +103,10 @@ final class GroupState {
         }
     }
 
+    synchronized boolean talkingWith(String userId, long withinMs) {
+        return userId.equals(streakUser) && System.currentTimeMillis() - streakAt < withinMs;
+    }
+
     synchronized boolean cooling(String userId) {
         return userId.equals(streakUser) && System.currentTimeMillis() < coolingUntil;
     }
@@ -142,6 +146,17 @@ final class GroupState {
 
     synchronized boolean hasNewLines() {
         return buffer.stream().anyMatch(l -> !l.seen());
+    }
+
+    synchronized String know(String userId, String name, Predicate<String> reserved) {
+        String known = names.get(userId);
+        if (known != null) {
+            return known;
+        }
+        String label = label(name, userId, false, reserved);
+        speakers.putIfAbsent(label, userId);
+        names.put(userId, label);
+        return label;
     }
 
     synchronized Map<String, String> speakers() {

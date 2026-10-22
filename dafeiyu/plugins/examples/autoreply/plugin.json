@@ -1,0 +1,25 @@
+{
+  "id": "autoreply",
+  "name": "关键词自动回复",
+  "version": "1.0.0",
+  "author": "FeiYu Bot",
+  "description": "群里有人说到设置好的关键词，插件直接回复固定的话，她就不再回这一条",
+  "host": ">=0.2.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "permissions": ["qq.reply"],
+  "events": ["message.group"],
+  "intercept": true,
+  "priority": 50,
+  "settings": {
+    "type": "object",
+    "properties": {
+      "rules": {
+        "type": "array",
+        "title": "规则（每条写成 关键词=回复）",
+        "items": { "type": "string" },
+        "default": ["群规=群规在群公告里哦，发言前看一眼～"]
+      },
+      "exact": { "type": "boolean", "title": "整句完全一样才回复（关掉就是包含关键词就回复）", "default": false }
+    }
+  }
+}

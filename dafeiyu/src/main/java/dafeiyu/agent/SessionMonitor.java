@@ -258,6 +258,15 @@ public final class SessionMonitor {
         publish(event);
     }
 
+    void said(String session, String content) {
+        JsonObject event = new JsonObject();
+        event.addProperty("type", "said");
+        event.addProperty("session", session);
+        event.addProperty("content", content);
+        event.addProperty("time", System.currentTimeMillis());
+        publish(event);
+    }
+
     private void publish(JsonObject event) {
         for (Consumer<JsonObject> subscriber : subscribers) {
             try {

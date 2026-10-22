@@ -177,6 +177,36 @@ final class Migrations {
                 latency_ms        INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX idx_token_usage_day ON token_usage (day)
+            """,
+            """
+            CREATE TABLE skills (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id  TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                content     TEXT NOT NULL,
+                source      TEXT NOT NULL DEFAULT '',
+                created_at  INTEGER NOT NULL,
+                updated_at  INTEGER NOT NULL
+            );
+            CREATE INDEX idx_skills_persona ON skills (persona_id, updated_at)
+            """,
+            """
+            CREATE TABLE plugin_kv (
+                plugin_id   TEXT NOT NULL,
+                key         TEXT NOT NULL,
+                value       TEXT NOT NULL,
+                updated_at  INTEGER NOT NULL,
+                PRIMARY KEY (plugin_id, key)
+            );
+            CREATE TABLE plugin_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                plugin_id   TEXT NOT NULL,
+                at          INTEGER NOT NULL,
+                level       TEXT NOT NULL,
+                text        TEXT NOT NULL
+            );
+            CREATE INDEX idx_plugin_logs ON plugin_logs (plugin_id, id)
             """
     );
 

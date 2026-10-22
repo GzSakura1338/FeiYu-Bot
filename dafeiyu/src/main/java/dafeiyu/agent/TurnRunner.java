@@ -8,6 +8,7 @@ import dafeiyu.agent.context.ConversationMemory;
 import dafeiyu.agent.context.ConversationMemory.Conversation;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
+import dafeiyu.agent.reply.Markup;
 import dafeiyu.agent.memory.Reflection;
 import dafeiyu.agent.model.Capabilities;
 import dafeiyu.agent.model.ModelLimits;
@@ -31,27 +32,25 @@ import dafeiyu.agent.tool.Workspace;
 import dafeiyu.agent.tool.WorkspaceStore;
 import dafeiyu.util.Clock;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 public final class TurnRunner {
 
-    static final int MAX_STEPS = 25;
+    static final int MAX_STEPS = 1000;
+    private static final int DOOM_LOOP = 3;
     private static final int FACE_COOLDOWN = 2;
     private static final int MAX_NOTES = 2;
     private static final int STICKER_CATALOG = 30;
     private static final int STICKER_NUDGE = 4;
     private static final int MAX_ERRANDS = 2;
-    private static final Pattern ERRAND = Pattern.compile("<去做>(.*?)(?:</去做>|$)", Pattern.DOTALL);
-    private static final Pattern POKE = Pattern.compile("<拍一拍\\s*/>|<拍一拍>(.*?)(?:</拍一拍>|$)", Pattern.DOTALL);
     public static final String SILENCE = "[沉默]";
     public static final String AMBIENT = "【旁听】";
 
@@ -78,6 +77,8 @@ public final class TurnRunner {
     private List<String> enabled;
     private List<ToolSpec> tools;
     private final int maxSteps;
+    private final Deque<String> recentCalls = new ArrayDeque<>();
+    private String contributed;
     private String system;
     private boolean systemRole;
     private Conversation conversation;
@@ -118,11 +119,16 @@ public final class TurnRunner {
             this.tools = capabilities.toolCall(profile) ? turn.tools().specs() : List.of();
             this.enabled = tools.stream().map(ToolSpec::name).toList();
         } else {
-            boolean toolsAllowed = workspace != null && !ambient() && workspaces.allows(turn.qqUser()) && capabilities.toolCall(profile);
-            this.enabled = toolsAllowed
-                    ? workspaces.config().enabled().stream().filter(n -> turn.files() != null || !n.equals("send_file")).toList()
-                    : List.of();
-            this.tools = Toolbox.specs(Set.copyOf(enabled));
+            boolean allowed = !ambient() && workspaces.allows(turn.qqUser()) && capabilities.toolCall(profile);
+            Set<String> chosen = allowed ? Set.copyOf(workspaces.config().enabled()) : Set.of();
+            List<String> builtin = workspace == null ? List.of()
+                    : chosen.stream().filter(Toolbox::exists).filter(n -> turn.files() != null || !n.equals("send_file")).toList();
+            List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin)));
+            if (allowed) {
+                all.addAll(agent.extensions().tools(qqSession(), false, chosen));
+            }
+            this.tools = List.copyOf(all);
+            this.enabled = tools.stream().map(ToolSpec::name).toList();
         }
         this.maxSteps = turn.tools() == null ? MAX_STEPS : Math.min(MAX_STEPS, turn.tools().maxSteps());
         buildSystem();
@@ -143,7 +149,7 @@ public final class TurnRunner {
         int step = 1;
         while (true) {
             checkCancelled();
-            if (hasHistory() && estimateContext() >= Compaction.threshold(limits.context(), turn.mind())) {
+            if (hasHistory() && estimateContext() >= Compaction.threshold(limits.context())) {
                 compact(Trigger.AUTO);
             }
             boolean lastStep = step >= maxSteps;
@@ -175,53 +181,41 @@ public final class TurnRunner {
             if (calls.isEmpty() && result.content().isEmpty()) {
                 throw new AgentException(Kind.EMPTY_REPLY, "reached the maximum of " + maxSteps + " steps without a final reply");
             }
-            List<String> errands = new ArrayList<>();
-            String poked = "";
-            String raw = result.content();
-            if (innerVoice()) {
-                Matcher errand = ERRAND.matcher(raw);
-                while (errand.find()) {
-                    String task = errand.group(1).replace("</去做>", "").strip();
-                    if (!task.isEmpty() && errands.size() < MAX_ERRANDS && guard.scan(task) == null) {
-                        errands.add(task);
-                    }
-                }
-                raw = ERRAND.matcher(raw).replaceAll("");
-                Matcher poke = POKE.matcher(raw);
-                if (poke.find()) {
-                    String who = poke.group(1) == null ? "" : poke.group(1).replace("</拍一拍>", "").strip();
-                    String qq = pokeTarget(who);
-                    String name = qq == null ? null : agent.poke(turn.session(), qq);
-                    if (name != null) {
-                        poked = "<拍一拍>" + (who.isEmpty() ? name : who) + "</拍一拍>";
-                    }
-                }
-                raw = POKE.matcher(raw).replaceAll("");
-            }
-            Mood.Split split = innerVoice() ? Mood.split(raw) : new Mood.Split("", raw);
-            String thought = guard.scan(split.thought()) == null ? split.thought() : "";
-            if (!thought.isEmpty()) {
-                mood.remember(persona.id(), thought, turn.session());
-            }
-            List<Mood.Note> notes = remember(split.notes());
-            String content = outgoing(split.said());
-            for (String task : errands) {
-                agent.errand(new ChatAgent.Errand(turn.session(), requester(), turn.qqUser() == null ? "" : turn.qqUser(), task));
-            }
-            if (calls.isEmpty() && (ambient() || innerVoice()) && silent(content) && poked.isEmpty()) {
+            Markup markup = innerVoice() ? Markup.parse(result.content()) : Markup.plain(result.content());
+            String thought = feel(markup.thought());
+            String content = outgoing(markup.said());
+            List<String> tasks = markup.errands().stream().filter(t -> guard.scan(t) == null).limit(MAX_ERRANDS).toList();
+            boolean acts = markup.poke() != null || !tasks.isEmpty() || !markup.promises().isEmpty() || !markup.done().isEmpty();
+            if (calls.isEmpty() && (ambient() || innerVoice()) && silent(content) && !acts) {
                 return silence(result, started);
             }
-            if (calls.isEmpty() && !turn.mind()) {
+            boolean blocked = false;
+            if (calls.isEmpty() && !turn.mind() && !content.isBlank()) {
                 ContentGuard.Verdict verdict = guard.review(profile, reviewContext(), content);
                 if (verdict != null) {
-                    content = ambient() ? "" : ContentGuard.deflection();
+                    blocked = true;
+                    content = ambient() || "note".equals(turn.source()) ? "" : ContentGuard.deflection();
                     listener.onBlocked(verdict.category().label(), verdict.byModel(), content);
                     if (content.isEmpty()) {
                         return silence(result, started);
                     }
                 }
             }
-            String stored = Mood.stored(thought, content, notes) + poked + errands.stream().map(t -> "<去做>" + t + "</去做>").collect(Collectors.joining());
+            List<Markup.Note> notes = blocked ? List.of() : remember(markup.notes());
+            String poked = blocked ? null : poke(markup.poke());
+            List<String> errands = blocked ? List.of() : tasks;
+            for (String task : errands) {
+                agent.errand(new ChatAgent.Errand(turn.session(), requester(), turn.qqUser() == null ? "" : turn.qqUser(), task));
+            }
+            List<String> promises = blocked || turn.mind() ? List.of() : markup.promises().stream().filter(p -> guard.scan(p) == null).limit(MAX_ERRANDS).toList();
+            List<String> finished = blocked || turn.mind() ? List.of() : markup.done().stream().limit(MAX_ERRANDS).toList();
+            for (String promise : promises) {
+                agent.intercom().commit(turn.session(), requester(), promise);
+            }
+            for (String done : finished) {
+                agent.intercom().finish(turn.session(), done);
+            }
+            String stored = new Markup(thought, content, notes, errands, poked, promises, finished).render();
             List<ChatMessage> fresh = new ArrayList<>();
             fresh.add(ChatMessage.assistant(stored, result.reasoning(), calls));
             for (ToolCall call : calls) {
@@ -254,9 +248,17 @@ public final class TurnRunner {
         messages.addAll(Prompt.history(conversation, true));
         messages.addAll(live);
         if (lastStep && !tools.isEmpty()) {
-            messages.add(ChatMessage.user(Prompt.MAX_STEPS));
+            messages.add(ChatMessage.user(turn.mind() ? Prompt.MIND_STEPS : Prompt.MAX_STEPS));
         }
         List<ChatMessage> prepared = Prompt.mergeUsers(Prompt.forRequest(messages, !tools.isEmpty()));
+        String skills = persona == null || turn.mind() ? "" : agent.skills().relevant(persona.id(), turn.user().content());
+        if (contributed == null) {
+            contributed = turn.mind() ? "" : agent.extensions().contribute(turn.session(), turn.people());
+        }
+        skills += contributed;
+        if (!innerVoice() && !skills.isEmpty()) {
+            prepared = Prompt.prefixLastUser(prepared, skills);
+        }
         if (innerVoice()) {
             String catalog = stickers.store().note(STICKER_CATALOG);
             if (!catalog.isEmpty()) {
@@ -269,6 +271,7 @@ public final class TurnRunner {
             }
             prepared = Prompt.prefixLastUser(prepared, mood.note(persona.id(), turn.session(), lastSpoke)
                     + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners))
+                    + skills
                     + (catalog.isEmpty() ? "" : "<你的表情包>\n" + catalog + "</你的表情包>\n\n"));
         }
         if (!systemRole) {
@@ -281,13 +284,30 @@ public final class TurnRunner {
         return "ambient".equals(turn.source());
     }
 
-    private List<Mood.Note> remember(List<Mood.Note> notes) {
+    private String feel(String thought) {
+        if (thought.isEmpty() || guard.scan(thought) != null) {
+            return "";
+        }
+        mood.remember(persona.id(), thought, turn.session());
+        return thought;
+    }
+
+    private String poke(String who) {
+        if (who == null) {
+            return null;
+        }
+        String qq = pokeTarget(who);
+        String name = qq == null ? null : agent.poke(turn.session(), qq);
+        return name == null ? null : who.isEmpty() ? name : who;
+    }
+
+    private List<Markup.Note> remember(List<Markup.Note> notes) {
         if (notes.isEmpty() || !innerVoice()) {
             return List.of();
         }
         Set<String> ownerSet = Set.copyOf(owners);
-        List<Mood.Note> kept = new ArrayList<>();
-        for (Mood.Note note : notes) {
+        List<Markup.Note> kept = new ArrayList<>();
+        for (Markup.Note note : notes) {
             String scope = noteScope(note.about());
             if (kept.size() >= MAX_NOTES || scope == null || guard.scan(note.text()) != null
                     || Reflection.claimsOwner(scope, note.text(), ownerSet) || memories.knows(persona.id(), scope, note.text())) {
@@ -447,11 +467,25 @@ public final class TurnRunner {
             return ChatMessage.tool(call, "Tool call cancelled: the turn was stopped from the console.", true);
         }
         listener.onToolCall(call);
-        Toolbox.Outcome outcome = turn.tools() != null
-                ? turn.tools().run(call)
+        Toolbox.Outcome outcome = turn.tools() != null ? turn.tools().run(call)
+                : agent.extensions().owns(call.name()) && enabled.contains(call.name()) ? agent.extensions().run(call, turn.session())
                 : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files()));
         listener.onToolResult(call, outcome.output(), outcome.error());
-        return ChatMessage.tool(call, outcome.output(), outcome.error());
+        String output = outcome.output();
+        if (repeating(call)) {
+            output += "\n\n[You have now made this exact same " + call.name() + " call " + DOOM_LOOP
+                    + " times in a row. Repeating it will not change the result: try a different approach, or stop and tell the user where you are stuck.]";
+        }
+        return ChatMessage.tool(call, output, outcome.error());
+    }
+
+    private boolean repeating(ToolCall call) {
+        String signature = call.name() + "\n" + call.arguments();
+        recentCalls.addLast(signature);
+        while (recentCalls.size() > DOOM_LOOP) {
+            recentCalls.removeFirst();
+        }
+        return recentCalls.size() == DOOM_LOOP && recentCalls.stream().allMatch(signature::equals);
     }
 
     private void save(List<ChatMessage> fresh, ChatResult result) {
@@ -473,7 +507,7 @@ public final class TurnRunner {
         reflection.beforeCompaction(turn.session());
         Conversation current = userSaved ? memory.load(turn.session()) : conversation;
         long estimate = estimateContext();
-        conversation = compactor.compact(trigger, new Compactor.Target(turn.session(), profile, protocol, limits, tools, turn.mind()),
+        conversation = compactor.compact(trigger, new Compactor.Target(turn.session(), profile, protocol, limits, tools),
                 Prompt.head(system, systemRole), current, estimate, listener, new ModelRetry(listener, cancelled));
         reflection.markReflected(turn.session());
         if (userSaved) {
@@ -513,6 +547,10 @@ public final class TurnRunner {
 
     private void buildSystem() {
         system = turn.mind() ? Prompt.mind(persona) : Prompt.system(persona, workspace, enabled, qqSession());
+        String learned = persona == null ? "" : agent.skills().prompt(persona.id());
+        if (!learned.isEmpty()) {
+            system = system.isEmpty() ? learned : system + "\n\n" + learned;
+        }
         systemRole = system.isEmpty() || capabilities.systemRole(profile, protocol);
     }
 }
