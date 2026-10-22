@@ -11,15 +11,20 @@ import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.onebot.NapCatService;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import static dafeiyu.agent.qq.QqMessages.segment;
@@ -50,6 +55,7 @@ final class QqOutbox {
 
     static final int MAX_REPLY_LENGTH = 3000;
     private static final long MAX_INLINE_IMAGE = 10L * 1024 * 1024;
+    private static final int MIN_STICKER_SIDE = 64;
     private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(3);
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
@@ -59,6 +65,7 @@ final class QqOutbox {
     private final LogBuffer log;
     private final Map<String, GroupState> groups;
     private volatile MessageGate gate = MessageGate.NONE;
+    private final Map<String, String> tempGroups = new ConcurrentHashMap<>();
 
     QqOutbox(ChatAgent agent, NapCatService napcat, MessageArchive archive, LogBuffer log, Map<String, GroupState> groups) {
         this.agent = agent;
@@ -102,6 +109,21 @@ final class QqOutbox {
         return !StickerStore.withoutTags(text).isEmpty() || !stickers(text).isEmpty();
     }
 
+    void rememberTempGroup(String userId, String groupId) {
+        if (groupId == null || groupId.isBlank() || groupId.equals("0")) {
+            return;
+        }
+        tempGroups.put(userId, groupId);
+    }
+
+    void forgetTempGroup(String userId) {
+        tempGroups.remove(userId);
+    }
+
+    boolean hasTempGroup(String userId) {
+        return tempGroups.containsKey(userId);
+    }
+
     void setGate(MessageGate gate) {
         this.gate = gate == null ? MessageGate.NONE : gate;
     }
@@ -113,18 +135,39 @@ final class QqOutbox {
         if (words.isEmpty() && stickers.isEmpty()) {
             throw new ToolFailure("没有要发的内容");
         }
-        if (!words.isEmpty()) {
+        boolean quoted = false;
+        boolean stickerDone = false;
+        ToolFailure stickerFailed = null;
+        List<StickerStore.Piece> pieces = stickers.isEmpty() ? List.of(new StickerStore.Piece(words, 0)) : StickerStore.pieces(filtered);
+        for (StickerStore.Piece piece : pieces) {
+            if (piece.isSticker()) {
+                if (stickerDone || stickers.isEmpty() || stickers.getFirst().id() != piece.sticker()) {
+                    continue;
+                }
+                stickerDone = true;
+                try {
+                    sendSticker(target, stickers.getFirst());
+                } catch (ToolFailure e) {
+                    stickerFailed = e;
+                }
+                continue;
+            }
             JsonArray message = new JsonArray();
-            if (target.group() && quote != null && !quote.isEmpty()) {
+            if (!quoted && target.group() && quote != null && !quote.isEmpty()) {
                 message.add(segment("reply", "id", quote));
             }
-            message.addAll(content(target, words));
-            send(target, message, QqMessages.withoutTails(words), true);
-        }
-        for (StickerStore.Sticker sticker : stickers) {
-            sendSticker(target, sticker);
+            quoted = true;
+            message.addAll(content(target, piece.text()));
+            send(target, message, QqMessages.withoutTails(piece.text()), true);
         }
         gate.said(target.session(), filtered);
+        if (stickerFailed != null) {
+            if (words.isEmpty()) {
+                throw new ToolFailure("表情包没发出去：" + stickerFailed.getMessage());
+            }
+            log.warn("agent [" + target.where() + "] sticker send failed: " + stickerFailed.getMessage());
+            agent.hear(target.session(), "（你上面那句的文字发出去了，表情包没发出去：" + abbreviate(stickerFailed.getMessage(), 80) + "）");
+        }
     }
 
     void deliverForPlugin(Target target, String text, String imageUrl, String quote) throws ToolFailure {
@@ -151,6 +194,12 @@ final class QqOutbox {
 
     void sendSticker(Target target, StickerStore.Sticker sticker) throws ToolFailure {
         Path file = agent.stickers().store().path(sticker);
+        int[] size = imageSize(file);
+        if (size != null && Math.max(size[0], size[1]) < MIN_STICKER_SIDE) {
+            agent.stickers().store().setHidden(sticker.id(), true);
+            log.warn("agent: sticker #" + sticker.id() + " is only " + size[0] + "x" + size[1] + ", hidden it");
+            throw new ToolFailure("表情包 #" + sticker.id() + " 只有 " + size[0] + "×" + size[1] + " 像素，发到 QQ 上看不清，已经把它隐藏了");
+        }
         JsonObject data = new JsonObject();
         data.addProperty("file", "base64://" + Base64.getEncoder().encodeToString(read(file, sticker.file())));
         data.addProperty("sub_type", 1);
@@ -240,16 +289,24 @@ final class QqOutbox {
         return response;
     }
 
-    private static JsonObject destination(Target target) {
+    private JsonObject destination(Target target) {
         JsonObject params = new JsonObject();
         String key = target.group() ? "group_id" : "user_id";
         String id = target.group() ? target.groupId() : target.userId();
+        put(params, key, id);
+        String temp = target.group() ? null : tempGroups.get(id);
+        if (temp != null) {
+            put(params, "group_id", temp);
+        }
+        return params;
+    }
+
+    private static void put(JsonObject params, String key, String id) {
         try {
             params.addProperty(key, Long.parseLong(id));
         } catch (NumberFormatException e) {
             params.addProperty(key, id);
         }
-        return params;
     }
 
     private void archive(Target target, String messageId, String text) {
@@ -259,6 +316,27 @@ final class QqOutbox {
                     nickname == null ? "大肥鱼" : nickname, messageId, text);
         } catch (RuntimeException e) {
             log.warn("agent: saving reply to database failed: " + e.getMessage());
+        }
+    }
+
+    private static int[] imageSize(Path file) {
+        try (ImageInputStream in = ImageIO.createImageInputStream(file.toFile())) {
+            if (in == null) {
+                return null;
+            }
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+            if (!readers.hasNext()) {
+                return null;
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(in);
+                return new int[] {reader.getWidth(0), reader.getHeight(0)};
+            } finally {
+                reader.dispose();
+            }
+        } catch (IOException | RuntimeException e) {
+            return null;
         }
     }
 

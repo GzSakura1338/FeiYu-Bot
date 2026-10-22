@@ -22,7 +22,7 @@ import static dafeiyu.util.Jsons.optString;
 
 final class QqContacts {
 
-    private static final long TTL_MS = 10 * 60_000;
+    private static final long TTL_MS = 60_000;
 
     private final ChatAgent agent;
     private final NapCatService napcat;
@@ -74,6 +74,10 @@ final class QqContacts {
         return friends;
     }
 
+    void forgetFriends() {
+        friendsAt = 0;
+    }
+
     boolean canMessage(String userId) {
         return friends().containsKey(userId) || agent.session("private:" + userId, 0).totalTurns() > 0;
     }
@@ -109,7 +113,7 @@ final class QqContacts {
             lines.add("- " + e.getValue() + "（QQ " + id + (owners.contains(id) ? "，你的主人" : "") + "）"
                     + (in.isEmpty() ? "" : "：在" + String.join("、", in.stream().distinct().limit(3).toList()) + "说过话")
                     + (lastAt.containsKey(id) ? "，最近一次是 " + Clock.ago(lastAt.get(id)) : "")
-                    + (canMessage(id) ? "；可以私聊（say_private）" : "；不是好友，只能去你们都在的群里 @ 他"));
+                    + (canMessage(id) ? "；可以私聊（tell_private）" : "；不是好友：可以用 message_stranger 走群临时会话发，或者去你们都在的群里 @ 他"));
         });
         return String.join("\n", lines);
     }

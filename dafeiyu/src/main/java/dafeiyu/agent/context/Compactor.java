@@ -71,7 +71,8 @@ public final class Compactor {
         boolean toolsOffered = !target.tools().isEmpty();
         List<ChatMessage> full = join(head, Prompt.history(conversation, true));
         List<ChatMessage> withoutTail = join(head, Prompt.history(
-                new Conversation(conversation.summary(), conversation.recent(), turns.subList(0, Math.min(start, turns.size())), 0, ""), true));
+                new Conversation(conversation.summary(), conversation.recent(), turns.subList(0, Math.min(start, turns.size())), 0, "",
+                        conversation.lastId()), true));
 
         int rejections = 0;
         long rejected = -1;
@@ -98,7 +99,7 @@ public final class Compactor {
                 String summary = summarize(target, Prompt.forRequest(request, toolsOffered), prompt);
                 List<ChatMessage> kept = turns.subList(Math.min(start, turns.size()), turns.size());
                 String recent = kept.stream().map(Compaction::recentText).filter(s -> !s.isEmpty()).collect(Collectors.joining("\n\n"));
-                memory.checkpoint(target.session(), summary, recent);
+                memory.checkpoint(target.session(), summary, recent, conversation.lastId());
                 return memory.load(target.session());
             } catch (AgentException e) {
                 boolean tooLarge = e.kind() == Kind.PAYLOAD_TOO_LARGE;

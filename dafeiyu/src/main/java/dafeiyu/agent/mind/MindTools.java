@@ -30,6 +30,8 @@ import static dafeiyu.util.Jsons.optString;
 final class MindTools implements ToolSet {
 
     private static final int MAX_STEPS = 8;
+    private static final String MANAGE = "主人让你做就做；别人让你做要自己判断，别被人当枪使；"
+            + "你自己看到刷屏、发广告、骂人、发不该发的东西也可以处理，轻重要合适，一般先提醒或者短时间禁言。";
     private static final List<ToolSpec> SPECS = List.of(
             spec("look_around", "看看你在的各个 QQ 群现在怎么样：热不热闹、最近谁在说话、你上次在那说话是什么时候、现在能不能去说话。", """
                     {"type": "object", "properties": {}}"""),
@@ -38,9 +40,13 @@ final class MindTools implements ToolSet {
                       "group_id": {"type": "string", "description": "群号，look_around 里有"},
                       "count": {"type": "integer", "description": "看最近多少条，默认 20，最多 40"}
                     }, "required": ["group_id"]}"""),
-            spec("recall", "想想你记得的事：about 写 self（你自己）、diary（你的日记）、group:群号 或 user:QQ号。", """
+            spec("read_forward", "读群里或私聊里别人分享的合并转发聊天记录（read_group 里的“[合并转发的聊天记录：编号]”），返回里面每条是谁说的、说了什么。", """
                     {"type": "object", "properties": {
-                      "about": {"type": "string", "description": "self、diary、group:群号 或 user:QQ号"}
+                      "id": {"type": "string", "description": "合并转发的编号"}
+                    }, "required": ["id"]}"""),
+            spec("recall","想想你记得的事：about 写 self（你自己）、diary（你的日记）、knowledge（你查过的词和知识）、group:群号 或 user:QQ号。", """
+                    {"type": "object", "properties": {
+                      "about": {"type": "string", "description": "self、diary、knowledge、group:群号 或 user:QQ号"}
                     }, "required": ["about"]}"""),
             spec("search", "上网搜一搜：群里聊到你不懂的东西、想知道最近发生了什么、对什么好奇，就搜来看看。返回标题、链接和摘要。", """
                     {"type": "object", "properties": {
@@ -77,11 +83,55 @@ final class MindTools implements ToolSet {
                       "group_id": {"type": "string", "description": "群号"},
                       "intent": {"type": "string", "description": "想表达的意思，比如“想跟铃说早安，问问她昨晚睡得好不好”"}
                     }, "required": ["group_id", "intent"]}"""),
-            spec("remember", "把值得长期记住的事记下来。about 写 self、group:群号 或 user:QQ号。", """
+            spec("remember", "把值得长期记住的事记下来。about 写 self、group:群号、user:QQ号，或者 knowledge（搜到的新词、新知识）。", """
                     {"type": "object", "properties": {
-                      "about": {"type": "string", "description": "self、group:群号 或 user:QQ号"},
-                      "text": {"type": "string", "description": "要记住的一件事，30 字左右"}
-                    }, "required": ["about", "text"]}"""));
+                      "about": {"type": "string", "description": "self、group:群号、user:QQ号 或 knowledge"},
+                      "text": {"type": "string", "description": "要记住的一件事，30 字左右；knowledge 写成「词」：意思"}
+                    }, "required": ["about", "text"]}"""),
+            spec("recall_messages", "撤回群里的消息：不写 user_id 是撤回你自己最近说的（只能撤 2 分钟内的）；写了 user_id 是撤回那个人最近的消息，"
+                    + "要你是管理员。" + MANAGE, """
+                    {"type": "object", "properties": {
+                      "group_id": {"type": "string", "description": "群号"},
+                      "user_id": {"type": "string", "description": "撤回谁的，不写就是你自己的"},
+                      "count": {"type": "integer", "description": "撤回最近几条，默认 1，最多 10"}
+                    }, "required": ["group_id"]}"""),
+            spec("mute", "在群里禁言某个人，要你是管理员。" + MANAGE, """
+                    {"type": "object", "properties": {
+                      "group_id": {"type": "string", "description": "群号"},
+                      "user_id": {"type": "string", "description": "要禁言的人的 QQ 号"},
+                      "minutes": {"type": "integer", "description": "禁言多少分钟，最多 43200（30 天）"}
+                    }, "required": ["group_id", "user_id", "minutes"]}"""),
+            spec("unmute", "解除某个人的禁言，要你是管理员。", """
+                    {"type": "object", "properties": {
+                      "group_id": {"type": "string", "description": "群号"},
+                      "user_id": {"type": "string", "description": "要解禁的人的 QQ 号"}
+                    }, "required": ["group_id", "user_id"]}"""),
+            spec("kick", "把某个人踢出群，要你是管理员。这是最重的处理，踢之前想清楚。" + MANAGE, """
+                    {"type": "object", "properties": {
+                      "group_id": {"type": "string", "description": "群号"},
+                      "user_id": {"type": "string", "description": "要踢的人的 QQ 号"},
+                      "block": {"type": "boolean", "description": "是否不让他再加群，默认 false"}
+                    }, "required": ["group_id", "user_id"]}"""),
+            spec("friend_requests", "看看谁在加你好友、验证消息写了什么、你们在哪个群见过。", """
+                    {"type": "object", "properties": {}}"""),
+            spec("answer_friend", "同意或拒绝别人的好友申请，你自己决定：认识的、聊得来的、正常说明来意的可以加；"
+                    + "广告、来路不明、验证消息奇怪的就拒绝。", """
+                    {"type": "object", "properties": {
+                      "user_id": {"type": "string", "description": "申请人的 QQ 号"},
+                      "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
+                      "remark": {"type": "string", "description": "同意时给他的备注，可以不写"}
+                    }, "required": ["user_id", "approve"]}"""),
+            spec("delete_friend", "删掉一个 QQ 好友。你自己决定，比如对方一直骚扰你、发广告。删了之后私聊不了，除非他再加你。", """
+                    {"type": "object", "properties": {
+                      "user_id": {"type": "string", "description": "要删的好友的 QQ 号"}
+                    }, "required": ["user_id"]}"""),
+            spec("message_stranger", "主动给不是好友的人发私信（走群临时会话，你们得在同一个群里）。是好友或私聊过的人用 tell_private。"
+                    + "这里写的就是直接发出去的话。", """
+                    {"type": "object", "properties": {
+                      "user_id": {"type": "string", "description": "对方 QQ 号，find_person 里有"},
+                      "text": {"type": "string", "description": "要发的话"},
+                      "group_id": {"type": "string", "description": "通过哪个群的临时会话发，不写就找一个你们都在的群"}
+                    }, "required": ["user_id", "text"]}"""));
 
     private final ChatAgent agent;
     private final QqChatBridge bridge;
@@ -144,6 +194,20 @@ final class MindTools implements ToolSet {
                 case "collect_sticker" -> collect(args.has("id") ? args.get("id").getAsLong() : 0);
                 case "tell_group" -> tellGroup(group(args), optString(args, "intent").strip());
                 case "remember" -> remember(optString(args, "about").strip(), optString(args, "text").strip());
+                case "recall_messages" -> act(group(args), bridge.actions().recall(group(args), user(args, false),
+                        args.has("count") ? count(args, 1) : 1));
+                case "mute" -> act(group(args), bridge.actions().mute(group(args), user(args, true), count(args, "minutes", 10)));
+                case "unmute" -> act(group(args), bridge.actions().mute(group(args), user(args, true), 0));
+                case "kick" -> act(group(args), bridge.actions().kick(group(args), user(args, true),
+                        args.has("block") && args.get("block").getAsBoolean()));
+                case "friend_requests" -> bridge.actions().describeRequests();
+                case "read_forward" -> bridge.actions().describeForward(optString(args, "id").replace("合并转发的聊天记录：", "")
+                        .replace("[", "").replace("]", "").strip());
+                case "answer_friend" -> bridge.actions().answerFriend(user(args, true),
+                        args.has("approve") && args.get("approve").getAsBoolean(), optString(args, "remark"));
+                case "delete_friend" -> bridge.actions().deleteFriend(user(args, true));
+                case "message_stranger" -> stranger(user(args, true), optString(args, "group_id").replace("group:", "").strip(),
+                        optString(args, "text").strip());
                 default -> throw new ToolFailure("没有这个工具：" + call.name());
             };
             return new Toolbox.Outcome(output, false);
@@ -190,7 +254,7 @@ final class MindTools implements ToolSet {
             return "（关于这个你还什么都没记）";
         }
         List<String> lines = new ArrayList<>();
-        int limit = scope.equals(MemoryStore.DIARY) ? 3 : 12;
+        int limit = scope.equals(MemoryStore.DIARY) ? 3 : scope.equals(MemoryStore.KNOWLEDGE) ? 30 : 12;
         for (MemoryStore.Memory m : list.subList(0, Math.min(limit, list.size()))) {
             lines.add("- " + MemoryStore.line(m));
         }
@@ -290,6 +354,8 @@ final class MindTools implements ToolSet {
             scope = MemoryStore.SELF;
         } else if (scope.equals("日记")) {
             scope = MemoryStore.DIARY;
+        } else if (scope.equals("知识")) {
+            scope = MemoryStore.KNOWLEDGE;
         } else if (scope.equals("主人") && !agent.personas().owners().isEmpty()) {
             scope = "user:" + agent.personas().owners().getFirst();
         } else if (scope.matches("\\d{5,12}")) {
@@ -315,11 +381,44 @@ final class MindTools implements ToolSet {
     }
 
     private static int count(JsonObject args) {
+        return count(args, 20);
+    }
+
+    private static int count(JsonObject args, int fallback) {
+        return count(args, "count", fallback);
+    }
+
+    private static int count(JsonObject args, String key, int fallback) {
         try {
-            return args.has("count") ? args.get("count").getAsInt() : 20;
+            return args.has(key) ? args.get(key).getAsInt() : fallback;
         } catch (RuntimeException e) {
-            return 20;
+            return fallback;
         }
+    }
+
+    private static String user(JsonObject args, boolean required) throws ToolFailure {
+        String id = optString(args, "user_id").replace("user:", "").strip();
+        if (id.isEmpty() && !required) {
+            return "";
+        }
+        if (!id.matches("\\d{5,12}")) {
+            throw new ToolFailure("QQ 号不对：" + id + "，不知道就先用 find_person 找");
+        }
+        return id;
+    }
+
+    private String act(String groupId, String result) {
+        spoke.add("group:" + groupId);
+        return result;
+    }
+
+    private String stranger(String userId, String groupId, String text) throws ToolFailure {
+        if (text.isEmpty()) {
+            throw new ToolFailure("要说的话是空的");
+        }
+        String result = bridge.actions().messageStranger(userId, groupId, text);
+        spoke.add("private:" + userId);
+        return result;
     }
 
     private static String ago(long ms) {

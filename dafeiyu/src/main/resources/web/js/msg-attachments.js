@@ -2,7 +2,7 @@ import { el } from './dom.js';
 import { createIcon } from './icons.js';
 import { formatSize } from './chat-render.js';
 
-const PLACEHOLDER = /\[(?:图片|动画表情|表情|视频|语音|文件(?:：[^\]]*)?|合并转发的聊天记录|卡片(?:：[^\]]*)?|卡片消息|链接(?:：[^\]]*)?|位置(?:：[^\]]*)?|音乐分享|戳一戳|推荐联系人|掷骰子(?:：[^\]]*)?|猜拳)\]/g;
+const PLACEHOLDER = /\[(?:图片|动画表情|表情|视频|语音|文件(?:：[^\]]*)?|合并转发的聊天记录(?:：[^\]]*)?|卡片(?:：[^\]]*)?|卡片消息|链接(?:：[^\]]*)?|位置(?:：[^\]]*)?|音乐分享|戳一戳|推荐联系人|掷骰子(?:：[^\]]*)?|猜拳)\]/g;
 
 const CARD = {
   file: { icon: 'description', label: '文件' },
@@ -78,6 +78,20 @@ function media(a) {
     return audio;
   }
   const meta = CARD[a.kind];
+  if (a.kind === 'forward' && a.id) {
+    const node = card({ name: '点开看聊天记录' }, meta.icon, meta.label);
+    node.setAttribute('role', 'button');
+    node.tabIndex = 0;
+    const open = () => import('./forward-view.js').then(m => m.openForward(a.id));
+    node.addEventListener('click', open);
+    node.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    return node;
+  }
   return meta ? card(a, meta.icon, meta.label) : null;
 }
 

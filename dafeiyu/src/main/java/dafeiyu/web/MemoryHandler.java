@@ -148,6 +148,7 @@ final class MemoryHandler {
         Map<String, Scope> scopes = new LinkedHashMap<>();
         scopes.put(MemoryStore.SELF, new Scope(MemoryStore.SELF, "", 0, 0));
         scopes.put(MemoryStore.DIARY, new Scope(MemoryStore.DIARY, "", 0, 0));
+        scopes.put(MemoryStore.KNOWLEDGE, new Scope(MemoryStore.KNOWLEDGE, "", 0, 0));
         for (String qq : owners) {
             scopes.put("user:" + qq, new Scope("user:" + qq, "", 0, 0));
         }
@@ -205,6 +206,7 @@ final class MemoryHandler {
             JsonObject item = gson.toJsonTree(m).getAsJsonObject();
             item.addProperty("sourceName", m.source().equals("manual") ? "手动添加" : m.source().isEmpty() ? "" : names.of(m.source()));
             item.addProperty("title", m.scope().equals(MemoryStore.DIARY) ? MemoryStore.fullDay(m.label())
+                    : m.scope().equals(MemoryStore.KNOWLEDGE) ? m.label()
                     : m.scope().equals(MemoryStore.SELF) && MemoryStore.SELF_TOPICS.contains(m.label()) ? m.label() : "");
             list.add(item);
         }
@@ -347,6 +349,9 @@ final class MemoryHandler {
         }
         if (scope.equals(MemoryStore.DIARY)) {
             return "日记";
+        }
+        if (scope.equals(MemoryStore.KNOWLEDGE)) {
+            return "知识";
         }
         if (scope.startsWith("group:")) {
             return names.of(scope);

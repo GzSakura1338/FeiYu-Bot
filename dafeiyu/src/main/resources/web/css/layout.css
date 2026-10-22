@@ -243,6 +243,10 @@ body {
 .mind-hung-item .icon { flex: none; color: var(--md-sys-color-primary); }
 .mind-hung-item.tone-note .icon { color: var(--md-sys-color-tertiary); }
 .mind-hung-item.tone-closed { opacity: .6; }
+.mind-hung-fold { cursor: pointer; color: var(--md-sys-color-on-surface-variant); }
+.mind-hung-fold .icon { color: var(--md-custom-color-success); }
+.mind-hung-fold .mind-hung-chevron { color: inherit; transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard); }
+.mind-hung-fold[aria-expanded="true"] .mind-hung-chevron { transform: rotate(180deg); }
 .mind-hung-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mind-hung-meta { flex: none; color: var(--md-sys-color-on-surface-variant); }
 .mind-chip {

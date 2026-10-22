@@ -37,8 +37,10 @@ public final class Intercom {
     public static final String DONE = "done";
     public static final String DROPPED = "dropped";
     private static final String KEY = "agent.commitments";
+    private static final String NOTES_KEY = "agent.intercom.notes";
+    private static final String INBOX_KEY = "agent.intercom.inbox";
     private static final int MAX_NOTES = 4;
-    private static final int MAX_INBOX = 12;
+    private static final int MAX_INBOX = 60;
     private static final int MAX_EVENTS = 80;
     private static final int MAX_COMMITMENTS = 40;
     private static final long KEEP_CLOSED_MS = 3 * 86_400_000L;
@@ -47,6 +49,7 @@ public final class Intercom {
     private final Settings settings;
     private final Map<String, Deque<Note>> notes = new ConcurrentHashMap<>();
     private final Deque<String> inbox = new ArrayDeque<>();
+    private int crowdedOut;
     private final Deque<Event> events = new ArrayDeque<>();
     private final List<Commitment> commitments = new ArrayList<>();
     private final AtomicLong ids = new AtomicLong();
@@ -76,6 +79,7 @@ public final class Intercom {
                 post("receipt", session, "（「" + old.intent() + "」没来得及说，后来的念头把它挤掉了）", true);
             }
         }
+        saveNotes();
         event("note", session, note.intent());
         deliver.accept(session);
         return note;
@@ -96,11 +100,23 @@ public final class Intercom {
         if (queue == null) {
             return List.of();
         }
+        List<Note> taken;
         synchronized (queue) {
-            List<Note> taken = List.copyOf(queue);
+            taken = List.copyOf(queue);
             queue.clear();
-            return taken;
         }
+        if (!taken.isEmpty()) {
+            saveNotes();
+        }
+        return taken;
+    }
+
+    public List<String> sessionsWithNotes() {
+        return notes.entrySet().stream().filter(e -> {
+            synchronized (e.getValue()) {
+                return !e.getValue().isEmpty();
+            }
+        }).map(Map.Entry::getKey).toList();
     }
 
     public List<Note> pending() {
@@ -129,8 +145,13 @@ public final class Intercom {
 
     public List<String> drain() {
         synchronized (inbox) {
-            List<String> out = List.copyOf(inbox);
+            List<String> out = new ArrayList<>(inbox);
+            if (crowdedOut > 0) {
+                out.addFirst("（还有 " + crowdedOut + " 条更早的回执和汇报，来得太多没记住）");
+            }
             inbox.clear();
+            crowdedOut = 0;
+            settings.put(INBOX_KEY, "[]");
             return out;
         }
     }
@@ -239,7 +260,9 @@ public final class Intercom {
             inbox.addLast(text);
             while (inbox.size() > MAX_INBOX) {
                 inbox.pollFirst();
+                crowdedOut++;
             }
+            settings.put(INBOX_KEY, GSON.toJson(inbox));
         }
         event(kind, session, text);
         if (urgent) {
@@ -258,11 +281,8 @@ public final class Intercom {
 
     private void load() {
         String raw = settings.get(KEY);
-        if (raw == null || raw.isBlank()) {
-            return;
-        }
         try {
-            List<Commitment> saved = GSON.fromJson(raw, new TypeToken<List<Commitment>>() {}.getType());
+            List<Commitment> saved = raw == null || raw.isBlank() ? null : GSON.fromJson(raw, new TypeToken<List<Commitment>>() {}.getType());
             if (saved != null) {
                 saved.removeIf(c -> c.id() > 1_000_000_000L);
                 commitments.addAll(saved);
@@ -270,6 +290,29 @@ public final class Intercom {
             }
         } catch (JsonParseException ignored) {
         }
+        try {
+            String savedNotes = settings.get(NOTES_KEY);
+            List<Note> pending = savedNotes == null || savedNotes.isBlank() ? null : GSON.fromJson(savedNotes, new TypeToken<List<Note>>() {}.getType());
+            if (pending != null) {
+                for (Note note : pending) {
+                    notes.computeIfAbsent(note.session(), k -> new ArrayDeque<>()).addLast(note);
+                    ids.accumulateAndGet(note.id(), Math::max);
+                }
+            }
+        } catch (JsonParseException ignored) {
+        }
+        try {
+            String savedInbox = settings.get(INBOX_KEY);
+            List<String> unread = savedInbox == null || savedInbox.isBlank() ? null : GSON.fromJson(savedInbox, new TypeToken<List<String>>() {}.getType());
+            if (unread != null) {
+                inbox.addAll(unread);
+            }
+        } catch (JsonParseException ignored) {
+        }
+    }
+
+    private void saveNotes() {
+        settings.put(NOTES_KEY, GSON.toJson(pending()));
     }
 
     private void save() {

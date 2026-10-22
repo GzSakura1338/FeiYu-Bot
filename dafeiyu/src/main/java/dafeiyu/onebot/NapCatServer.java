@@ -26,6 +26,8 @@ final class NapCatServer extends WebSocketServer {
 
     static final Duration ACTION_TIMEOUT = Duration.ofSeconds(10);
 
+    private static final long PROFILE_REFRESH_MS = 60_000;
+
     private final String path;
     private final String token;
     private final LogBuffer log;
@@ -39,6 +41,7 @@ final class NapCatServer extends WebSocketServer {
     private volatile String remote;
     private volatile Instant connectedAt;
     private volatile Instant lastHeartbeat;
+    private volatile long profileAt;
 
     NapCatServer(WsSettings settings, LogBuffer log, Consumer<JsonObject> events, Runnable onReady) {
         super(settings.address());
@@ -103,6 +106,7 @@ final class NapCatServer extends WebSocketServer {
         conn = ws;
         log.info("NapCat connected: QQ " + selfId + " from " + remote);
 
+        profileAt = System.currentTimeMillis();
         callAction("get_login_info", new JsonObject()).thenAccept(resp -> {
             JsonObject data = optObject(resp, "data");
             if (data != null && data.has("nickname")) {
@@ -115,6 +119,22 @@ final class NapCatServer extends WebSocketServer {
             onReady.run();
             return null;
         });
+    }
+
+    private void refreshProfile() {
+        long now = System.currentTimeMillis();
+        if (now - profileAt < PROFILE_REFRESH_MS) {
+            return;
+        }
+        profileAt = now;
+        callAction("get_login_info", new JsonObject()).thenAccept(resp -> {
+            JsonObject data = optObject(resp, "data");
+            String fresh = data == null ? "" : optString(data, "nickname");
+            if (!fresh.isEmpty() && !fresh.equals(nickname)) {
+                log.info("QQ nickname changed: " + nickname + " -> " + fresh);
+                nickname = fresh;
+            }
+        }).exceptionally(e -> null);
     }
 
     @Override
@@ -146,6 +166,7 @@ final class NapCatServer extends WebSocketServer {
             String metaType = optString(json, "meta_event_type");
             if (metaType.equals("heartbeat")) {
                 lastHeartbeat = Instant.now();
+                refreshProfile();
             } else {
                 log.info("meta event: " + metaType + " " + optString(json, "sub_type"));
             }

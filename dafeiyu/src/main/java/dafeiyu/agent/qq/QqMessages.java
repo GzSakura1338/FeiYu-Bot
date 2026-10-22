@@ -107,7 +107,7 @@ public final class QqMessages {
     private static String other(String type, Function<String, String> field) {
         return switch (type) {
             case "json" -> card(field.apply("data"));
-            case "forward", "node" -> "[合并转发的聊天记录]";
+            case "forward", "node" -> field.apply("id").isBlank() ? "[合并转发的聊天记录]" : "[合并转发的聊天记录：" + field.apply("id") + "]";
             case "record" -> "[语音]";
             case "video" -> "[视频]";
             case "file" -> {
@@ -303,7 +303,13 @@ public final class QqMessages {
                     parseSize(field.apply("file_size")));
             case "video" -> attachment("video", field.apply("url"), field.apply("file"), parseSize(field.apply("file_size")));
             case "record" -> attachment("record", field.apply("url"), "", 0);
-            case "forward", "node" -> attachment("forward", "", "", 0);
+            case "forward", "node" -> {
+                JsonObject f = attachment("forward", "", "", 0);
+                if (!field.apply("id").isBlank()) {
+                    f.addProperty("id", field.apply("id"));
+                }
+                yield f;
+            }
             case "json", "markdown" -> attachment("card", "", label.equals("[卡片消息]") ? ""
                     : label.startsWith("[卡片：") && label.endsWith("]") ? label.substring(4, label.length() - 1) : label, 0);
             case "share" -> attachment("link", field.apply("url"), field.apply("title"), 0);

@@ -39,7 +39,7 @@ function renderStatus() {
     const seconds = Math.max(0, Math.round((status.nextAt - Date.now()) / 1000));
     chips.push(chip('schedule', seconds < 2 ? '马上接着想' : seconds < 90 ? `${seconds} 秒后接着想` : `${Math.round(seconds / 60)} 分钟后接着想`));
   }
-  if (!status.awake) chips.push(chip('bedtime', '半夜了，半睡半醒，念头很慢'));
+  if (!status.awake) chips.push(chip('bedtime', '半夜了，半睡半醒'));
   renderContext($('#session-stats'), status, true);
   chips.push(chip('neurology', `这次开机想了 ${status.thoughts} 个念头`));
   chips.push(chip('send', `今天主动去群里说了 ${status.spokeToday} 次`));
@@ -57,20 +57,45 @@ function hungItem(icon, text, meta, tone = '') {
   return item;
 }
 
+let closedOpen = false;
+
+function closedFold(count) {
+  const item = el('li', 'mind-hung-item mind-hung-fold state-layer');
+  item.tabIndex = 0;
+  item.setAttribute('role', 'button');
+  item.setAttribute('aria-expanded', String(closedOpen));
+  item.append(createIcon('check_circle', 'icon-18'), el('span', 'mind-hung-text', `办完的事 ${count} 件`),
+    createIcon('arrow_drop_down', 'icon-18 mind-hung-chevron'));
+  const toggle = () => {
+    closedOpen = !closedOpen;
+    renderHung();
+  };
+  item.addEventListener('click', toggle);
+  item.addEventListener('keydown', e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
+  return item;
+}
+
 function renderHung() {
   const list = $('#mind-hung');
   const notes = status.notes ?? [];
   const commitments = status.commitments ?? [];
   const open = commitments.filter(c => c.status === 'open');
-  const closed = commitments.filter(c => c.status !== 'open').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
+  const closed = commitments.filter(c => c.status !== 'open').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10);
   const items = [
     ...notes.map(n => hungItem('send', `交给${placeOf(n.session)}去说：${n.intent}`, `等那边说 · ${formatTime(n.at)}`, 'tone-note')),
     ...open.map(c => hungItem('schedule', `#${c.id} ${c.what}`, `${c.who} · ${placeOf(c.session)} · ${formatTime(c.createdAt)}`)),
-    ...closed.map(c => hungItem(c.status === 'done' ? 'check_circle' : 'close', `#${c.id} ${c.what}${c.result ? ` → ${c.result}` : ''}`,
-      `${c.status === 'done' ? '办完了' : '不办了'} · ${formatTime(c.updatedAt)}`, 'tone-closed')),
   ];
+  if (closed.length) {
+    items.push(closedFold(closed.length));
+    if (closedOpen) {
+      items.push(...closed.map(c => hungItem(c.status === 'done' ? 'check_circle' : 'close', `#${c.id} ${c.what}${c.result ? ` → ${c.result}` : ''}`,
+        `${c.status === 'done' ? '办完了' : '不办了'} · ${formatTime(c.updatedAt)}`, 'tone-closed')));
+    }
+  }
+  const focused = document.activeElement?.classList.contains('mind-hung-fold');
   list.hidden = !items.length;
   list.replaceChildren(...items);
+  if (focused) $('.mind-hung-fold', list)?.focus();
 }
 
 export async function loadMindStatus() {

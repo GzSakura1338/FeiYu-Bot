@@ -1,6 +1,9 @@
 package dafeiyu.agent;
 
+import com.google.gson.JsonObject;
 import dafeiyu.agent.AgentException.Kind;
+import dafeiyu.agent.tool.ToolFailure;
+import dafeiyu.util.Jsons;
 import dafeiyu.agent.context.Compaction;
 import dafeiyu.agent.context.Compactor;
 import dafeiyu.agent.context.Compactor.Trigger;
@@ -46,6 +49,15 @@ public final class TurnRunner {
 
     static final int MAX_STEPS = 1000;
     private static final int DOOM_LOOP = 3;
+    private static final String SEARCH = "websearch";
+    static final String READ_FORWARD = "read_forward";
+    static final ToolSpec READ_FORWARD_SPEC = new ToolSpec(READ_FORWARD,
+            "读别人分享的合并转发聊天记录。消息里的“[合并转发的聊天记录：编号]”就是，把冒号后面的编号原样填进来，会返回里面每条消息是谁说的、说了什么。"
+                    + "别人发来让你看的、问你“你看看这个”的，先读了再回。",
+            com.google.gson.JsonParser.parseString("""
+                    {"type": "object", "properties": {
+                      "id": {"type": "string", "description": "合并转发的编号"}
+                    }, "required": ["id"]}""").getAsJsonObject());
     private static final int FACE_COOLDOWN = 2;
     private static final int MAX_NOTES = 2;
     private static final int STICKER_CATALOG = 30;
@@ -126,6 +138,12 @@ public final class TurnRunner {
             List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin)));
             if (allowed) {
                 all.addAll(agent.extensions().tools(qqSession(), false, chosen));
+            }
+            if (qqSession() && capabilities.toolCall(profile) && all.stream().noneMatch(t -> t.name().equals(SEARCH))) {
+                all.addAll(Toolbox.specs(Set.of(SEARCH)));
+            }
+            if (qqSession() && capabilities.toolCall(profile)) {
+                all.add(READ_FORWARD_SPEC);
             }
             this.tools = List.copyOf(all);
             this.enabled = tools.stream().map(ToolSpec::name).toList();
@@ -251,7 +269,8 @@ public final class TurnRunner {
             messages.add(ChatMessage.user(turn.mind() ? Prompt.MIND_STEPS : Prompt.MAX_STEPS));
         }
         List<ChatMessage> prepared = Prompt.mergeUsers(Prompt.forRequest(messages, !tools.isEmpty()));
-        String skills = persona == null || turn.mind() ? "" : agent.skills().relevant(persona.id(), turn.user().content());
+        String skills = persona == null || turn.mind() ? ""
+                : memories.knowledge(persona.id(), turn.user().content()) + agent.skills().relevant(persona.id(), turn.user().content());
         if (contributed == null) {
             contributed = turn.mind() ? "" : agent.extensions().contribute(turn.session(), turn.people());
         }
@@ -334,6 +353,9 @@ public final class TurnRunner {
         }
         if (lower.equals("self") || name.equals("自己") || name.equals("我")) {
             return MemoryStore.SELF;
+        }
+        if (lower.equals(MemoryStore.KNOWLEDGE) || name.equals("知识")) {
+            return MemoryStore.KNOWLEDGE;
         }
         if (lower.equals("group") || name.equals("群") || name.equals("这个群")) {
             return group ? turn.session() : null;
@@ -468,6 +490,7 @@ public final class TurnRunner {
         }
         listener.onToolCall(call);
         Toolbox.Outcome outcome = turn.tools() != null ? turn.tools().run(call)
+                : call.name().equals(READ_FORWARD) && enabled.contains(READ_FORWARD) ? readForward(call)
                 : agent.extensions().owns(call.name()) && enabled.contains(call.name()) ? agent.extensions().run(call, turn.session())
                 : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files()));
         listener.onToolResult(call, outcome.output(), outcome.error());
@@ -477,6 +500,16 @@ public final class TurnRunner {
                     + " times in a row. Repeating it will not change the result: try a different approach, or stop and tell the user where you are stuck.]";
         }
         return ChatMessage.tool(call, output, outcome.error());
+    }
+
+    private Toolbox.Outcome readForward(ToolCall call) {
+        JsonObject args = Jsons.parseObject(call.arguments());
+        String id = args == null ? "" : Jsons.optString(args, "id").replace("合并转发的聊天记录：", "").replace("[", "").replace("]", "").strip();
+        try {
+            return new Toolbox.Outcome(agent.readForward(id), false);
+        } catch (ToolFailure e) {
+            return new Toolbox.Outcome(e.getMessage(), true);
+        }
     }
 
     private boolean repeating(ToolCall call) {

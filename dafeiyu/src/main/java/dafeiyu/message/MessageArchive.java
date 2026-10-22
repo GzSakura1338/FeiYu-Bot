@@ -19,14 +19,6 @@ public final class MessageArchive {
 
     public record GroupActivity(String groupId, int lastHalfHour, int lastTwoHours, long lastMessageAt, List<String> speakers) {}
 
-    public String lastOwnName(String groupId) {
-        String name = db.one("""
-                SELECT sender_name FROM messages WHERE direction = 'out' AND message_type = 'group' AND group_id = ? AND sender_name <> ''
-                ORDER BY id DESC LIMIT 1
-                """, rs -> rs.getString(1), groupId);
-        return name == null ? "" : name;
-    }
-
     public Map<String, String> recentSenders(String groupId, long since, int limit) {
         Map<String, String> senders = new LinkedHashMap<>();
         db.list("""

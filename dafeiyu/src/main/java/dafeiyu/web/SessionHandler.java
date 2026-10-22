@@ -65,6 +65,8 @@ final class SessionHandler {
                 HttpResponses.json(ex, list());
             } else if (rest.equals("/stream") && method.equals("GET")) {
                 stream(ex);
+            } else if (rest.equals("/forward") && method.equals("GET")) {
+                forward(ex);
             } else if (rest.endsWith("/stop") && method.equals("POST")) {
                 String session = session(rest.substring(1, rest.length() - "/stop".length()));
                 int stopped = agent.stop(session);
@@ -93,6 +95,28 @@ final class SessionHandler {
         } catch (DatabaseException e) {
             log.error(e.getMessage());
             HttpResponses.json(ex, 500, error(e.getMessage()));
+        }
+    }
+
+    private void forward(HttpExchange ex) throws IOException {
+        String raw = ex.getRequestURI().getRawQuery();
+        String id = raw == null || !raw.startsWith("id=") ? "" : java.net.URLDecoder.decode(raw.substring(3), java.nio.charset.StandardCharsets.UTF_8);
+        try {
+            JsonArray lines = new JsonArray();
+            for (dafeiyu.agent.qq.QqActions.ForwardLine l : bridge.actions().forward(id)) {
+                JsonObject o = new JsonObject();
+                o.addProperty("name", l.name());
+                o.addProperty("userId", l.userId());
+                o.addProperty("time", l.time());
+                o.addProperty("text", l.text());
+                o.addProperty("attachments", l.attachments());
+                lines.add(o);
+            }
+            JsonObject body = new JsonObject();
+            body.add("lines", lines);
+            HttpResponses.json(ex, body.toString());
+        } catch (dafeiyu.agent.tool.ToolFailure e) {
+            HttpResponses.json(ex, 400, error(e.getMessage()));
         }
     }
 

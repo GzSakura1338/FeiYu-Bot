@@ -33,11 +33,15 @@ public final class MemoryStore {
 
     public static final String SELF = "self";
     public static final String DIARY = "diary";
+    public static final String KNOWLEDGE = "knowledge";
+    private static final int MAX_KNOWLEDGE = 500;
+    private static final int MAX_RELEVANT_KNOWLEDGE = 5;
+    private static final Pattern TERM = Pattern.compile("^\\s*[「“\"']?([^」”\"'：:\\n]{1,30})[」”\"']?\\s*[：:]\\s*(.+)$", Pattern.DOTALL);
     public static final List<String> SELF_TOPICS = List.of("性格", "喜好", "习惯", "经历", "心愿和约定");
     public static final int MAX_CONTENT = 200;
     public static final int MAX_TOPIC = 800;
     public static final int MAX_DIARY = 2000;
-    private static final Pattern SCOPE = Pattern.compile("self|diary|(user|group):\\d{5,12}");
+    private static final Pattern SCOPE = Pattern.compile("self|diary|knowledge|(user|group):\\d{5,12}");
     private static final Pattern DAY_LABEL = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
     private static final Pattern TAIL = Pattern.compile("#(\\d{4})(?!\\d)");
     private static final String PEER = "群友";
@@ -192,6 +196,9 @@ public final class MemoryStore {
             appendDiary(personaId, now, content, source);
             return diary(personaId, dayLabel(now));
         }
+        if (scope.equals(KNOWLEDGE)) {
+            return learn(personaId, content, source);
+        }
         String name = abbreviate(QqMessages.unforgeable(nonNull(label)).replaceAll("\\s+", " ").strip(), 60);
         long id = db.transaction(c -> {
             Database.update(c, "INSERT INTO memories (persona_id, scope, label, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -202,6 +209,50 @@ public final class MemoryStore {
         });
         prune(personaId, scope);
         return get(personaId, id);
+    }
+
+    public Memory learn(String personaId, String note, String source) {
+        Matcher m = TERM.matcher(nonNull(note));
+        if (!m.matches()) {
+            throw new IllegalArgumentException("知识要写成「词」：意思");
+        }
+        String term = abbreviate(QqMessages.unforgeable(m.group(1)).replaceAll("\\s+", " ").strip(), 30);
+        String meaning = clean(untail(m.group(2)));
+        if (term.isEmpty() || meaning.isEmpty()) {
+            throw new IllegalArgumentException("知识要写成「词」：意思");
+        }
+        long now = System.currentTimeMillis();
+        Memory same = db.one("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? AND label = ? COLLATE NOCASE",
+                MemoryStore::map, personaId, KNOWLEDGE, term);
+        if (same != null) {
+            db.update("UPDATE memories SET content = ?, source = ?, updated_at = ? WHERE id = ?", meaning, nonNull(source), now, same.id());
+            return get(personaId, same.id());
+        }
+        long id = db.transaction(c -> {
+            Database.update(c, "INSERT INTO memories (persona_id, scope, label, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    personaId, KNOWLEDGE, term, meaning, nonNull(source), now, now);
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("SELECT last_insert_rowid()")) {
+                return rs.next() ? rs.getLong(1) : -1L;
+            }
+        });
+        prune(personaId, KNOWLEDGE);
+        return get(personaId, id);
+    }
+
+    public String knowledge(String personaId, String context) {
+        if (context == null || context.isBlank()) {
+            return "";
+        }
+        String text = context.toLowerCase(Locale.ROOT);
+        List<Memory> hits = list(personaId, KNOWLEDGE).stream()
+                .filter(m -> m.label().length() >= 2 && text.contains(m.label().toLowerCase(Locale.ROOT)))
+                .limit(MAX_RELEVANT_KNOWLEDGE).toList();
+        if (hits.isEmpty()) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder("<你查过的>\n");
+        hits.forEach(m -> out.append("- 「").append(m.label()).append("」：").append(m.content()).append("\n"));
+        return out.append("</你查过的>\n\n").toString();
     }
 
     public boolean knows(String personaId, String scope, String content) {
@@ -230,7 +281,7 @@ public final class MemoryStore {
 
     public static boolean visible(Memory m, String session, Set<String> owners) {
         String source = m.source();
-        return source.isEmpty() || source.equals("manual") || source.startsWith("group:") || source.startsWith("mind:") || source.equals(session)
+        return m.scope().equals(KNOWLEDGE) || source.isEmpty() || source.equals("manual") || source.startsWith("group:") || source.startsWith("mind:") || source.equals(session)
                 || owners.stream().anyMatch(o -> session.equals("private:" + o));
     }
 
@@ -383,11 +434,14 @@ public final class MemoryStore {
         if (m.scope().equals(DIARY)) {
             return "【" + fullDay(m.label()) + "】" + m.content().replace("\n", " ");
         }
+        if (m.scope().equals(KNOWLEDGE)) {
+            return "「" + m.label() + "」：" + m.content().replace("\n", " ");
+        }
         return (m.scope().equals(SELF) && SELF_TOPICS.contains(m.label()) ? m.label() + "：" : "") + m.content().replace("\n", " ");
     }
 
     private void prune(String personaId, String scope) {
-        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : 30;
+        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : scope.equals(KNOWLEDGE) ? MAX_KNOWLEDGE : 30;
         db.update("""
                 DELETE FROM memories WHERE persona_id = ? AND scope = ? AND id NOT IN (
                     SELECT id FROM memories WHERE persona_id = ? AND scope = ? ORDER BY updated_at DESC, id DESC LIMIT ?)

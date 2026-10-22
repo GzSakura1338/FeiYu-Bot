@@ -22,9 +22,9 @@ import static dafeiyu.util.Texts.abbreviate;
 
 public final class ConversationMemory {
 
-    public record Conversation(String summary, String recent, List<ChatMessage> turns, int measuredTokens, String measuredBy) {
+    public record Conversation(String summary, String recent, List<ChatMessage> turns, int measuredTokens, String measuredBy, long lastId) {
 
-        static final Conversation EMPTY = new Conversation(null, null, List.of(), 0, "");
+        static final Conversation EMPTY = new Conversation(null, null, List.of(), 0, "", 0);
 
         public boolean hasCheckpoint() {
             return summary != null && !summary.isBlank();
@@ -56,12 +56,16 @@ public final class ConversationMemory {
     public Conversation load(String session) {
         State state = db.one("SELECT summary, recent, measured_tokens, measured_by FROM conversation_sessions WHERE session = ?",
                 rs -> new State(rs.getString(1), rs.getString(2), rs.getInt(3), rs.getString(4)), session);
+        long[] lastId = {0};
         List<ChatMessage> turns = db.list(
-                "SELECT role, content, reasoning, tool_calls, tool_call_id, tool_name, tool_error FROM conversation_turns WHERE session = ? ORDER BY id",
-                ConversationMemory::map, session);
+                "SELECT id, role, content, reasoning, tool_calls, tool_call_id, tool_name, tool_error FROM conversation_turns WHERE session = ? ORDER BY id",
+                rs -> {
+                    lastId[0] = rs.getLong("id");
+                    return map(rs);
+                }, session);
         return state == null
-                ? new Conversation(null, null, turns, 0, "")
-                : new Conversation(state.summary(), state.recent(), turns, state.measuredTokens(), state.measuredBy());
+                ? new Conversation(null, null, turns, 0, "", lastId[0])
+                : new Conversation(state.summary(), state.recent(), turns, state.measuredTokens(), state.measuredBy(), lastId[0]);
     }
 
     public void append(String session, List<ChatMessage> messages, int measuredTokens, String measuredBy) {
@@ -118,10 +122,10 @@ public final class ConversationMemory {
         }
     }
 
-    void checkpoint(String session, String summary, String recent) {
+    void checkpoint(String session, String summary, String recent, long upToId) {
         long now = System.currentTimeMillis();
         db.transaction(c -> {
-            Database.update(c, "DELETE FROM conversation_turns WHERE session = ?", session);
+            Database.update(c, "DELETE FROM conversation_turns WHERE session = ? AND id <= ?", session, upToId);
             Database.update(c, """
                     INSERT INTO conversation_sessions (session, summary, recent, measured_tokens, measured_by, compactions, updated_at)
                     VALUES (?, ?, ?, 0, '', 1, ?)

@@ -3,6 +3,7 @@ package dafeiyu.agent;
 import dafeiyu.agent.context.Compaction;
 import dafeiyu.agent.context.Compactor;
 import dafeiyu.agent.context.ConversationMemory;
+import dafeiyu.agent.context.HeldLines;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
@@ -44,6 +45,7 @@ public final class ChatAgent {
     private volatile Extensions extensions = Extensions.NONE;
     private final StickerKeeper stickers;
     private final Intercom intercom;
+    private final HeldLines held;
     private final SessionMonitor monitor = new SessionMonitor();
     private final Map<String, ReentrantLock> sessions = new ConcurrentHashMap<>();
 
@@ -61,6 +63,11 @@ public final class ChatAgent {
         this.reflection = new Reflection(this, memories, skills);
         this.stickers = new StickerKeeper(this, new StickerStore(db, db.file().toAbsolutePath().getParent().resolve("stickers")), guard);
         this.intercom = new Intercom(db);
+        this.held = new HeldLines(db);
+    }
+
+    public HeldLines held() {
+        return held;
     }
 
     public Intercom intercom() {
@@ -135,6 +142,23 @@ public final class ChatAgent {
 
     public void setErrands(java.util.function.Consumer<Errand> errands) {
         this.errands = errands;
+    }
+
+    public interface ForwardReader {
+
+        String read(String id) throws dafeiyu.agent.tool.ToolFailure;
+    }
+
+    private volatile ForwardReader forwards = id -> {
+        throw new dafeiyu.agent.tool.ToolFailure("QQ 没连上，读不了合并转发");
+    };
+
+    public void setForwardReader(ForwardReader forwards) {
+        this.forwards = forwards;
+    }
+
+    String readForward(String id) throws dafeiyu.agent.tool.ToolFailure {
+        return forwards.read(id);
     }
 
     private volatile java.util.function.BinaryOperator<String> poker = (session, userId) -> null;

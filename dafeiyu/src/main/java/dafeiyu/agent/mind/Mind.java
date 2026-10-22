@@ -34,7 +34,6 @@ public final class Mind implements QqChatBridge.Observer {
 
     public static final String SESSION = "mind:self";
     private static final Map<String, Long> PACES = Map.of("fast", 15_000L, "normal", 40_000L, "slow", 120_000L);
-    private static final long NIGHT_MS = 5 * 60_000;
     private static final long ACTING_MS = 3_000;
     private static final long PAUSED_MS = 30_000;
     private static final long FAILED_MS = 60_000;
@@ -46,7 +45,8 @@ public final class Mind implements QqChatBridge.Observer {
     private static final int MAX_ACTING_STREAK = 3;
     private static final int LINES_PER_PLACE = 3;
     private static final int MAX_ERRANDS = 5;
-    private static final int MAX_PERCEIVED = 900;
+    private static final int MAX_PERCEIVED = 4_000;
+    private static final int MAX_PER_LINE = 400;
     private static final LocalTime SLEEP_FROM = LocalTime.of(1, 0);
     private static final LocalTime WAKE_AT = LocalTime.of(8, 0);
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -181,7 +181,7 @@ public final class Mind implements QqChatBridge.Observer {
             synchronized (bell) {
                 try {
                     while (!wake) {
-                        long due = blocked || !awake() ? until : Math.min(until, stirAt);
+                        long due = blocked ? until : Math.min(until, stirAt);
                         long left = due - System.currentTimeMillis();
                         if (left <= 0) {
                             break;
@@ -257,10 +257,6 @@ public final class Mind implements QqChatBridge.Observer {
 
     private long pace(boolean acting, boolean eventful) {
         long base = PACES.getOrDefault(agent.store().mindPace(), PACES.get("normal"));
-        if (!awake()) {
-            actingStreak = 0;
-            return Math.max(base, NIGHT_MS);
-        }
         if (acting && actingStreak < MAX_ACTING_STREAK) {
             actingStreak++;
             return ACTING_MS;
@@ -292,7 +288,23 @@ public final class Mind implements QqChatBridge.Observer {
             }
             places.clear();
         }
-        return abbreviate(String.join("\n", lines), MAX_PERCEIVED);
+        StringBuilder out = new StringBuilder();
+        int written = 0;
+        for (String line : lines) {
+            String item = abbreviate(line, MAX_PER_LINE);
+            if (out.length() + item.length() > MAX_PERCEIVED) {
+                break;
+            }
+            out.append(out.isEmpty() ? "" : "\n").append(item);
+            written++;
+        }
+        if (written < lines.size()) {
+            out.append("\n（还有 ").append(lines.size() - written).append(" 件事一下子想不过来，下一轮接着看）");
+            synchronized (places) {
+                own.addAll(0, lines.subList(written, lines.size()));
+            }
+        }
+        return out.toString();
     }
 
     private String placeName(String where) {

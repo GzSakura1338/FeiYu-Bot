@@ -37,18 +37,16 @@ final class GroupState {
     private final Map<String, Boolean> botMessages = lru(100);
     private final Deque<Long> botTimes = new ArrayDeque<>();
     private long lastBotAt;
-    private long lastLookAt;
     private String streakUser = "";
     private int streak;
     private long streakAt;
     private long coolingUntil;
     boolean busy;
     boolean pendingAddressed;
-    final List<Held> held = new ArrayList<>();
-
-    record Held(String line, String userId, String attachments) {}
     ScheduledFuture<?> ambient;
     long ambientDeadline;
+    ScheduledFuture<?> calm;
+    boolean calmAddressed;
 
     GroupState(String groupId) {
         this.groupId = groupId;
@@ -79,8 +77,13 @@ final class GroupState {
         }
     }
 
-    synchronized boolean tooChatty() {
-        return spokenWithin(BURST_WINDOW_MS) >= BURST_LIMIT;
+    synchronized long calmIn() {
+        long now = System.currentTimeMillis();
+        List<Long> burst = botTimes.stream().filter(t -> now - t < BURST_WINDOW_MS).toList();
+        if (burst.size() < BURST_LIMIT) {
+            return 0;
+        }
+        return burst.get(burst.size() - BURST_LIMIT) + BURST_WINDOW_MS - now;
     }
 
     synchronized int spokenWithin(long ms) {
@@ -119,6 +122,9 @@ final class GroupState {
         long now = System.currentTimeMillis();
         lastBotAt = now;
         botTimes.addLast(now);
+        while (now - botTimes.peekFirst() > 3_600_000) {
+            botTimes.pollFirst();
+        }
         if (messageId != null && !messageId.isEmpty()) {
             botMessages.put(messageId, true);
             recent.put(messageId, "你：" + text);
@@ -176,22 +182,6 @@ final class GroupState {
             }
         }
         return out;
-    }
-
-    synchronized void looked() {
-        lastLookAt = System.currentTimeMillis();
-    }
-
-    synchronized long lookDelay(long quietMs, long intervalMs) {
-        return Math.max(quietMs, lastLookAt + intervalMs - System.currentTimeMillis());
-    }
-
-    synchronized boolean mayChimeIn(long cooldownMs, int hourlyLimit) {
-        long now = System.currentTimeMillis();
-        while (!botTimes.isEmpty() && now - botTimes.peekFirst() > 3_600_000) {
-            botTimes.pollFirst();
-        }
-        return now - lastBotAt >= cooldownMs && botTimes.size() < hourlyLimit;
     }
 
     private void prune() {

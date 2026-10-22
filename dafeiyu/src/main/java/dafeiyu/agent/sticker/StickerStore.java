@@ -186,6 +186,33 @@ public final class StickerStore {
         return ids;
     }
 
+    public record Piece(String text, long sticker) {
+
+        public boolean isSticker() {
+            return sticker > 0;
+        }
+    }
+
+    public static List<Piece> pieces(String text) {
+        List<Piece> out = new ArrayList<>();
+        Matcher m = TAG.matcher(text);
+        int last = 0;
+        while (m.find()) {
+            addText(out, text.substring(last, m.start()));
+            out.add(new Piece("", Long.parseLong(m.group(1))));
+            last = m.end();
+        }
+        addText(out, text.substring(last));
+        return out;
+    }
+
+    private static void addText(List<Piece> out, String text) {
+        String clean = text.replaceAll("[ \\t]{2,}", " ").strip();
+        if (!clean.isEmpty()) {
+            out.add(new Piece(clean, 0));
+        }
+    }
+
     public static String withoutTags(String text) {
         return TAG.matcher(text).replaceAll("").replaceAll("\\s{2,}", " ").strip();
     }

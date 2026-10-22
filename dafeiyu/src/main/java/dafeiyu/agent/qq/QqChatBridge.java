@@ -12,6 +12,7 @@ import dafeiyu.agent.SessionDetail;
 import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.TurnRunner;
+import dafeiyu.agent.context.HeldLines;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.model.ImageLoader;
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 
 import static dafeiyu.agent.qq.QqMessages.senderName;
 import static dafeiyu.agent.qq.QqMessages.unforgeable;
+import static dafeiyu.util.Jsons.optObject;
 import static dafeiyu.util.Jsons.optString;
 import static dafeiyu.util.Texts.abbreviate;
 
@@ -57,12 +59,9 @@ public final class QqChatBridge {
     private static final String RESUMED = "你刚才正在回这条，回到一半被重启打断了，对方还没收到你的回复。接着把它回完；刚才在做的事（写文件、调工具）如果没做完，"
             + "看看聊天记录里做到哪一步了，接着做完，别从头重来。";
     private static final String FOCUS ="对方在说什么就接什么，先回应这条，别答非所问；别扯回前面已经聊完的话题，也别突然提起很久以前的事或者别处的事，除非对方自己提到。";
-    private static final long AMBIENT_QUIET_MIN_MS = 4_000;
-    private static final long AMBIENT_QUIET_MAX_MS = 12_000;
-    private static final long AMBIENT_MAX_WAIT_MS = 25_000;
-    private static final long AMBIENT_LOOK_INTERVAL_MS = 30_000;
-    private static final long AMBIENT_COOLDOWN_MS = 20_000;
-    private static final int AMBIENT_HOURLY_LIMIT = 30;
+    private static final long AMBIENT_QUIET_MIN_MS = 2_000;
+    private static final long AMBIENT_QUIET_MAX_MS = 4_000;
+    private static final long AMBIENT_MAX_WAIT_MS = 8_000;
     private static final long RECENT_TALK_MS = 10 * 60_000;
     private static final long CONVERSATION_MS = 3 * 60_000;
     private static final long ACTIVE_MEMBERS_MS = 3 * 86_400_000L;
@@ -102,6 +101,7 @@ public final class QqChatBridge {
     private final QqOutbox outbox;
     private final QqContacts contacts;
     private final QqBackfill backfill;
+    private final QqActions actions;
     private volatile Observer observer;
     private volatile MessageGate gate = MessageGate.NONE;
     private volatile long lastActivity = System.currentTimeMillis();
@@ -121,6 +121,8 @@ public final class QqChatBridge {
         this.outbox = new QqOutbox(agent, napcat, archive, log, groups);
         this.contacts = new QqContacts(agent, napcat, archive, outbox, log);
         this.backfill = new QqBackfill(agent, archive, outbox, log);
+        this.actions = new QqActions(agent, archive, outbox, contacts, log);
+        agent.setForwardReader(actions::describeForward);
         agent.setPoker((session, userId) -> {
             try {
                 return poke(session, userId);
@@ -130,6 +132,10 @@ public final class QqChatBridge {
             }
         });
         agent.intercom().onNotes(this::deliverNotes);
+        agent.held().takeAll().forEach((session, lines) -> {
+            lines.forEach(h -> agent.hear(session, h.line(), h.userId(), h.attachments()));
+            log.info("agent [" + session + "] restored " + lines.size() + " message(s) heard while a reply was cut off");
+        });
     }
 
     public String whyNotTell(String session) {
@@ -151,7 +157,8 @@ public final class QqChatBridge {
             if (!userId.matches("\\d{5,12}")) {
                 return "QQ 号不对";
             }
-            return contacts.canMessage(userId) ? null : "不是好友，也没私聊过，去你们都在的群里 @ 他吧";
+            return contacts.canMessage(userId) || outbox.hasTempGroup(userId) ? null
+                    : "不是好友，也没私聊过；可以用 message_stranger 走群临时会话直接发，或者去你们都在的群里 @ 他";
         }
         return "只能交给群聊或私聊";
     }
@@ -281,12 +288,34 @@ public final class QqChatBridge {
         }
     }
 
+    public QqActions actions() {
+        return actions;
+    }
+
     public void onEvent(JsonObject event) {
         if (optString(event, "post_type").equals("notice") && optString(event, "sub_type").equals("poke")) {
             onPoke(event);
             return;
         }
+        if (optString(event, "post_type").equals("request") && optString(event, "request_type").equals("friend")) {
+            executor.submit(() -> {
+                actions.friendRequested(event);
+                String userId = optString(event, "user_id");
+                String comment = optString(event, "comment").strip();
+                observeHeard("private:" + userId, "QQ " + userId + " 想加你好友（验证消息：" + (comment.isEmpty() ? "没写" : abbreviate(comment, 60))
+                        + "），用 friend_requests 看看、answer_friend 决定", comment, true);
+            });
+            return;
+        }
         if (optString(event, "post_type").equals("message")) {
+            if (optString(event, "message_type").equals("private") && optString(event, "sub_type").equals("group")) {
+                JsonObject sender = optObject(event, "sender");
+                String via = optString(event, "group_id");
+                if (via.isEmpty() && sender != null) {
+                    via = optString(sender, "group_id");
+                }
+                outbox.rememberTempGroup(optString(event, "user_id"), via);
+            }
             ingest(event, true);
         }
     }
@@ -294,6 +323,7 @@ public final class QqChatBridge {
     public void onConnected() {
         resumeInterrupted();
         backfill.run(this::ingest);
+        agent.intercom().sessionsWithNotes().forEach(this::deliverNotes);
     }
 
     private void resumeInterrupted() {
@@ -433,7 +463,7 @@ public final class QqChatBridge {
         boolean addressed = me && !state.cooling(userId) && !looksLikeMe(name);
         state.add(new Line("", userId, name, line, System.currentTimeMillis(), addressed, List.of(), false));
         hear(state, line, userId, attachments.toString());
-        if (!agent.store().groupMode() || state.tooChatty()) {
+        if (!agent.store().groupMode()) {
             return;
         }
         react(state, selfId, addressed);
@@ -464,21 +494,39 @@ public final class QqChatBridge {
                 addressed || incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()));
         state.add(new Line(messageId, userId, name, line, System.currentTimeMillis(), addressed, incoming.imageUrls(), false));
         hear(state, line, userId, incoming.attachments());
-        if (state.tooChatty()) {
-            log.info("agent [group " + groupId + "] said a lot just now, holding back");
-            return;
-        }
         if (agent.store().groupMode() || addressed) {
             react(state, selfId, addressed);
         }
     }
 
     private void react(GroupState state, String selfId, boolean addressed) {
-        if (addressed) {
+        long wait = state.calmIn();
+        if (wait > 0) {
+            holdBack(state, selfId, addressed, wait);
+        } else if (addressed) {
             lastActivity = System.currentTimeMillis();
             startGroupTurn(state, selfId, Mode.ADDRESSED);
         } else {
             scheduleAmbient(state, selfId);
+        }
+    }
+
+    private void holdBack(GroupState state, String selfId, boolean addressed, long wait) {
+        synchronized (state) {
+            state.calmAddressed |= addressed;
+            if (state.calm != null) {
+                return;
+            }
+            log.info("agent [group " + state.groupId + "] said a lot just now, looking again in " + (wait / 1000 + 1) + "s");
+            state.calm = scheduler.schedule(() -> {
+                boolean again;
+                synchronized (state) {
+                    again = state.calmAddressed;
+                    state.calmAddressed = false;
+                    state.calm = null;
+                }
+                react(state, selfId, again);
+            }, wait + 500, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -565,7 +613,7 @@ public final class QqChatBridge {
     private void hear(GroupState state, String line, String userId, String attachments) {
         synchronized (state) {
             if (state.busy) {
-                state.held.add(new GroupState.Held(line, userId, attachments));
+                agent.held().add("group:" + state.groupId, new HeldLines.Line(line, userId, attachments));
                 return;
             }
             heardNow(state, line, userId, attachments);
@@ -597,8 +645,7 @@ public final class QqChatBridge {
     private void release(GroupState state, String selfId) {
         boolean again;
         synchronized (state) {
-            state.held.forEach(h -> heardNow(state, h.line(), h.userId(), h.attachments()));
-            state.held.clear();
+            agent.held().take("group:" + state.groupId).forEach(h -> heardNow(state, h.line(), h.userId(), h.attachments()));
             state.busy = false;
             again = state.pendingAddressed;
             state.pendingAddressed = false;
@@ -650,7 +697,6 @@ public final class QqChatBridge {
                 return;
             }
         }
-        state.looked();
         Line trigger = null;
         if (mode == Mode.ADDRESSED) {
             for (int i = lines.size() - 1; i >= 0 && trigger == null; i--) {
@@ -738,11 +784,11 @@ public final class QqChatBridge {
         synchronized (state) {
             long now = System.currentTimeMillis();
             if (state.ambient == null) {
-                state.ambientDeadline = now + state.lookDelay(AMBIENT_MAX_WAIT_MS, AMBIENT_LOOK_INTERVAL_MS);
+                state.ambientDeadline = now + AMBIENT_MAX_WAIT_MS;
             } else {
                 state.ambient.cancel(false);
             }
-            long delay = Math.min(state.lookDelay(quiet, AMBIENT_LOOK_INTERVAL_MS), Math.max(0, state.ambientDeadline - now));
+            long delay = Math.min(quiet, Math.max(0, state.ambientDeadline - now));
             state.ambient = scheduler.schedule(() -> ambientCheck(state, selfId), delay, TimeUnit.MILLISECONDS);
         }
     }
@@ -750,10 +796,14 @@ public final class QqChatBridge {
     private void ambientCheck(GroupState state, String selfId) {
         synchronized (state) {
             state.ambient = null;
-            if (!agent.store().qqReply() || !agent.store().groupMode() || state.busy || !state.hasNewLines()
-                    || state.tooChatty() || !state.mayChimeIn(AMBIENT_COOLDOWN_MS, AMBIENT_HOURLY_LIMIT)) {
+            if (!agent.store().qqReply() || !agent.store().groupMode() || state.busy || !state.hasNewLines()) {
                 return;
             }
+        }
+        long wait = state.calmIn();
+        if (wait > 0) {
+            holdBack(state, selfId, false, wait);
+            return;
         }
         startGroupTurn(state, selfId, Mode.AMBIENT);
     }
@@ -803,6 +853,7 @@ public final class QqChatBridge {
             observeSaid(target.session(), text);
         } catch (ToolFailure e) {
             log.warn("agent [" + target.where() + "] send failed: " + e.getMessage());
+            agent.hear(target.session(), "（你上面那句没发到 QQ：" + abbreviate(e.getMessage(), 80) + "）");
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
