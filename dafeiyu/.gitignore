@@ -9,3 +9,4 @@ skid/
 plugins/*
 !plugins/sdk/
 __pycache__/
+docs/
