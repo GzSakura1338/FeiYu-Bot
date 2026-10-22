@@ -52,6 +52,25 @@ function selfLabel(time) {
 }
 
 const qqOf = name => (name ? speakerIds[name] ?? speakerIds[name.replace(/#\d{4}$/, '')] ?? null : null);
+const QQ_NAME = /^(?:QQ\s*)?(\d{5,12})$/;
+
+function nameOfQq(qq) {
+  for (const [label, id] of Object.entries(speakerIds)) {
+    if (String(id) === qq && label.trim() && !/#\d{4}$/.test(label) && !QQ_NAME.test(label.trim())) return label;
+  }
+  return null;
+}
+
+function speaker(name) {
+  const m = name ? QQ_NAME.exec(name.trim()) : null;
+  if (m) return { qq: m[1], name: nameOfQq(m[1]) ?? `QQ ${m[1]}` };
+  return { qq: qqOf(name), name };
+}
+
+const mentionNames = text => text.replace(/@(\d{5,12})(?!\d)/g, (all, qq) => {
+  const name = nameOfQq(qq);
+  return name ? `@${name}` : all;
+});
 let live = new Map();
 let running = new Map();
 let source = null;
@@ -255,9 +274,10 @@ function userEntries(content, time, s, rawAttachments = '') {
       row.append(label, el('div', 'bubble bubble-console body-large', parsed.text));
       return row;
     }
-    const name = parsed.name ?? (s.kind === 'private' ? s.name : '群友');
+    const who = s.kind === 'private' ? { qq: s.target, name: parsed.name ?? s.name } : speaker(parsed.name);
+    const name = who.name ?? (s.kind === 'private' ? s.name : '群友');
     const row = el('div', 'msg msg-in new');
-    row.append(s.kind === 'private' ? createAvatar(s.target, name) : createAvatar(qqOf(parsed.name), name));
+    row.append(createAvatar(who.qq, name));
     const body = el('div', 'msg-body');
     const label = el('div', 'msg-label label-small');
     label.append(el('span', 'msg-name', name));
@@ -267,7 +287,7 @@ function userEntries(content, time, s, rawAttachments = '') {
     body.append(label);
     const own = parsed === carrier ? attachments : [];
     const text = stripPlaceholders(parsed.text, own);
-    if (text) body.append(renderSaid(meText(text), 'bubble bubble-in body-large'));
+    if (text) body.append(renderSaid(meText(mentionNames(text)), 'bubble bubble-in body-large'));
     body.append(...attachmentNodes(own));
     row.append(body);
     return row;

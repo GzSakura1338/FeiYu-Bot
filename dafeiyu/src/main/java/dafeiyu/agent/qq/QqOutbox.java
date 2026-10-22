@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -92,7 +93,7 @@ final class QqOutbox {
     String prepare(String raw) {
         String text = QqFaces.limit(QqText.format(abbreviate(raw, MAX_REPLY_LENGTH)), false);
         StickerStore store = agent.stickers().store();
-        return StickerStore.limit(text, false, id -> {
+        return StickerStore.limit(text, id -> {
             StickerStore.Sticker s = store.get(id);
             return s != null && s.usable();
         });
@@ -136,17 +137,20 @@ final class QqOutbox {
             throw new ToolFailure("没有要发的内容");
         }
         boolean quoted = false;
-        boolean stickerDone = false;
+        int stickerSent = 0;
         ToolFailure stickerFailed = null;
+        Map<Long, StickerStore.Sticker> byId = new HashMap<>();
+        stickers.forEach(s -> byId.put(s.id(), s));
         List<StickerStore.Piece> pieces = stickers.isEmpty() ? List.of(new StickerStore.Piece(words, 0)) : StickerStore.pieces(filtered);
         for (StickerStore.Piece piece : pieces) {
             if (piece.isSticker()) {
-                if (stickerDone || stickers.isEmpty() || stickers.getFirst().id() != piece.sticker()) {
+                StickerStore.Sticker sticker = byId.get(piece.sticker());
+                if (sticker == null || stickerSent >= StickerStore.MAX_PER_MESSAGE) {
                     continue;
                 }
-                stickerDone = true;
+                stickerSent++;
                 try {
-                    sendSticker(target, stickers.getFirst());
+                    sendSticker(target, sticker);
                 } catch (ToolFailure e) {
                     stickerFailed = e;
                 }
@@ -189,7 +193,8 @@ final class QqOutbox {
 
     private List<StickerStore.Sticker> stickers(String text) {
         StickerStore store = agent.stickers().store();
-        return StickerStore.tags(text).stream().limit(1).map(store::get).filter(s -> s != null && !s.file().isEmpty()).toList();
+        return StickerStore.tags(text).stream().distinct().limit(StickerStore.MAX_PER_MESSAGE).map(store::get)
+                .filter(s -> s != null && !s.file().isEmpty()).toList();
     }
 
     void sendSticker(Target target, StickerStore.Sticker sticker) throws ToolFailure {

@@ -39,9 +39,9 @@ final class HttpJson {
         boolean accept(SseEvent event) throws AgentException;
     }
 
-    static final Duration HEADER_TIMEOUT = Duration.ofSeconds(300);
+    static final Duration HEADER_TIMEOUT = Duration.ofSeconds(90);
     static final Duration LIST_TIMEOUT = Duration.ofSeconds(20);
-    static final Duration CHUNK_TIMEOUT = Duration.ofSeconds(900);
+    static final Duration CHUNK_TIMEOUT = Duration.ofSeconds(180);
 
     private static final int ERROR_BODY_MAX = 64 * 1024;
     private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
@@ -239,14 +239,27 @@ final class HttpJson {
         if (e instanceof HttpTimeoutException) {
             return new AgentException(Kind.TIMEOUT, "no response within " + request.timeout().orElse(HEADER_TIMEOUT).toSeconds() + "s");
         }
-        return new AgentException(Kind.TRANSPORT, "cannot connect to " + request.uri().getHost() + ": " + e);
+        String host = request.uri().getHost();
+        return new AgentException(Kind.TRANSPORT, e instanceof java.net.ConnectException
+                ? "cannot connect to " + host + ": " + e.getMessage()
+                : "connection to " + host + " dropped: " + e.getMessage());
     }
 
     private static AgentException httpError(int code, String body, URI uri, java.util.Map<String, List<String>> headers) {
         String detail = ProviderErrors.message(parseObject(body));
         if (detail.isEmpty()) {
             String text = body.strip();
-            detail = text.startsWith("<") ? "got a web page from " + uri + ", check the Base URL" : abbreviate(text, 200);
+            if (!text.startsWith("<")) {
+                detail = abbreviate(text, 200);
+            } else if (code >= 500) {
+                java.util.regex.Matcher title = java.util.regex.Pattern.compile("(?is)<title>(.*?)</title>").matcher(text);
+                String server = headers == null ? "" : headers.entrySet().stream().filter(h -> h.getKey().equalsIgnoreCase("server"))
+                        .flatMap(h -> h.getValue().stream()).findFirst().orElse("");
+                detail = "the gateway or CDN in front of " + uri.getHost() + " returned an error page"
+                        + (title.find() ? " (" + abbreviate(title.group(1).strip(), 60) + ")" : "") + (server.isEmpty() ? "" : ", server: " + server);
+            } else {
+                detail = "got a web page from " + uri + ", check the Base URL";
+            }
         }
         return ProviderErrors.classify(code, "HTTP " + code + (detail.isEmpty() ? "" : ": " + detail), body, headers);
     }

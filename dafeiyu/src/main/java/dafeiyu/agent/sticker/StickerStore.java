@@ -35,6 +35,8 @@ public final class StickerStore {
     static final String FAILED = "failed";
     static final String UNSAFE = "unsafe";
     static final Pattern TAG = Pattern.compile("\\[表情包[:：]\\s*#?(\\d{1,9})\\s*]");
+    public static final int MAX_PER_MESSAGE = 3;
+    private static final long RECENT_SENT_MS = 2 * 3_600_000L;
     private static final String COLUMNS = "id, hash, source, url, file, mime, description, status, hidden, seen_count, sent_count, first_seen, last_seen, last_sent";
 
     private final Database db;
@@ -94,8 +96,8 @@ public final class StickerStore {
     List<Sticker> catalog(int limit) {
         return db.list("""
                 SELECT %s FROM stickers WHERE status = 'ready' AND hidden = 0 AND file <> ''
-                ORDER BY (source IN ('favorite', 'collected')) * 40 + MIN(sent_count, 5) * 4 + MIN(seen_count, 5) * 2 + ABS(RANDOM() %% 60) DESC LIMIT ?
-                """.formatted(COLUMNS), StickerStore::map, limit);
+                ORDER BY (source IN ('favorite', 'collected')) * 20 - MIN(sent_count, 10) * 4 - (last_sent > ?) * 80 + ABS(RANDOM() %% 60) DESC LIMIT ?
+                """.formatted(COLUMNS), StickerStore::map, System.currentTimeMillis() - RECENT_SENT_MS, limit);
     }
 
     void saved(long id, String file, String mime) {
@@ -163,15 +165,15 @@ public final class StickerStore {
         return TAG.matcher(text).find();
     }
 
-    public static String limit(String text, boolean cooldown, LongPredicate usable) {
+    public static String limit(String text, LongPredicate usable) {
         Matcher m = TAG.matcher(text);
         StringBuilder out = new StringBuilder();
-        boolean kept = false;
+        int kept = 0;
         while (m.find()) {
             long id = Long.parseLong(m.group(1));
-            boolean keep = !kept && !cooldown && usable.test(id);
+            boolean keep = kept < MAX_PER_MESSAGE && usable.test(id);
             m.appendReplacement(out, keep ? Matcher.quoteReplacement("[表情包:" + id + "]") : "");
-            kept |= keep;
+            kept += keep ? 1 : 0;
         }
         m.appendTail(out);
         return out.toString().replaceAll("\\s{2,}", " ").strip();

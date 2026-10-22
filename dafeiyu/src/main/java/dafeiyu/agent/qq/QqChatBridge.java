@@ -188,7 +188,7 @@ public final class QqChatBridge {
     private static String notePrompt(List<Intercom.Note> notes) {
         return "（你心里想到要在这里说：" + String.join("；", notes.stream().map(Intercom.Note::intent).toList())
                 + "。这是你自己的念头，不是别人问的。结合现在的聊天，像平时一样自然地说出来，可以 @ 相关的人；"
-                + "现在说不合适、或者刚才已经说过了，就只写 " + TurnRunner.SILENCE + "。）";
+                + "只有刚刚已经说过一样的意思时才只写 " + TurnRunner.SILENCE + "，否则就说出来。）";
     }
 
     private void countProactive() {
@@ -288,6 +288,11 @@ public final class QqChatBridge {
         }
     }
 
+    private String memberOr(String groupId, String userId) {
+        String name = contacts.memberName(groupId, userId);
+        return name.isBlank() ? "QQ " + userId : name;
+    }
+
     public QqActions actions() {
         return actions;
     }
@@ -295,6 +300,10 @@ public final class QqChatBridge {
     public void onEvent(JsonObject event) {
         if (optString(event, "post_type").equals("notice") && optString(event, "sub_type").equals("poke")) {
             onPoke(event);
+            return;
+        }
+        if (optString(event, "post_type").equals("notice") && optString(event, "notice_type").equals("group_card")) {
+            contacts.forgetMember(optString(event, "group_id"), optString(event, "user_id"));
             return;
         }
         if (optString(event, "post_type").equals("request") && optString(event, "request_type").equals("friend")) {
@@ -378,8 +387,10 @@ public final class QqChatBridge {
             return;
         }
         GroupState state = messageType.equals("group") ? groups.computeIfAbsent(optString(event, "group_id"), GroupState::new) : null;
+        String eventGroup = optString(event, "group_id");
         Incoming incoming = QqMessages.parse(event, selfId, state == null ? (qq, hint) -> hint
-                : (qq, hint) -> state.mentionName(qq, hint, agent.personas().isOwner(qq), this::reservedName), this::stickerLabel);
+                : (qq, hint) -> state.mentionName(qq, hint == null || hint.isBlank() ? contacts.memberName(eventGroup, qq) : hint,
+                        agent.personas().isOwner(qq), this::reservedName), this::stickerLabel);
         if (incoming.text().isEmpty() && incoming.imageUrls().isEmpty()) {
             return;
         }
@@ -454,9 +465,8 @@ public final class QqChatBridge {
             return;
         }
         GroupState state = groups.computeIfAbsent(groupId, GroupState::new);
-        Map<String, String> senders = archive.groupSenders(groupId);
-        String name = state.label(unforgeable(senders.getOrDefault(userId, "QQ " + userId)), userId, owner, this::reservedName);
-        String target = me ? "你" : state.label(unforgeable(senders.getOrDefault(targetId, "QQ " + targetId)), targetId,
+        String name = state.label(unforgeable(memberOr(groupId, userId)), userId, owner, this::reservedName);
+        String target = me ? "你" : state.label(unforgeable(memberOr(groupId, targetId)), targetId,
                 agent.personas().isOwner(targetId), this::reservedName);
         String line = (owner ? OWNER_TAG : "") + POKE_TAG + name + " " + action + " " + target + suffix;
         observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, action + " " + target + suffix, me);
@@ -473,7 +483,11 @@ public final class QqChatBridge {
                                 boolean react) {
         String groupId = state.groupId;
         String messageId = optString(event, "message_id");
-        String name = state.label(unforgeable(senderName(event)), userId, owner, this::reservedName);
+        String sender = senderName(event);
+        if (sender.isBlank() || sender.equals(userId)) {
+            sender = contacts.memberName(groupId, userId);
+        }
+        String name = state.label(unforgeable(sender), userId, owner, this::reservedName);
         String quote = incoming.replyTo().isEmpty() ? "" : state.quote(incoming.replyTo());
         String flat = text.strip().replaceAll("\\s*\\R+\\s*", " / ");
         String line = (owner ? OWNER_TAG : "") + name + quote + "：" + flat;
@@ -725,8 +739,8 @@ public final class QqChatBridge {
             int said = state.spokenWithin(RECENT_TALK_MS);
             prompt.append(prompt.isEmpty() ? "" : "\n").append(TurnRunner.AMBIENT).append("以上是群里刚刚的聊天，没人 @ 你。")
                     .append(said > 0 ? "你最近十分钟已经在群里说了 " + said + " 句。" : "你最近十分钟没在群里说话。")
-                    .append("像群里的普通一员一样：最新的消息在接你刚才的话、在说你、在问一个没人回的问题，或者熟人在闹、聊到你感兴趣的事，就自然地接一句；")
-                    .append("别人之间在聊、跟你无关的，或者你刚说过很多了，就只写 ").append(TurnRunner.SILENCE).append("。");
+                    .append("你是群里最活跃的那个，看到了就接一句：接话、吐槽、起哄、回答、关心人、发个表情包都行，别光看着；")
+                    .append("只有别人两个人之间 @ 着说私事、实在插不上嘴时，才只写 ").append(TurnRunner.SILENCE).append("。");
         } else {
             prompt.append(prompt.isEmpty() ? "" : "\n").append("（").append(resumedGroups.remove(state.groupId) ? RESUMED : "")
                     .append("有人在跟你说话，现在要回的是这条：「").append(abbreviate(trigger.text(), 300)).append("」。").append(FOCUS).append("）");

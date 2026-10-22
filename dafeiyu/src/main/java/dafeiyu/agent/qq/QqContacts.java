@@ -23,6 +23,11 @@ import static dafeiyu.util.Jsons.optString;
 final class QqContacts {
 
     private static final long TTL_MS = 60_000;
+    private static final long MEMBER_TTL_MS = 2 * 60_000;
+
+    private record Member(String name, long at) {}
+
+    private final Map<String, Member> members = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final ChatAgent agent;
     private final NapCatService napcat;
@@ -72,6 +77,42 @@ final class QqContacts {
             }
         }
         return friends;
+    }
+
+    String memberName(String groupId, String userId) {
+        if (groupId == null || userId == null || !groupId.matches("\\d{5,12}") || !userId.matches("\\d{5,12}")) {
+            return "";
+        }
+        String key = groupId + ":" + userId;
+        long now = System.currentTimeMillis();
+        Member cached = members.get(key);
+        if (cached != null && now - cached.at() < MEMBER_TTL_MS) {
+            return cached.name();
+        }
+        String name = archive.groupSenders(groupId).getOrDefault(userId, "");
+        if ((name.isBlank() || name.equals(userId)) && napcat.status().connected()) {
+            try {
+                JsonObject params = new JsonObject();
+                params.addProperty("group_id", Long.parseLong(groupId));
+                params.addProperty("user_id", Long.parseLong(userId));
+                JsonObject data = dafeiyu.util.Jsons.optObject(outbox.call("get_group_member_info", params, Duration.ofSeconds(3)), "data");
+                if (data != null) {
+                    String card = optString(data, "card").strip();
+                    name = card.isEmpty() ? optString(data, "nickname").strip() : card;
+                }
+            } catch (ToolFailure | RuntimeException ignored) {
+            }
+        }
+        name = name == null || name.equals(userId) ? "" : name;
+        if (members.size() > 5000) {
+            members.clear();
+        }
+        members.put(key, new Member(name, now));
+        return name;
+    }
+
+    void forgetMember(String groupId, String userId) {
+        members.remove(groupId + ":" + userId);
     }
 
     void forgetFriends() {

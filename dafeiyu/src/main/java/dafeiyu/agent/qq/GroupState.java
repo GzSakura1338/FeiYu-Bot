@@ -24,7 +24,7 @@ final class GroupState {
     private static final long MAX_AGE_MS = 30 * 60 * 1000;
     private static final int QUOTE_CHARS = 30;
     private static final long BURST_WINDOW_MS = 60_000;
-    private static final int BURST_LIMIT = 3;
+    private static final int BURST_LIMIT = 5;
     private static final long STREAK_GAP_MS = 3 * 60_000;
     private static final int STREAK_LIMIT = 4;
     private static final long STREAK_COOLDOWN_MS = 5 * 60_000;

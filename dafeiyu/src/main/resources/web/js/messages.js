@@ -1,5 +1,5 @@
 import { $, el, poll } from './dom.js';
-import { plainContent } from './message.js';
+import { plainContent, rememberName } from './message.js';
 import { createAvatar } from './avatar.js';
 import { setLogFilter } from './logs.js';
 
@@ -21,6 +21,7 @@ function whereLabel(m) {
 }
 
 function renderItem(m, fresh) {
+  if (m.direction !== 'out') rememberName(m.userId, m.senderName);
   const item = el('li', fresh ? 'list-item recent-item new' : 'list-item recent-item');
   if (m.direction === 'out') item.classList.add('outgoing');
   const text = el('div', 'list-text');

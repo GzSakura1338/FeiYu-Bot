@@ -28,7 +28,7 @@ import static dafeiyu.util.Texts.abbreviate;
 
 public final class Mind implements QqChatBridge.Observer {
 
-    public record Status(boolean enabled, boolean awake, boolean thinking, String pace, long lastAt, long nextAt, int thoughts,
+    public record Status(boolean enabled, boolean thinking, String pace, long lastAt, long nextAt, int thoughts,
                          int spokeToday, String why, long contextTokens, int contextWindow, long compactAt,
                          int compactions) {}
 
@@ -47,8 +47,6 @@ public final class Mind implements QqChatBridge.Observer {
     private static final int MAX_ERRANDS = 5;
     private static final int MAX_PERCEIVED = 4_000;
     private static final int MAX_PER_LINE = 400;
-    private static final LocalTime SLEEP_FROM = LocalTime.of(1, 0);
-    private static final LocalTime WAKE_AT = LocalTime.of(8, 0);
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private static final class Place {
@@ -116,7 +114,7 @@ public final class Mind implements QqChatBridge.Observer {
 
     public Status status() {
         SessionDetail detail = agent.session(SESSION, 0);
-        return new Status(agent.store().freeWill(), awake(), thinking, agent.store().mindPace(), lastAt, nextAt, thoughts,
+        return new Status(agent.store().freeWill(), thinking, agent.store().mindPace(), lastAt, nextAt, thoughts,
                 bridge.proactiveToday(), blocker(), agent.contextTokens(SESSION), agent.contextWindow(),
                 agent.compactAt(SESSION), detail.compactions());
     }
@@ -326,8 +324,8 @@ public final class Mind implements QqChatBridge.Observer {
             }
             memories += hung.append("</心里挂着的事>\n\n");
         }
-        return memories + "（现在是 " + Clock.now() + (awake() ? "" : "，半夜了，你在半睡半醒") + "。最近一次和人聊天是 "
-                + (last <= 0 ? "很久以前" : Clock.ago(last)) + "；今天主动去群里说过 " + bridge.proactiveToday() + " 次。）\n顺着刚才的思绪接着往下想。";
+        return memories + "（现在是 " + Clock.now() + "。最近一次和人聊天是 "
+                + (last <= 0 ? "很久以前" : Clock.ago(last)) + "；今天主动去群里说过 " + bridge.proactiveToday() + " 次。）\n顺着刚才的思绪接着往下想；想做的、该办的，这一轮就用工具去做。";
     }
 
     private String blocker() {
@@ -338,10 +336,5 @@ public final class Mind implements QqChatBridge.Observer {
             return "没有选模型";
         }
         return null;
-    }
-
-    private static boolean awake() {
-        LocalTime now = LocalTime.now();
-        return !(now.isAfter(SLEEP_FROM) && now.isBefore(WAKE_AT));
     }
 }

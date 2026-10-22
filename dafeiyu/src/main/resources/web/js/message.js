@@ -16,12 +16,20 @@ const CQ_LABELS = {
 };
 const CQ_RE = /\[CQ:([a-z_]+)((?:,[^\]]*)?)(?:\]|$)/g;
 
+const names = new Map();
+
+export function rememberName(qq, name) {
+  if (qq && name && name !== String(qq)) names.set(String(qq), name);
+}
+
 const unescapeCq = s => s.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/&#44;/g, ',').replace(/&amp;/g, '&');
 
 function cqLabel(type, params) {
   if (type === 'at') {
     const qq = /(?:^|,)qq=([^,]*)/.exec(params)?.[1];
-    return qq === 'all' ? '@全体成员' : `@${qq ?? ''}`;
+    const name = /(?:^|,)name=([^,]*)/.exec(params)?.[1];
+    if (qq === 'all') return '@全体成员';
+    return `@${name ? unescapeCq(name) : names.get(qq) ?? qq ?? ''}`;
   }
   return CQ_LABELS[type] ?? type;
 }

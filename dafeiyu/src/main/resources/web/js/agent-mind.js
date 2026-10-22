@@ -39,7 +39,6 @@ function renderStatus() {
     const seconds = Math.max(0, Math.round((status.nextAt - Date.now()) / 1000));
     chips.push(chip('schedule', seconds < 2 ? '马上接着想' : seconds < 90 ? `${seconds} 秒后接着想` : `${Math.round(seconds / 60)} 分钟后接着想`));
   }
-  if (!status.awake) chips.push(chip('bedtime', '半夜了，半睡半醒'));
   renderContext($('#session-stats'), status, true);
   chips.push(chip('neurology', `这次开机想了 ${status.thoughts} 个念头`));
   chips.push(chip('send', `今天主动去群里说了 ${status.spokeToday} 次`));

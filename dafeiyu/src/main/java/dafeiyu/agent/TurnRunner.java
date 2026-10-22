@@ -60,7 +60,7 @@ public final class TurnRunner {
                     }, "required": ["id"]}""").getAsJsonObject());
     private static final int FACE_COOLDOWN = 2;
     private static final int MAX_NOTES = 2;
-    private static final int STICKER_CATALOG = 30;
+    private static final int STICKER_CATALOG = 40;
     private static final int STICKER_NUDGE = 4;
     private static final int MAX_ERRANDS = 2;
     public static final String SILENCE = "[沉默]";
@@ -283,7 +283,7 @@ public final class TurnRunner {
             if (!catalog.isEmpty()) {
                 int since = sinceSticker();
                 if (since < FACE_COOLDOWN) {
-                    catalog += "（你刚发过表情包，这次先不发）\n";
+                    catalog += "（你刚发过表情包，没人要的话这次就不配了；有人要就照发）\n";
                 } else if (since >= STICKER_NUDGE) {
                     catalog += "（你已经 " + since + " 条消息没发表情包了，这次情绪合适的话就配一张）\n";
                 }
@@ -424,7 +424,7 @@ public final class TurnRunner {
         }
         String text = QqFaces.limit(QqText.format(content), recent(QqFaces::contains));
         StickerStore store = stickers.store();
-        return StickerStore.limit(text, recent(StickerStore::hasTag), id -> {
+        return StickerStore.limit(text, id -> {
             StickerStore.Sticker sticker = store.get(id);
             return sticker != null && sticker.usable();
         });

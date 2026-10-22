@@ -1,5 +1,5 @@
 import { $, $$, el, poll } from './dom.js';
-import { classify, renderContent } from './message.js';
+import { classify, renderContent, rememberName } from './message.js';
 import { showSnackbar } from './snackbar.js';
 import { createAvatar } from './avatar.js';
 import { currentPage, onPageChange } from './router.js';
@@ -28,6 +28,7 @@ function renderRow(entry, info) {
 
   const body = el('div', 'log-body');
   if (info.kind === 'message') {
+    rememberName(info.qq, info.name);
     const text = el('div', 'log-text body-medium');
     text.append(renderContent(info.content));
     const meta = el('div', 'log-meta label-medium');
