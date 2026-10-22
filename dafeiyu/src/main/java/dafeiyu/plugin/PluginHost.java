@@ -9,7 +9,6 @@ import dafeiyu.agent.qq.MessageGate;
 import dafeiyu.agent.tool.AppContainerSandbox;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.agent.tool.Workspace;
-import dafeiyu.agent.usage.UsageStore;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.plugin.api.HostApi;
@@ -22,10 +21,12 @@ import dafeiyu.plugin.store.PluginStore;
 import dafeiyu.util.Jsons;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -52,6 +53,7 @@ public final class PluginHost implements HostApi.Services {
     static final long CRASH_WINDOW_MS = 10 * 60_000;
     static final long MAX_BACKOFF_MS = 5 * 60_000;
     static final long STABLE_MS = 60_000;
+    private static final Set<String> UNWATCHED = Set.of("__pycache__", ".git", "node_modules", ".venv");
 
     public static final class NeedsApproval extends RuntimeException {
         private final List<Permission> missing;
@@ -92,7 +94,7 @@ public final class PluginHost implements HostApi.Services {
     private String node;
     private long notificationIds;
 
-    public PluginHost(ChatAgent agent, QqPort qq, MessageArchive archive, UsageStore usage, PluginStore store, Path pluginsDir,
+    public PluginHost(ChatAgent agent, QqPort qq, MessageArchive archive, PluginStore store, Path pluginsDir,
                       Path dataDir, List<Path> extraDirs, LogBuffer log) {
         this.agent = agent;
         this.qq = qq;
@@ -102,7 +104,7 @@ public final class PluginHost implements HostApi.Services {
         this.dataDir = dataDir.toAbsolutePath().normalize();
         this.sdkDir = this.pluginsDir.resolve("sdk");
         this.extraDirs = extraDirs.stream().map(p -> p.toAbsolutePath().normalize()).toList();
-        this.api = new HostApi(this, agent, qq, archive, usage, store);
+        this.api = new HostApi(this, agent, qq, archive, store);
         this.dispatcher = new PluginDispatcher(this, agent, store);
         this.scheduler = new PluginScheduler(this);
     }
@@ -162,6 +164,7 @@ public final class PluginHost implements HostApi.Services {
 
     public void shutdown() {
         shuttingDown = true;
+        timers.shutdownNow();
         List<CompletableFuture<Void>> stops = new ArrayList<>();
         for (PluginSlot slot : slots.values()) {
             PluginProcess p = slot.process;
@@ -354,6 +357,7 @@ public final class PluginHost implements HostApi.Services {
             return;
         }
         slot.status = PluginSlot.STARTING;
+        slot.resume();
         long began = System.nanoTime();
         PluginProcess process;
         try {
@@ -367,6 +371,7 @@ public final class PluginHost implements HostApi.Services {
             return;
         }
         slot.process = process;
+        slot.folderStamp = stamp(slot.folder);
         process.call("initialize", initParams(slot, m), INIT_TIMEOUT_MS).whenComplete((result, error) -> {
             if (slot.process != process) {
                 return;
@@ -746,17 +751,31 @@ public final class PluginHost implements HostApi.Services {
     }
 
     private static long stamp(Path folder) {
-        try (Stream<Path> files = Files.walk(folder, 4)) {
-            return files.filter(Files::isRegularFile).mapToLong(p -> {
-                try {
-                    return Files.getLastModifiedTime(p).toMillis() * 31 + Files.size(p);
-                } catch (IOException e) {
-                    return 0;
+        long[] sum = {0};
+        try {
+            Files.walkFileTree(folder, Set.of(), 4, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    return UNWATCHED.contains(String.valueOf(dir.getFileName())) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
                 }
-            }).sum();
-        } catch (IOException | UncheckedIOException e) {
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (attrs.isRegularFile()) {
+                        sum[0] += attrs.lastModifiedTime().toMillis() * 31 + attrs.size();
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException e) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
             return 0;
         }
+        return sum[0];
     }
 
     public void onNapcatEvent(JsonObject event) {

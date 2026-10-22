@@ -67,13 +67,29 @@
 }
 
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-::view-transition-new(root) {
+[data-vt="reveal"]::view-transition-new(root) {
   animation: theme-reveal var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate);
 }
 @keyframes theme-reveal {
   from { clip-path: circle(0 at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
   to { clip-path: circle(var(--reveal-r, 150%) at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
 }
+
+::view-transition-group(vt-scope) { animation-duration: var(--md-sys-motion-duration-long1); animation-timing-function: var(--md-sys-motion-easing-emphasized-decelerate); }
+::view-transition-old(vt-scope), ::view-transition-new(vt-scope) { mix-blend-mode: normal; }
+[data-vt="fade-through"]::view-transition-old(vt-scope) { animation: vt-fade-out var(--md-sys-motion-duration-long1) linear both; }
+[data-vt="fade-through"]::view-transition-new(vt-scope) { animation: vt-fade-through-in var(--md-sys-motion-duration-long1) linear both; }
+[data-vt="axis-forward"]::view-transition-old(vt-scope) { animation: vt-axis-out var(--md-sys-motion-duration-long1) var(--md-sys-motion-easing-emphasized-decelerate) both; --axis: -30px; }
+[data-vt="axis-forward"]::view-transition-new(vt-scope) { animation: vt-axis-in var(--md-sys-motion-duration-long1) var(--md-sys-motion-easing-emphasized-decelerate) both; --axis: 30px; }
+[data-vt="axis-backward"]::view-transition-old(vt-scope) { animation: vt-axis-out var(--md-sys-motion-duration-long1) var(--md-sys-motion-easing-emphasized-decelerate) both; --axis: 30px; }
+[data-vt="axis-backward"]::view-transition-new(vt-scope) { animation: vt-axis-in var(--md-sys-motion-duration-long1) var(--md-sys-motion-easing-emphasized-decelerate) both; --axis: -30px; }
+@keyframes vt-fade-out { 0% { opacity: 1; } 35%, 100% { opacity: 0; } }
+@keyframes vt-fade-through-in {
+  0%, 35% { opacity: 0; transform: scale(.92); animation-timing-function: var(--md-sys-motion-easing-emphasized-decelerate); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes vt-axis-out { 0% { opacity: 1; transform: none; } 35% { opacity: 0; } 100% { opacity: 0; transform: translateX(var(--axis)); } }
+@keyframes vt-axis-in { 0%, 35% { opacity: 0; } 0% { transform: translateX(var(--axis)); } 100% { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after, ::view-transition-new(root) {

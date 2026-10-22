@@ -19,10 +19,12 @@ import { initAgentStickers } from './agent-stickers.js';
 import { initUsage } from './usage.js';
 import { initLightbox } from './lightbox.js';
 import { initPlugins } from './plugins.js';
+import { initTooltips } from './tooltip.js';
 
 hydrateIcons();
 hydrateShapes();
 initRipple();
+initTooltips();
 initTheme();
 initStatus();
 initLogs();

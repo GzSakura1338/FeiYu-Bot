@@ -2,6 +2,7 @@ import { $, $$ } from './dom.js';
 import { initTabBar } from './tabs.js';
 import { navigate, onSubPageChange } from './router.js';
 import { ago } from './format.js';
+import { viewTransition } from './motion.js';
 
 const VIEWS = ['models', 'personas', 'workspace', 'sessions', 'memory', 'stickers'];
 const listeners = [];
@@ -20,19 +21,17 @@ export function renderMood(mood) {
 }
 
 function show(view) {
-  for (const node of $$('#page-agent .agent-view')) {
-    const active = node.dataset.view === view;
-    if (active && node.hidden) {
-      node.hidden = false;
-      node.classList.remove('view-enter');
-      void node.offsetWidth;
-      node.classList.add('view-enter');
-    } else if (!active) {
-      node.hidden = true;
-    }
-  }
+  const nodes = $$('#page-agent .agent-view');
+  const from = nodes.find(node => !node.hidden);
+  const to = nodes.find(node => node.dataset.view === view);
   tabs.select(view);
-  for (const fn of listeners) fn(view);
+  const swap = () => {
+    for (const node of nodes) node.hidden = node !== to;
+    for (const fn of listeners) fn(view);
+  };
+  if (!from || from === to || $('#page-agent').hidden) return swap();
+  const forward = VIEWS.indexOf(view) > VIEWS.indexOf(from.dataset.view);
+  viewTransition(forward ? 'axis-forward' : 'axis-backward', swap, { from, to });
 }
 
 export function initAgentPage() {

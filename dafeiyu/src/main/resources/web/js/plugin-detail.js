@@ -6,21 +6,55 @@ import { ago, formatTime } from './format.js';
 import { buildSettingsForm } from './plugin-settings.js';
 import { enableWithApproval, request, statusChip, load, pluginState } from './plugins.js';
 
+const EVENTS = {
+  'message.group': '群消息',
+  'message.private': '私聊消息',
+  'notice.join': '有人进群',
+  'notice.leave': '有人退群',
+  'notice.recall': '撤回',
+  'notice.poke': '拍一拍',
+  'bot.said': '她说的话',
+  'bot.thought': '她的念头',
+  'bot.connected': 'QQ 连上',
+  'bot.disconnected': 'QQ 断开',
+};
+
 let dialog = null;
 let current = null;
+let tab = 'overview';
 let logTimer = 0;
 let lastLog = 0;
 
-function section(title, body) {
-  const box = el('section', 'plugin-section');
-  box.append(el('h3', 'title-small', title), body);
+function group(title, ...rows) {
+  const box = el('section', 'plugin-group');
+  if (title) box.append(el('h3', 'label-large plugin-group-title', title));
+  const list = el('div', 'plugin-list');
+  list.append(...rows);
+  box.append(list);
   return box;
 }
 
-function chips(items, className = 'plugin-chip') {
-  const row = el('div', 'plugin-chips');
-  items.forEach(t => row.append(el('span', `${className} label-small`, t)));
+function item({ icon, title, code, text, trailing }) {
+  const row = el('div', 'plugin-item');
+  if (icon) {
+    const lead = el('span', 'plugin-item-icon');
+    lead.append(createIcon(icon, 'icon-18'));
+    row.append(lead);
+  }
+  const body = el('div', 'plugin-item-text');
+  const head = el('div', 'plugin-item-head');
+  if (code) head.append(el('code', 'plugin-code', code));
+  if (title) head.append(el('span', 'body-large', title));
+  if (code && text) head.append(el('span', 'body-medium plugin-item-note', text));
+  body.append(head);
+  if (text && !code) body.append(el('div', 'body-medium plugin-item-sub', text));
+  row.append(body);
+  if (trailing) row.append(...[trailing].flat());
   return row;
+}
+
+function tag(text, tone = '') {
+  return el('span', `label-small plugin-tag ${tone}`, text);
 }
 
 function markdown(text) {
@@ -33,8 +67,8 @@ function markdown(text) {
     else if (line.startsWith('# ')) box.append(el('h3', 'title-medium', line.slice(2)));
     else if (/^[-*] /m.test(line)) {
       const list = el('ul');
-      line.split('\n').forEach(item => {
-        const t = item.replace(/^[-*] /, '').trim();
+      line.split('\n').forEach(entry => {
+        const t = entry.replace(/^[-*] /, '').trim();
         if (t) list.append(el('li', '', t));
       });
       box.append(list);
@@ -45,80 +79,90 @@ function markdown(text) {
   return box;
 }
 
-function permissions(detail) {
-  const list = el('ul', 'permission-list');
-  (detail.permissions ?? []).forEach(p => {
-    const item = el('li');
-    const head = el('div', 'permission-head');
-    head.append(el('span', 'title-small', p.label));
-    head.append(el('span', `label-small permission-state ${p.granted ? 'ok' : 'warn'}`, p.granted ? '已同意' : '未同意'));
-    item.append(head, el('div', 'body-small', p.description));
-    list.append(item);
-  });
-  if (!list.children.length) list.append(el('li', 'body-small', '这个插件不需要任何权限'));
-  return list;
+function prefix() {
+  return pluginState()?.prefix ?? '#';
 }
 
-function commands(detail) {
-  const list = el('div', 'plugin-rows');
-  (detail.commandList ?? []).forEach(c => {
-    const row = el('div', 'plugin-row');
-    const names = [c.name, ...(c.aliases ?? [])].map(n => `${pluginPrefix()}${n}`).join('、');
-    row.append(el('code', 'plugin-code', names), el('span', 'body-small', c.description || ''));
-    if (c.scope?.length === 1) row.append(el('span', 'label-small plugin-tag', c.scope[0] === 'group' ? '只在群里' : '只在私聊'));
-    list.append(row);
-  });
-  return list;
+function overview(detail) {
+  const parts = [];
+  if (detail.lastError) parts.push(el('pre', 'plugin-error body-small', detail.lastError));
+  if (detail.problems?.length) parts.push(el('div', 'plugin-problem body-small', detail.problems.join('；')));
+  if (detail.warnings?.length) parts.push(el('div', 'plugin-warning body-small', detail.warnings.join('；')));
+  if (detail.description) parts.push(el('p', 'body-large plugin-lead', detail.description));
+  if (detail.commandList?.length) {
+    parts.push(group('命令', ...detail.commandList.map(c => item({
+      code: [c.name, ...(c.aliases ?? [])].map(n => `${prefix()}${n}`).join('  '),
+      text: c.description,
+      trailing: c.scope?.length === 1 ? tag(c.scope[0] === 'group' ? '只在群里' : '只在私聊') : null,
+    }))));
+  }
+  if (detail.toolList?.length) {
+    parts.push(group('给她用的工具', ...detail.toolList.map(t => item({
+      code: t.name,
+      text: t.description,
+      trailing: t.mind ? tag('内心也能用') : null,
+    }))));
+  }
+  if (detail.schedules?.length) {
+    parts.push(group('定时任务', ...detail.schedules.map(s => {
+      const run = el('button', 'text-button label-large state-layer', '立刻执行');
+      run.type = 'button';
+      run.addEventListener('click', async () => {
+        try {
+          await request('POST', `/${detail.id}/schedules/${encodeURIComponent(s.id)}/run`, {});
+          showSnackbar('已执行一次', 'success');
+        } catch (err) {
+          showSnackbar(err.message, 'error');
+        }
+      });
+      return item({
+        code: s.cron,
+        text: [s.description || s.id, s.next ? `下次 ${s.next}` : ''].filter(Boolean).join(' · '),
+        trailing: run,
+      });
+    })));
+  }
+  const hooks = (detail.events ?? []).map(e => EVENTS[e] ?? e);
+  if (detail.intercept) hooks.push('拦截收到的消息');
+  if (detail.prompt) hooks.push('补充提示词');
+  if (detail.filter) hooks.push('过滤她发的话');
+  if (hooks.length) {
+    const chips = el('div', 'plugin-chips');
+    hooks.forEach(h => chips.append(el('span', 'plugin-chip label-medium', h)));
+    const row = el('div', 'plugin-item');
+    row.append(chips);
+    parts.push(group('会收到', row));
+  }
+  const facts = [];
+  if (detail.status === 'running' && detail.runningSince) facts.push(`已运行 ${ago(detail.runningSince)}，启动用时 ${detail.startupMillis} 毫秒`);
+  facts.push(detail.folder);
+  parts.push(el('div', 'body-small plugin-detail-foot', facts.join(' · ')));
+  return parts;
 }
 
-function pluginPrefix() {
-  return $('#plugin-prefix')?.value || '#';
-}
-
-function tools(detail) {
-  const list = el('div', 'plugin-rows');
-  (detail.toolList ?? []).forEach(t => {
-    const row = el('div', 'plugin-row');
-    row.append(el('code', 'plugin-code', t.name), el('span', 'body-small', t.description));
-    if (t.mind) row.append(el('span', 'label-small plugin-tag', '内心也能用'));
-    list.append(row);
-  });
-  return list;
-}
-
-function schedules(detail) {
-  const list = el('div', 'plugin-rows');
-  (detail.schedules ?? []).forEach(s => {
-    const row = el('div', 'plugin-row');
-    row.append(el('code', 'plugin-code', s.cron), el('span', 'body-small', s.description || s.id));
-    if (s.next) row.append(el('span', 'label-small plugin-next', `下次 ${s.next}`));
-    const run = el('button', 'text-button label-medium state-layer', '立刻执行');
-    run.type = 'button';
-    run.addEventListener('click', async () => {
-      try {
-        await request('POST', `/${detail.id}/schedules/${encodeURIComponent(s.id)}/run`, {});
-        showSnackbar('已执行一次', 'success');
-      } catch (err) {
-        showSnackbar(err.message, 'error');
-      }
-    });
-    row.append(run);
-    list.append(row);
-  });
-  return list;
+function settings(detail) {
+  const parts = [];
+  if (Object.keys(detail.settingsSchema?.properties ?? {}).length) {
+    parts.push(el('h3', 'label-large plugin-group-title', '插件设置'), buildSettingsForm(detail, async values => {
+      await request('PUT', `/${detail.id}/settings`, { values });
+      showSnackbar('设置已保存', 'success');
+      refresh();
+    }));
+  }
+  parts.push(group('运行', ...options(detail)));
+  return parts;
 }
 
 function options(detail) {
-  const box = el('div', 'plugin-options');
-  const needsGroups = (detail.permissions ?? []).some(p => p.key === 'qq.send');
-  if (needsGroups) {
-    const field = el('label', 'field');
-    field.append(el('span', 'label-medium', '允许发消息的群'));
+  const rows = [];
+  if ((detail.permissions ?? []).some(p => p.key === 'qq.send')) {
     const picker = el('div', 'group-picker');
     const groups = pluginState()?.groups ?? [];
+    const count = () => `只有勾上的群，这个插件才能主动发消息和读记录 · 已勾选 ${(detail.groups ?? []).length} 个`;
     groups.forEach(g => {
       const chip = el('button', 'filter-chip label-medium state-layer', g.name || g.groupId);
       chip.type = 'button';
+      chip.title = `${g.name || ''} ${g.groupId}`.trim();
       const on = () => (detail.groups ?? []).includes(g.groupId);
       chip.setAttribute('aria-pressed', String(on()));
       chip.addEventListener('click', async () => {
@@ -127,41 +171,27 @@ function options(detail) {
           const updated = await request('PUT', `/${detail.id}/options`, { groups: next });
           detail.groups = updated.groups;
           chip.setAttribute('aria-pressed', String(on()));
+          row.querySelector('.plugin-item-sub').textContent = count();
         } catch (err) {
           showSnackbar(err.message, 'error');
         }
       });
       picker.append(chip);
     });
-    if (!groups.length) picker.append(el('span', 'body-small', '还没读到群列表，连上 QQ 后再来'));
-    field.append(picker, el('span', 'body-small field-hint', '只有勾上的群，这个插件才能主动发消息和读记录'));
-    box.append(field);
+    if (!groups.length) picker.append(el('span', 'body-small plugin-meta', '还没读到群列表，连上 QQ 后再来'));
+    const row = item({ icon: 'groups', title: '允许发消息的群', text: count() });
+    row.classList.add('plugin-item-block');
+    row.append(picker);
+    rows.push(row);
   }
   if (detail.toolList?.length) {
-    box.append(switchField('QQ 聊天里也能用这些工具', '打开后，她在 QQ 里聊天时也能调用这个插件的工具', detail.qqTools, async value => {
+    rows.push(switchItem('forum', 'QQ 聊天里也能用工具', '默认只在智能体里用，打开后她在 QQ 里聊天时也能调用', detail.qqTools, async value => {
       await request('PUT', `/${detail.id}/options`, { qqTools: value });
     }));
   }
-  if ((detail.permissions ?? []).some(p => p.key === 'llm')) {
-    const field = el('label', 'field');
-    field.append(el('span', 'label-medium', '每天的大模型额度（token）'));
-    const input = el('input', 'body-large');
-    input.type = 'number';
-    input.value = detail.llmBudget;
-    input.addEventListener('change', async () => {
-      try {
-        await request('PUT', `/${detail.id}/options`, { llmBudget: Number(input.value) });
-        showSnackbar('额度已保存', 'success');
-      } catch (err) {
-        showSnackbar(err.message, 'error');
-      }
-    });
-    field.append(input, el('span', 'body-small field-hint', `今天已经用了 ${detail.llmToday} token`));
-    box.append(field);
-  }
-  box.append(switchField('沙盒', detail.sandbox
-    ? '插件关在沙盒里：只能读写自己的文件夹，默认断网'
-    : '⚠ 这个插件没有关在沙盒里，它能读写你电脑上的文件、随意联网', detail.sandbox, async value => {
+  rows.push(switchItem('shield', '沙盒', detail.sandbox
+    ? '只能读写自己的文件夹，默认断网'
+    : '已关闭：它能读写你电脑上的文件、随意联网', detail.sandbox, async value => {
     if (!value) {
       const ok = await confirmDialog({
         icon: 'warning',
@@ -173,18 +203,16 @@ function options(detail) {
       if (!ok) throw new Error('cancelled');
     }
     await request('PUT', `/${detail.id}/options`, { sandbox: value, confirm: true });
-  }));
-  return box;
+  }, !detail.sandbox));
+  return rows;
 }
 
-function switchField(title, hint, value, onChange) {
-  const field = el('div', 'switch-field');
-  const text = el('div');
-  text.append(el('div', 'title-small', title), el('div', 'body-small switch-hint', hint));
+function switchItem(icon, title, text, value, onChange, danger = false) {
   const toggle = el('button', 'switch');
   toggle.type = 'button';
   toggle.setAttribute('role', 'switch');
   toggle.setAttribute('aria-checked', String(value));
+  toggle.setAttribute('aria-label', title);
   toggle.append(el('span', 'switch-handle'));
   toggle.addEventListener('click', async () => {
     const next = toggle.getAttribute('aria-checked') !== 'true';
@@ -196,18 +224,38 @@ function switchField(title, hint, value, onChange) {
       if (err.message !== 'cancelled') showSnackbar(err.message, 'error');
     }
   });
-  field.append(text, toggle);
-  return field;
+  const row = item({ icon, title, text, trailing: toggle });
+  if (danger) row.classList.add('plugin-item-danger');
+  return row;
 }
 
-function logs() {
-  return el('div', 'plugin-logs');
+function permissions(detail) {
+  const list = detail.permissions ?? [];
+  if (!list.length) return [group(null, item({ icon: 'check_circle', title: '这个插件不需要任何权限' }))];
+  return [group(null, ...list.map(p => item({
+    icon: p.granted ? 'check_circle' : 'shield',
+    title: p.label,
+    text: p.description,
+    trailing: tag(p.granted ? '已同意' : '未同意', p.granted ? 'plugin-tag-ok' : 'plugin-tag-warn'),
+  })))];
+}
+
+function logs(detail) {
+  const box = el('div', 'plugin-logs');
+  lastLog = 0;
+  pollLogs(detail.id, box);
+  logTimer = setInterval(() => pollLogs(detail.id, box), 2000);
+  return [box];
 }
 
 async function pollLogs(id, box) {
   try {
     const list = await request('GET', `/${id}/logs?after=${lastLog}&limit=200`);
-    if (!list.length) return;
+    if (!list.length) {
+      if (!box.children.length) box.append(el('div', 'body-small plugin-meta plugin-logs-empty', '还没有日志'));
+      return;
+    }
+    box.querySelector('.plugin-logs-empty')?.remove();
     const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
     for (const entry of list) {
       lastLog = Math.max(lastLog, entry.id);
@@ -222,6 +270,24 @@ async function pollLogs(id, box) {
   }
 }
 
+function tabsFor(detail) {
+  const tabs = [['overview', '概览'], ['settings', '设置'], ['permissions', '权限'], ['logs', '日志']];
+  if (detail.readme) tabs.push(['readme', '说明']);
+  return tabs;
+}
+
+function renderTab(detail) {
+  clearInterval(logTimer);
+  const body = $('#plugin-detail-body');
+  const parts = tab === 'settings' ? settings(detail)
+    : tab === 'permissions' ? permissions(detail)
+    : tab === 'logs' ? logs(detail)
+    : tab === 'readme' ? [markdown(detail.readme)]
+    : overview(detail);
+  body.dataset.tab = tab;
+  body.replaceChildren(...parts);
+}
+
 async function refresh() {
   if (!current) return;
   try {
@@ -234,57 +300,32 @@ async function refresh() {
 
 function render(detail) {
   $('#plugin-detail-title').textContent = detail.name;
-  const sub = [detail.version ? `v${detail.version}` : '', detail.author, detail.origin === 'example' ? '示例插件' : ''].filter(Boolean);
-  $('#plugin-detail-sub').textContent = sub.join(' · ');
-  const icon = $('#plugin-detail-icon');
-  icon.replaceChildren(detail.hasIcon ? iconImage(detail.id) : createIcon('extension'));
-  const body = $('#plugin-detail-body');
-  const parts = [];
-  const head = el('div', 'plugin-detail-head');
-  head.append(statusChip(detail.status, detail.statusLabel));
-  if (detail.status === 'running' && detail.runningSince) {
-    head.append(el('span', 'label-small plugin-meta', `已运行 ${ago(detail.runningSince)}，启动用时 ${detail.startupMillis} 毫秒`));
-  }
-  parts.push(head);
-  if (detail.lastError) {
-    parts.push(el('pre', 'plugin-error body-small', detail.lastError));
-  }
-  if (detail.problems?.length) parts.push(el('div', 'plugin-problem body-small', detail.problems.join('；')));
-  if (detail.warnings?.length) parts.push(el('div', 'plugin-warning body-small', detail.warnings.join('；')));
-  if (detail.description) parts.push(el('p', 'body-medium', detail.description));
-  if (detail.commandList?.length) parts.push(section('命令', commands(detail)));
-  if (detail.toolList?.length) parts.push(section('工具', tools(detail)));
-  if (detail.schedules?.length) parts.push(section('定时任务', schedules(detail)));
-  if (detail.events?.length || detail.intercept || detail.prompt || detail.filter) {
-    const tags = [...(detail.events ?? [])];
-    if (detail.intercept) tags.push('拦截消息');
-    if (detail.prompt) tags.push('提示词补充');
-    if (detail.filter) tags.push('出站过滤');
-    parts.push(section('事件', chips(tags)));
-  }
-  parts.push(section('权限', permissions(detail)));
-  if (Object.keys(detail.settingsSchema?.properties ?? {}).length) {
-    parts.push(section('设置', buildSettingsForm(detail, async values => {
-      await request('PUT', `/${detail.id}/settings`, { values });
-      showSnackbar('设置已保存', 'success');
-      refresh();
-    })));
-  }
-  parts.push(section('选项', options(detail)));
-  if (detail.readme) parts.push(section('说明', markdown(detail.readme)));
-  const logBox = logs();
-  parts.push(section('日志', logBox));
-  const footer = el('div', 'plugin-detail-foot');
-  footer.append(el('span', 'label-small plugin-meta', detail.folder));
-  parts.push(footer);
-  body.replaceChildren(...parts);
-  clearInterval(logTimer);
-  lastLog = 0;
-  pollLogs(detail.id, logBox);
-  logTimer = setInterval(() => pollLogs(detail.id, logBox), 2000);
+  $('#plugin-detail-sub').textContent = [detail.version ? `v${detail.version}` : '', detail.author].filter(Boolean).join(' · ');
+  $('#plugin-detail-status').replaceChildren(statusChip(detail.status, detail.statusLabel));
+  $('#plugin-detail-icon').replaceChildren(detail.hasIcon ? iconImage(detail.id) : createIcon('extension'));
+
+  const available = tabsFor(detail);
+  if (!available.some(([key]) => key === tab)) tab = 'overview';
+  const bar = $('#plugin-detail-tabs');
+  bar.replaceChildren(...available.map(([key, label]) => {
+    const button = el('button', 'state-layer', label);
+    button.type = 'button';
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-checked', String(key === tab));
+    button.addEventListener('click', () => {
+      if (tab === key) return;
+      tab = key;
+      bar.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', String(b === button)));
+      renderTab(detail);
+    });
+    return button;
+  }));
+  if (tab !== 'logs' || !$('#plugin-detail-body .plugin-logs')) renderTab(detail);
 
   const toggle = $('#plugin-detail-toggle');
-  toggle.textContent = detail.enabled ? '停用' : '启用';
+  toggle.setAttribute('aria-checked', String(detail.enabled));
+  toggle.setAttribute('aria-label', detail.enabled ? '停用' : '启用');
+  toggle.title = detail.enabled ? '停用' : '启用';
   toggle.disabled = detail.status === 'invalid' || detail.status === 'incompatible';
   toggle.onclick = async () => {
     try {
@@ -309,16 +350,21 @@ function render(detail) {
   const uninstall = $('#plugin-detail-uninstall');
   uninstall.hidden = detail.origin !== 'installed';
   uninstall.onclick = async () => {
+    const check = el('label', 'confirm-check body-medium');
+    const box = el('input');
+    box.type = 'checkbox';
+    check.append(box, '同时删掉它存的数据和设置');
     const ok = await confirmDialog({
       icon: 'delete',
       title: `卸载「${detail.name}」？`,
-      text: '会停止并删除这个插件的文件。它存的数据和设置也一起删掉。',
+      text: '会停止并删除这个插件的文件。不勾选下面这项的话，数据和设置会留着，以后重装还能接着用。',
+      node: check,
       confirm: '卸载',
       danger: true,
     });
     if (!ok) return;
     try {
-      await request('DELETE', `/${detail.id}?data=true`, {});
+      await request('DELETE', `/${detail.id}?data=${box.checked}`, {});
       closeDialog(dialog, 'done');
       showSnackbar('已卸载', 'success');
       load();
@@ -345,6 +391,7 @@ export async function openPluginDetail(id) {
     dialog.dataset.ready = '1';
   }
   current = id;
+  tab = 'overview';
   await refresh();
   await openDialog(dialog);
   clearInterval(logTimer);

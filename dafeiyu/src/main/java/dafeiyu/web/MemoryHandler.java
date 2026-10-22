@@ -10,6 +10,7 @@ import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.MemoryStore.Memory;
 import dafeiyu.agent.memory.MemoryStore.Scope;
 import dafeiyu.agent.memory.Reflection;
+import dafeiyu.agent.memory.SkillPack;
 import dafeiyu.agent.memory.SkillStore;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.db.DatabaseException;
@@ -63,7 +64,13 @@ final class MemoryHandler {
         String rest = ex.getRequestURI().getPath().substring(PREFIX.length());
         String method = ex.getRequestMethod();
         try {
-            if (!method.equals("GET") && !Requests.isJson(ex)) {
+            if (rest.equals("/skills/import") && method.equals("POST")) {
+                if (!Requests.isUpload(ex)) {
+                    HttpResponses.json(ex, 415, error("请求必须带 Content-Type: application/octet-stream"));
+                } else {
+                    importSkills(ex);
+                }
+            } else if (!method.equals("GET") && !Requests.isJson(ex)) {
                 HttpResponses.json(ex, 415, error("请求必须带 Content-Type: application/json"));
             } else if ((rest.isEmpty() || rest.equals("/")) && method.equals("GET")) {
                 HttpResponses.json(ex, state());
@@ -208,17 +215,55 @@ final class MemoryHandler {
     }
 
     private String skills() {
+        return skillList().toString();
+    }
+
+    private JsonObject skillList() {
         QqDirectory.Names names = directory.names();
         JsonArray list = new JsonArray();
         for (SkillStore.Skill s : agent.skills().list(persona().id())) {
             JsonObject item = gson.toJsonTree(s).getAsJsonObject();
-            item.addProperty("sourceName", s.source().equals("manual") ? "手动添加" : s.source().isEmpty() ? "" : names.of(s.source()));
+            item.addProperty("sourceName", switch (s.source()) {
+                case "manual" -> "手动添加";
+                case "import" -> "导入";
+                case "" -> "";
+                default -> names.of(s.source());
+            });
             list.add(item);
         }
         JsonObject body = new JsonObject();
         body.addProperty("scope", "skill");
         body.add("items", list);
-        return body.toString();
+        return body;
+    }
+
+    private void importSkills(HttpExchange ex) throws IOException {
+        byte[] data;
+        try (var in = ex.getRequestBody()) {
+            data = in.readNBytes(SkillPack.MAX_BYTES + 1);
+        }
+        String personaId = persona().id();
+        List<SkillPack.Entry> entries = SkillPack.read(data, query(ex, "name"));
+        SkillPack.Mode mode = switch (query(ex, "mode")) {
+            case "overwrite" -> SkillPack.Mode.OVERWRITE;
+            case "skip" -> SkillPack.Mode.SKIP;
+            default -> SkillPack.Mode.ASK;
+        };
+        List<String> conflicts = SkillPack.conflicts(agent.skills(), personaId, entries);
+        JsonObject body = new JsonObject();
+        if (mode == SkillPack.Mode.ASK && !conflicts.isEmpty()) {
+            body.addProperty("needsConfirm", true);
+            body.add("names", gson.toJsonTree(entries.stream().map(SkillPack.Entry::name).toList()));
+            body.add("conflicts", gson.toJsonTree(conflicts));
+            HttpResponses.json(ex, body.toString());
+            return;
+        }
+        SkillPack.Outcome outcome = SkillPack.save(agent.skills(), personaId, entries, mode);
+        log.info("agent: imported skills: " + outcome.added().size() + " added, " + outcome.overwritten().size() + " overwritten, "
+                + outcome.skipped().size() + " skipped");
+        body = skillList();
+        body.add("imported", gson.toJsonTree(outcome));
+        HttpResponses.json(ex, body.toString());
     }
 
     private SkillStore.Skill requireSkill(String raw) {

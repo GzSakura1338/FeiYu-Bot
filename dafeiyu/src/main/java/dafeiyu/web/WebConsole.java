@@ -46,7 +46,7 @@ public final class WebConsole {
         server.createContext("/api/agent/files", new FilesHandler(agent, log)::handle);
         server.createContext("/api/usage", new UsageHandler(agent, usage, directory, napcat)::handle);
         server.createContext("/api/personas",new PersonaHandler(agent.personas(), log)::handle);
-        server.createContext("/api/plugins", new PluginHandler(plugins, installer, bridge, usage, log)::handle);
+        server.createContext("/api/plugins", new PluginHandler(plugins, installer, bridge, log)::handle);
         server.createContext("/api/mcp", new McpHandler(plugins.mcp(), log)::handle);
         server.createContext("/plugins/", new PluginPageHandler(plugins)::handle);
     }

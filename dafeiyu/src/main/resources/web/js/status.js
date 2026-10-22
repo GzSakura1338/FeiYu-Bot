@@ -1,16 +1,25 @@
 import { $, el, poll } from './dom.js';
 import { setIcon, createIcon } from './icons.js';
-import { setShape, shapeMask } from './shapes.js';
+import { setShape, shapeMask, morphLoop } from './shapes.js';
 import { setAvatar } from './avatar.js';
 import { formatTime, ago, duration } from './format.js';
 import { showSnackbar } from './snackbar.js';
 
 const STATES = {
-  loading:   { tone: 'neutral', icon: 'sync',      shape: 'circle', title: '读取中…' },
-  down:      { tone: 'error',   icon: 'cloud_off', shape: 'flower', title: 'FeiYu Bot 后端无响应' },
-  waiting:   { tone: 'warning', icon: 'link_off',  shape: 'clover', title: '等待 NapCat 连接' },
-  connected: { tone: 'success', icon: 'link',      shape: 'burst',  title: 'NapCat 已连接' },
+  loading:   { tone: 'neutral', icon: 'sync',      shape: null,          title: '读取中…' },
+  down:      { tone: 'error',   icon: 'cloud_off', shape: 'flower',      title: 'FeiYu Bot 后端无响应' },
+  waiting:   { tone: 'warning', icon: 'link_off',  shape: 'clover4Leaf', title: '等待 NapCat 连接' },
+  connected: { tone: 'success', icon: 'link',      shape: 'cookie12Sided', title: 'NapCat 已连接' },
 };
+let stopMorph = null;
+
+function showShape(shape) {
+  const svg = $('#status-shape');
+  stopMorph?.();
+  stopMorph = null;
+  if (shape) setShape(svg, shape);
+  else stopMorph = morphLoop(svg);
+}
 
 const INFO_ROWS = [
   { key: 'listen',      icon: 'lan',      label: '监听地址', copy: true },
@@ -70,11 +79,11 @@ function render() {
   const card = $('#status-card');
   if (card.dataset.tone !== s.tone) {
     card.dataset.tone = s.tone;
-    setShape($('#status-shape'), s.shape);
+    showShape(s.shape);
   }
   const icon = $('#status-icon');
   setIcon(icon, s.icon);
-  icon.classList.toggle('spin', state === 'loading');
+  icon.hidden = state === 'loading';
   setText($('#status-title'), s.title);
   setText($('#status-sub'), {
     loading: '',
@@ -139,7 +148,7 @@ async function refresh() {
 
 export function initStatus() {
   buildInfoList();
-  setShape($('#status-shape'), STATES.loading.shape);
+  showShape(STATES.loading.shape);
   render();
   poll(refresh, 2000);
   setInterval(render, 1000);

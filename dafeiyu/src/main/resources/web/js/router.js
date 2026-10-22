@@ -1,5 +1,6 @@
 import { $, $$ } from './dom.js';
 import { setIcon, hasIcon } from './icons.js';
+import { viewTransition } from './motion.js';
 
 const PAGES = ['overview', 'logs', 'agent', 'plugins', 'usage', 'settings'];
 const listeners = [];
@@ -22,14 +23,15 @@ export function navigate(page, sub) {
   if (location.hash.slice(1) !== hash) location.hash = hash;
 }
 
-function playEnter(page) {
-  page.classList.remove('entering');
-  [...page.children].forEach((child, i) => child.style.setProperty('--i', i));
-  $$('.hero > *', page).forEach((child, j) => child.style.setProperty('--j', j));
-  void page.offsetWidth;
-  page.classList.add('entering');
-  clearTimeout(page.enterTimer);
-  page.enterTimer = setTimeout(() => page.classList.remove('entering'), 1200);
+function markRail(page) {
+  for (const item of $$('.rail-item')) {
+    const active = item.dataset.page === page;
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+    const svg = $('.rail-indicator svg', item);
+    const base = (svg.dataset.base ??= svg.dataset.icon);
+    setIcon(svg, active && hasIcon(`${base}_fill`) ? `${base}_fill` : base);
+  }
 }
 
 function route() {
@@ -42,23 +44,20 @@ function route() {
     }
     return;
   }
+  const first = current === null;
   current = page;
   currentSub = sub;
-
-  for (const p of PAGES) $(`#page-${p}`).hidden = p !== page;
-  for (const item of $$('.rail-item')) {
-    const active = item.dataset.page === page;
-    if (active) item.setAttribute('aria-current', 'page');
-    else item.removeAttribute('aria-current');
-    const svg = $('.rail-indicator svg', item);
-    const base = (svg.dataset.base ??= svg.dataset.icon);
-    setIcon(svg, active && hasIcon(`${base}_fill`) ? `${base}_fill` : base);
-  }
+  markRail(page);
   document.title = `${$(`#page-${page}`).dataset.title} · FeiYu Bot`;
-  $('.content').scrollTop = 0;
-  playEnter($(`#page-${page}`));
-  for (const fn of listeners) fn(page);
-  for (const fn of subListeners) fn(page, sub);
+
+  const swap = () => {
+    for (const p of PAGES) $(`#page-${p}`).hidden = p !== page;
+    $('.content').scrollTop = 0;
+    for (const fn of listeners) fn(page);
+    for (const fn of subListeners) fn(page, sub);
+  };
+  if (first) swap();
+  else viewTransition('fade-through', swap, { from: $('.content'), to: $('.content') });
 }
 
 export function initRouter() {

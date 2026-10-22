@@ -162,13 +162,14 @@ final class PluginDispatcher implements MessageGate, Extensions {
         Verdict verdict = Verdict.PASS;
         String text = m.text();
         for (PluginSlot slot : subscribers("message." + m.type())) {
-            if (!slot.manifest.intercept() || slot.id.equals(skip)) {
+            if (!slot.manifest.intercept() || slot.id.equals(skip) || slot.paused(System.currentTimeMillis())) {
                 continue;
             }
             JsonObject params = messagePayload(m, text, newContext(slot, m.session(), m.messageId()));
             try {
                 JsonObject o = object(slot.process.call("event", params, INTERCEPT_TIMEOUT_MS)
                         .get(INTERCEPT_TIMEOUT_MS + 200, TimeUnit.MILLISECONDS));
+                slot.fast();
                 String action = Jsons.optString(o, "action");
                 if (action.equals("drop")) {
                     host.pluginLog(slot, "info", "吞掉了一条消息，她不会回这条");
@@ -180,15 +181,27 @@ final class PluginDispatcher implements MessageGate, Extensions {
                     verdict = new Verdict(false, text, slot.name());
                 }
             } catch (TimeoutException e) {
-                host.pluginLog(slot, "warn", "拦截处理超过 " + INTERCEPT_TIMEOUT_MS / 1000 + " 秒，按放行处理");
+                timedOut(slot, "拦截处理");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (ExecutionException e) {
-                host.pluginLog(slot, "warn", "拦截处理出错，按放行处理：" + PluginHost.describe(e));
+                if (e.getCause() instanceof TimeoutException) {
+                    timedOut(slot, "拦截处理");
+                } else {
+                    host.pluginLog(slot, "warn", "拦截处理出错，按放行处理：" + PluginHost.describe(e));
+                }
             }
         }
         return verdict;
+    }
+
+    private void timedOut(PluginSlot slot, String what) {
+        host.pluginLog(slot, "warn", what + "超过 2 秒，按放行处理");
+        if (slot.slow(System.currentTimeMillis())) {
+            host.pluginLog(slot, "warn", what + "连续 " + PluginSlot.SLOW_LIMIT + " 次超时，接下来 5 分钟先不经过它");
+            host.appLog().warn("plugins: " + slot.id + " timed out " + PluginSlot.SLOW_LIMIT + " times in a row, bypassed for 5 minutes");
+        }
     }
 
     private Verdict command(Message m, String[] owner) {
@@ -244,7 +257,9 @@ final class PluginDispatcher implements MessageGate, Extensions {
             return null;
         } catch (ExecutionException e) {
             cancel(ctx);
-            host.pluginLog(slot, "warn", "命令处理出错，交给她回复：" + PluginHost.describe(e));
+            host.pluginLog(slot, "warn", e.getCause() instanceof TimeoutException
+                    ? "命令 " + prefix + word + " 超过 " + COMMAND_TIMEOUT_MS / 1000 + " 秒没处理完，交给她回复"
+                    : "命令处理出错，交给她回复：" + PluginHost.describe(e));
             return null;
         }
     }
@@ -334,7 +349,9 @@ final class PluginDispatcher implements MessageGate, Extensions {
     @Override
     public String outgoing(String session, String text) throws ToolFailure {
         String current = text;
+        long now = System.currentTimeMillis();
         List<PluginSlot> filters = host.sorted().stream().filter(PluginSlot::running).filter(s -> s.manifest.filter())
+                .filter(s -> !s.paused(now))
                 .filter(s -> store.approved(s.id).contains(Permission.QQ_FILTER))
                 .sorted(Comparator.comparingInt((PluginSlot s) -> s.manifest.priority()).thenComparing(s -> s.id)).toList();
         for (PluginSlot slot : filters) {
@@ -344,14 +361,19 @@ final class PluginDispatcher implements MessageGate, Extensions {
             JsonObject o;
             try {
                 o = object(slot.process.call("filter/outgoing", params, FILTER_TIMEOUT_MS).get(FILTER_TIMEOUT_MS + 200, TimeUnit.MILLISECONDS));
+                slot.fast();
             } catch (TimeoutException e) {
-                host.pluginLog(slot, "warn", "出站过滤超过 " + FILTER_TIMEOUT_MS / 1000 + " 秒，按放行处理");
+                timedOut(slot, "出站过滤");
                 continue;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (ExecutionException e) {
-                host.pluginLog(slot, "warn", "出站过滤出错，按放行处理：" + PluginHost.describe(e));
+                if (e.getCause() instanceof TimeoutException) {
+                    timedOut(slot, "出站过滤");
+                } else {
+                    host.pluginLog(slot, "warn", "出站过滤出错，按放行处理：" + PluginHost.describe(e));
+                }
                 continue;
             }
             String action = Jsons.optString(o, "action");

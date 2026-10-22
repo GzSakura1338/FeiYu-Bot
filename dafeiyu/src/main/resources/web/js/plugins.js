@@ -4,6 +4,7 @@ import { showSnackbar } from './snackbar.js';
 import { confirmDialog } from './dialog.js';
 import { onPageChange } from './router.js';
 import { initTabBar } from './tabs.js';
+import { viewTransition } from './motion.js';
 import { openPluginDetail } from './plugin-detail.js';
 import { openInstallDialog } from './plugin-install.js';
 import { openMcpDialog, mcpCard } from './plugin-mcp.js';
@@ -81,15 +82,18 @@ function card(p) {
   if (p.version) head.append(el('span', 'label-small plugin-version', `v${p.version}`));
   if (p.origin === 'example') head.append(el('span', 'label-small plugin-tag', '示例'));
   const text = el('div', 'plugin-card-text');
-  text.append(head, el('p', 'body-small plugin-desc', p.description || '（没有说明）'));
+  text.append(head);
+  if (p.author) text.append(el('div', 'label-small plugin-meta', p.author));
+  const desc = el('p', 'body-small plugin-desc', p.description || '（没有说明）');
+  const foot = el('div', 'plugin-card-foot');
+  const left = el('div', 'plugin-card-status');
+  left.append(statusChip(p.status, p.statusLabel));
   const meta = [];
   if (p.commands) meta.push(`${p.commands} 个命令`);
   if (p.tools) meta.push(`${p.tools} 个工具`);
-  if (!p.sandbox) meta.push('没开沙盒');
-  if (p.author) meta.push(p.author);
-  text.append(el('div', 'label-small plugin-meta', meta.join(' · ')));
-  const foot = el('div', 'plugin-card-foot');
-  foot.append(statusChip(p.status, p.statusLabel));
+  if (meta.length) left.append(el('span', 'label-small plugin-meta', meta.join(' · ')));
+  if (!p.sandbox) left.append(el('span', 'label-small plugin-tag plugin-tag-danger', '没开沙盒'));
+  foot.append(left);
   const toggle = el('button', 'switch', '');
   toggle.type = 'button';
   toggle.setAttribute('role', 'switch');
@@ -102,7 +106,7 @@ function card(p) {
     toggleEnabled(p);
   });
   foot.append(toggle);
-  node.append(icon, text, foot);
+  node.append(icon, text, desc, foot);
   if (p.problems?.length) node.append(el('div', 'body-small plugin-problem', p.problems.join('；')));
   else if (p.lastError) node.append(el('div', 'body-small plugin-problem', p.lastError.split('\n')[0]));
   else if (p.warnings?.length) node.append(el('div', 'body-small plugin-warning', p.warnings.join('；')));
@@ -157,9 +161,12 @@ export async function enableWithApproval(id) {
 function render() {
   if (!state) return;
   $('#plugin-dir').textContent = state.pluginsDir;
-  $('#plugin-prefix').value = state.prefix;
+  const prefix = $('#plugin-prefix');
+  if (document.activeElement !== prefix) prefix.value = state.prefix;
+  $('#plugin-prefix-example').textContent = `${state.prefix}今日人品`;
   $('#plugin-dev').setAttribute('aria-checked', String(state.devMode));
-  $('#plugin-host-info').textContent = `插件宿主版本 ${state.hostVersion}，插件目录 ${state.pluginsDir}`;
+  $('#plugin-dir-path').textContent = state.pluginsDir;
+  $('#plugin-host-version').textContent = `${state.hostVersion}（插件清单里的 host 字段对照这个版本）`;
   const list = $('#plugin-list');
   list.replaceChildren(...state.plugins.map(card));
   $('#plugin-empty').hidden = state.plugins.length > 0;
@@ -207,9 +214,16 @@ async function notifications() {
 
 export function initPlugins() {
   const tabs = initTabBar($('#plugin-tabs'), tab => {
-    if (!$(`.plugin-view[data-view="${tab}"]`)) return;
+    const to = $(`.plugin-view[data-view="${tab}"]`);
+    if (!to) return;
+    const views = $$('.plugin-view');
+    const from = views.find(view => !view.hidden);
     tabs.select(tab);
-    for (const view of $$('.plugin-view')) view.hidden = view.dataset.view !== tab;
+    const swap = () => {
+      for (const view of views) view.hidden = view !== to;
+    };
+    if (!from || from === to) swap();
+    else viewTransition(views.indexOf(to) > views.indexOf(from) ? 'axis-forward' : 'axis-backward', swap, { from, to });
     if (tab === 'mcp') loadMcp();
   });
   onPageChange(page => {
@@ -246,6 +260,14 @@ export function initPlugins() {
     } catch (err) {
       showSnackbar(err.message, 'error');
       render();
+    }
+  });
+  $('#plugin-dir-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(state?.pluginsDir ?? '');
+      showSnackbar('路径已复制', 'success');
+    } catch {
+      showSnackbar('复制失败，手动选中路径复制吧', 'error');
     }
   });
   $('#plugin-dev').addEventListener('click', async () => {

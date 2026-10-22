@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import dafeiyu.agent.qq.QqChatBridge;
-import dafeiyu.agent.usage.UsageStore;
 import dafeiyu.db.DatabaseException;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.plugin.PluginHost;
@@ -39,14 +38,12 @@ final class PluginHandler {
     private final PluginHost host;
     private final PluginInstaller installer;
     private final QqChatBridge bridge;
-    private final UsageStore usage;
     private final LogBuffer log;
 
-    PluginHandler(PluginHost host, PluginInstaller installer, QqChatBridge bridge, UsageStore usage, LogBuffer log) {
+    PluginHandler(PluginHost host, PluginInstaller installer, QqChatBridge bridge, LogBuffer log) {
         this.host = host;
         this.installer = installer;
         this.bridge = bridge;
-        this.usage = usage;
         this.log = log;
     }
 
@@ -56,7 +53,11 @@ final class PluginHandler {
         String[] parts = rest.isEmpty() || rest.equals("/") ? new String[0] : rest.substring(1).split("/");
         try {
             if (rest.equals("/install/upload") && method.equals("POST")) {
-                upload(ex);
+                if (Requests.isUpload(ex)) {
+                    upload(ex);
+                } else {
+                    HttpResponses.json(ex, 415, error("请求必须带 Content-Type: application/zip"));
+                }
                 return;
             }
             if (!method.equals("GET") && !Requests.isJson(ex)) {
@@ -167,9 +168,6 @@ final class PluginHandler {
             store.setQqTools(id, body.get("qqTools").getAsBoolean());
             host.refreshCatalog();
         }
-        if (body.has("llmBudget")) {
-            store.setLlmBudget(id, body.get("llmBudget").getAsInt());
-        }
         if (body.has("sandbox")) {
             boolean on = body.get("sandbox").getAsBoolean();
             if (!on && !(body.has("confirm") && body.get("confirm").getAsBoolean())) {
@@ -272,8 +270,6 @@ final class PluginHandler {
         o.addProperty("pid", v.pid());
         o.addProperty("runningSince", v.runningSince());
         o.addProperty("qqTools", store.qqTools(v.id()));
-        o.addProperty("llmBudget", store.llmBudget(v.id()));
-        o.addProperty("llmToday", usage.tokensToday("plugin:" + v.id()));
         o.addProperty("kvBytes", store.kvBytes(v.id()));
         o.add("groups", strings(store.groups(v.id())));
         o.addProperty("readme", readme(v.folder()));

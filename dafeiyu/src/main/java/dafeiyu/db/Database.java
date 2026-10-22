@@ -43,7 +43,7 @@ public final class Database implements AutoCloseable {
                 st.execute("PRAGMA foreign_keys = ON");
                 st.execute("PRAGMA busy_timeout = 5000");
             }
-            Migrations.apply(connection);
+            Migrations.apply(connection, absolute);
             return new Database(absolute, connection);
         } catch (IOException | SQLException e) {
             throw new DatabaseException("cannot open database " + absolute + ": " + e.getMessage(), e);

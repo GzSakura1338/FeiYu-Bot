@@ -6,3 +6,6 @@ ws-profiles.json.imported
 .idea/
 data/
 skid/
+plugins/*
+!plugins/sdk/
+__pycache__/

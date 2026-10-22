@@ -12,7 +12,7 @@ public enum Permission {
     MEMORY_READ("memory.read", "读她的记忆", "可以读她的记忆（私聊里记下的不给）"),
     MEMORY_WRITE("memory.write", "写她的记忆", "可以往她的记忆里添一条"),
     MIND_READ("mind.read", "看她的内心", "能收到她内心的念头"),
-    LLM("llm", "调用大模型", "可以用当前的模型做对话，token 记在这个插件名下，有每日额度"),
+    LLM("llm", "调用大模型", "可以用当前的模型做对话，token 记在这个插件名下"),
     NETWORK("network", "上网", "插件程序可以访问互联网（本机和局域网仍然不行）"),
     FILES("files", "读写工作目录", "插件程序可以读写你设置的工作目录");
 

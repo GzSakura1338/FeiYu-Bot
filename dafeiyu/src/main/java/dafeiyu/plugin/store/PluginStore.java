@@ -97,22 +97,6 @@ public final class PluginStore {
         settings.put(key(id, "groups"), String.join(",", groups));
     }
 
-    public int llmBudget(String id) {
-        String v = settings.get(key(id, "llmBudget"));
-        try {
-            return v == null ? 200_000 : Integer.parseInt(v);
-        } catch (NumberFormatException e) {
-            return 200_000;
-        }
-    }
-
-    public void setLlmBudget(String id, int tokens) {
-        if (tokens < 0 || tokens > 50_000_000) {
-            throw new IllegalArgumentException("每日 token 额度要在 0 到 5000 万之间");
-        }
-        settings.put(key(id, "llmBudget"), String.valueOf(tokens));
-    }
-
     public String prefix() {
         String v = settings.get(PREFIX_KEY);
         return v == null || v.isBlank() ? "#" : v;

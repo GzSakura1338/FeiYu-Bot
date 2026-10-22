@@ -126,6 +126,61 @@ function renderHeader() {
     skill: '教她一个技能：第一行写名字，Shift+Enter 换行写怎么做，Enter 保存',
   }[s.kind] ?? '手动加一条记忆，Enter 保存';
   $('#memory-download-all').hidden = s.kind !== 'skill' || !items.length;
+  $('#memory-import').hidden = s.kind !== 'skill' || !state?.persona;
+}
+
+async function upload(file, mode) {
+  const res = await fetch(`/api/agent/memory/skills/import?name=${encodeURIComponent(file.name)}&mode=${mode}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+    cache: 'no-store',
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json;
+}
+
+function importSummary({ added, overwritten, skipped, truncated }) {
+  const parts = [];
+  if (added.length) parts.push(`新学会 ${added.length} 个`);
+  if (overwritten.length) parts.push(`覆盖了 ${overwritten.length} 个`);
+  if (skipped.length) parts.push(`跳过同名的 ${skipped.length} 个`);
+  const head = parts.length ? `导入完成：${parts.join('，')}` : '没有导入新技能';
+  return truncated.length ? `${head}。「${truncated.join('」「')}」超过 3000 字，只保留了前面的部分` : head;
+}
+
+async function importSkills() {
+  const input = $('#memory-import-file');
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    let result = await upload(file, 'ask');
+    if (result.needsConfirm) {
+      const fresh = result.names.length - result.conflicts.length;
+      const check = el('label', 'confirm-check body-medium');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      check.append(box, `用导入的内容覆盖这 ${result.conflicts.length} 个`);
+      const ok = await confirmDialog({
+        icon: 'upload_file',
+        title: '有同名的技能',
+        text: `「${result.conflicts.join('」「')}」她已经会了。勾选就用导入的内容替换；不勾选就只导入其余 ${fresh} 个新技能。`,
+        node: check,
+        confirm: '导入',
+      });
+      if (!ok) return;
+      result = await upload(file, box.checked ? 'overwrite' : 'skip');
+    }
+    items = result.items;
+    renderItems();
+    showSnackbar(importSummary(result.imported), result.imported.truncated.length ? 'info' : 'success');
+    await loadState();
+  } catch (err) {
+    showSnackbar(`导入失败：${err.message}`, 'error');
+  }
 }
 
 function sourceMeta(m) {
@@ -376,6 +431,8 @@ export function initAgentMemory() {
   $('#memory-refresh').addEventListener('click', refresh);
   $('#memory-reflect').addEventListener('click', reflect);
   $('#memory-auto').addEventListener('click', toggleAuto);
+  $('#memory-import').addEventListener('click', () => $('#memory-import-file').click());
+  $('#memory-import-file').addEventListener('change', importSkills);
   const input = $('#memory-input');
   input.addEventListener('input', () => {
     input.style.height = 'auto';

@@ -22,6 +22,8 @@ final class PluginSlot {
     static final String RUNNING = "running";
     static final String RESTARTING = "restarting";
     static final String CRASHED = "crashed";
+    static final int SLOW_LIMIT = 3;
+    static final long SLOW_PAUSE_MS = 5 * 60_000;
 
     final String id;
     final Path folder;
@@ -45,6 +47,8 @@ final class PluginSlot {
     long logSecond;
     int logCount;
     int logSuppressed;
+    private int slowStreak;
+    private long pausedUntil;
 
     PluginSlot(String id, Path folder, String origin) {
         this.id = id;
@@ -62,11 +66,6 @@ final class PluginSlot {
         return m == null ? id : m.name();
     }
 
-    static final int SLOW_LIMIT = 3;
-    static final long SLOW_PAUSE_MS = 5 * 60_000;
-    private int slowStreak;
-    private long pausedUntil;
-
     synchronized boolean paused(long now) {
         return now < pausedUntil;
     }
@@ -83,6 +82,11 @@ final class PluginSlot {
 
     synchronized void fast() {
         slowStreak = 0;
+    }
+
+    synchronized void resume() {
+        slowStreak = 0;
+        pausedUntil = 0;
     }
 
     synchronized void stderr(String line) {

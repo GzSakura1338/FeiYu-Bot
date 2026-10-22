@@ -82,7 +82,7 @@ public final class Main {
                 return bridge.connected();
             }
         };
-        PluginHost plugins = new PluginHost(agent, qqPort, archive, usage, pluginStore, baseDir.resolve("plugins"), dataDir.resolve("plugins"),
+        PluginHost plugins = new PluginHost(agent, qqPort, archive, pluginStore, baseDir.resolve("plugins"), dataDir.resolve("plugins"),
                 List.of(), log);
         McpManager mcp = new McpManager(pluginStore, dataDir.resolve("mcp"), log, plugins::refreshCatalog);
         plugins.setMcp(mcp);

@@ -12,40 +12,132 @@
 :root {
   --md-ref-typeface-brand: "Google Sans Flex", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   --md-ref-typeface-plain: "Google Sans Flex", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --md-ref-typeface-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 
+  --md-sys-typescale-display-large: 400 57px/64px var(--md-ref-typeface-brand);
+  --md-sys-typescale-display-large-tracking: -.25px;
+  --md-sys-typescale-display-medium: 400 45px/52px var(--md-ref-typeface-brand);
+  --md-sys-typescale-display-medium-tracking: 0;
+  --md-sys-typescale-display-small: 400 36px/44px var(--md-ref-typeface-brand);
+  --md-sys-typescale-display-small-tracking: 0;
+  --md-sys-typescale-headline-large: 400 32px/40px var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-large-tracking: 0;
+  --md-sys-typescale-headline-medium: 400 28px/36px var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-medium-tracking: 0;
+  --md-sys-typescale-headline-small: 400 24px/32px var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-small-tracking: 0;
+  --md-sys-typescale-title-large: 400 22px/28px var(--md-ref-typeface-brand);
+  --md-sys-typescale-title-large-tracking: 0;
+  --md-sys-typescale-title-medium: 500 16px/24px var(--md-ref-typeface-plain);
+  --md-sys-typescale-title-medium-tracking: .15px;
+  --md-sys-typescale-title-small: 500 14px/20px var(--md-ref-typeface-plain);
+  --md-sys-typescale-title-small-tracking: .1px;
+  --md-sys-typescale-body-large: 400 16px/24px var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-large-tracking: .5px;
+  --md-sys-typescale-body-medium: 400 14px/20px var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-medium-tracking: .25px;
+  --md-sys-typescale-body-small: 400 12px/16px var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-small-tracking: .4px;
+  --md-sys-typescale-label-large: 500 14px/20px var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-large-tracking: .1px;
+  --md-sys-typescale-label-medium: 500 12px/16px var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-medium-tracking: .5px;
+  --md-sys-typescale-label-small: 500 11px/16px var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-small-tracking: .5px;
+
+  --md-sys-shape-corner-none: 0px;
   --md-sys-shape-corner-extra-small: 4px;
   --md-sys-shape-corner-small: 8px;
   --md-sys-shape-corner-medium: 12px;
   --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-large-increased: 20px;
   --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-extra-large-increased: 32px;
+  --md-sys-shape-corner-extra-extra-large: 48px;
   --md-sys-shape-corner-full: 9999px;
 
-  --md-sys-elevation-level2: 0 1px 2px 0 rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
-  --md-sys-elevation-level3: 0 1px 3px 0 rgb(0 0 0 / .3), 0 4px 8px 3px rgb(0 0 0 / .15);
+  --md-sys-elevation-key: color-mix(in srgb, var(--md-sys-color-shadow) 30%, transparent);
+  --md-sys-elevation-ambient: color-mix(in srgb, var(--md-sys-color-shadow) 15%, transparent);
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: 0 1px 2px 0 var(--md-sys-elevation-key), 0 1px 3px 1px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level2: 0 1px 2px 0 var(--md-sys-elevation-key), 0 2px 6px 2px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level3: 0 1px 3px 0 var(--md-sys-elevation-key), 0 4px 8px 3px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level4: 0 2px 3px 0 var(--md-sys-elevation-key), 0 6px 10px 4px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level5: 0 4px 4px 0 var(--md-sys-elevation-key), 0 8px 12px 6px var(--md-sys-elevation-ambient);
 
+  --md-sys-motion-easing-linear: cubic-bezier(0, 0, 1, 1);
   --md-sys-motion-easing-standard: cubic-bezier(.2, 0, 0, 1);
+  --md-sys-motion-easing-standard-accelerate: cubic-bezier(.3, 0, 1, 1);
+  --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --md-sys-motion-easing-emphasized: linear(0 0%, 0.001 1.31%, 0.006 2.74%, 0.015 4.24%, 0.028 5.8%, 0.047 7.38%, 0.073 8.96%, 0.105 10.5%, 0.145 11.98%, 0.194 13.36%, 0.252 14.62%, 0.321 15.73%, 0.4 16.67%, 0.41 16.77%, 0.431 16.98%, 0.459 17.28%, 0.492 17.65%, 0.529 18.12%, 0.568 18.71%, 0.61 19.46%, 0.653 20.42%, 0.697 21.68%, 0.739 23.33%, 0.781 25.49%, 0.821 28.29%, 0.859 31.9%, 0.893 36.52%, 0.924 42.36%, 0.95 49.68%, 0.971 58.77%, 0.987 69.94%, 0.997 83.56%, 1 100%);
   --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(.05, .7, .1, 1);
   --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(.3, 0, .8, .15);
-  --md-sys-motion-duration-short4: 200ms;
-  --md-sys-motion-duration-medium2: 300ms;
+  --md-sys-motion-easing-legacy: cubic-bezier(.4, 0, .2, 1);
+  --md-sys-motion-easing-legacy-decelerate: cubic-bezier(0, 0, .2, 1);
+  --md-sys-motion-easing-legacy-accelerate: cubic-bezier(.4, 0, 1, 1);
 
-  --md-sys-state-hover-opacity: .08;
-  --md-sys-state-focus-opacity: .10;
-  --md-sys-state-pressed-opacity: .10;
+  --md-sys-motion-duration-short1: 50ms;
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short3: 150ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium1: 250ms;
+  --md-sys-motion-duration-medium2: 300ms;
+  --md-sys-motion-duration-medium3: 350ms;
+  --md-sys-motion-duration-medium4: 400ms;
+  --md-sys-motion-duration-long1: 450ms;
+  --md-sys-motion-duration-long2: 500ms;
+  --md-sys-motion-duration-long3: 550ms;
+  --md-sys-motion-duration-long4: 600ms;
+  --md-sys-motion-duration-extra-long1: 700ms;
+  --md-sys-motion-duration-extra-long2: 800ms;
+  --md-sys-motion-duration-extra-long3: 900ms;
+  --md-sys-motion-duration-extra-long4: 1000ms;
+
+  --md-sys-motion-spring-fast-spatial: 348ms linear(0, 0.019, 0.071, 0.146, 0.236, 0.335, 0.437, 0.538, 0.634, 0.722, 0.802, 0.871, 0.931, 0.979, 1.018, 1.048, 1.07, 1.084, 1.092, 1.095, 1.093, 1.089, 1.082, 1.074, 1.064, 1.055, 1.045, 1.036, 1.028, 1.02, 1.013, 1.007, 1.003, 0.999, 0.996, 0.994, 0.992, 0.991, 0.991, 0.991, 0.991, 0.992, 0.993, 0.994, 0.995, 0.996, 0.996, 0.997, 1);
+  --md-sys-motion-spring-default-spatial: 412ms linear(0, 0.013, 0.047, 0.096, 0.156, 0.223, 0.293, 0.363, 0.433, 0.501, 0.564, 0.624, 0.678, 0.728, 0.773, 0.813, 0.848, 0.878, 0.905, 0.927, 0.946, 0.962, 0.975, 0.986, 0.994, 1.001, 1.006, 1.009, 1.012, 1.014, 1.015, 1.015, 1.015, 1.015, 1.014, 1.013, 1.012, 1.011, 1.01, 1.009, 1.008, 1.007, 1.006, 1.005, 1.004, 1.004, 1.003, 1.002, 1);
+  --md-sys-motion-spring-slow-spatial: 568ms linear(0, 0.013, 0.047, 0.096, 0.156, 0.223, 0.293, 0.363, 0.433, 0.501, 0.564, 0.624, 0.679, 0.728, 0.773, 0.813, 0.848, 0.878, 0.905, 0.927, 0.946, 0.962, 0.975, 0.986, 0.994, 1.001, 1.006, 1.009, 1.012, 1.014, 1.015, 1.015, 1.015, 1.015, 1.014, 1.013, 1.012, 1.011, 1.01, 1.009, 1.008, 1.007, 1.006, 1.005, 1.004, 1.004, 1.003, 1.002, 1);
+  --md-sys-motion-spring-fast-effects: 138ms linear(0, 0.05, 0.159, 0.288, 0.414, 0.529, 0.627, 0.709, 0.775, 0.828, 0.869, 0.901, 0.925, 0.944, 0.958, 0.969, 0.977, 0.983, 0.987, 0.991, 0.993, 0.995, 0.996, 0.997, 1);
+  --md-sys-motion-spring-default-effects: 212ms linear(0, 0.049, 0.158, 0.286, 0.413, 0.527, 0.626, 0.707, 0.773, 0.826, 0.868, 0.9, 0.925, 0.943, 0.958, 0.969, 0.977, 0.983, 0.987, 0.991, 0.993, 0.995, 0.996, 0.997, 1);
+  --md-sys-motion-spring-slow-effects: 300ms linear(0, 0.05, 0.158, 0.287, 0.413, 0.528, 0.626, 0.708, 0.774, 0.826, 0.868, 0.9, 0.925, 0.944, 0.958, 0.969, 0.977, 0.983, 0.987, 0.991, 0.993, 0.995, 0.996, 0.997, 1);
+
+  --md-sys-state-hover-state-layer-opacity: .08;
+  --md-sys-state-focus-state-layer-opacity: .10;
+  --md-sys-state-pressed-state-layer-opacity: .10;
+  --md-sys-state-dragged-state-layer-opacity: .16;
+  --md-sys-state-disabled-container-opacity: .10;
+  --md-sys-state-disabled-content-opacity: .38;
+  --md-sys-state-hover-opacity: var(--md-sys-state-hover-state-layer-opacity);
+  --md-sys-state-focus-opacity: var(--md-sys-state-focus-state-layer-opacity);
+  --md-sys-state-pressed-opacity: var(--md-sys-state-pressed-state-layer-opacity);
+
+  --md-sys-state-focus-indicator-thickness: 3px;
+  --md-sys-state-focus-indicator-outer-offset: 2px;
+  --md-sys-state-focus-indicator-inner-offset: -3px;
 }
 
-.display-large   { font: 400 57px/64px var(--md-ref-typeface-brand); letter-spacing: -.25px; }
-.headline-medium { font: 400 28px/36px var(--md-ref-typeface-brand); letter-spacing: 0; }
-.headline-small  { font: 400 24px/32px var(--md-ref-typeface-brand); letter-spacing: 0; }
-.title-large     { font: 400 22px/28px var(--md-ref-typeface-brand); letter-spacing: 0; }
-.title-medium    { font: 500 16px/24px var(--md-ref-typeface-plain); letter-spacing: .15px; }
-.body-large      { font: 400 16px/24px var(--md-ref-typeface-plain); letter-spacing: .5px; }
-.body-medium     { font: 400 14px/20px var(--md-ref-typeface-plain); letter-spacing: .25px; }
-.body-small      { font: 400 12px/16px var(--md-ref-typeface-plain); letter-spacing: .4px; }
-.label-large     { font: 500 14px/20px var(--md-ref-typeface-plain); letter-spacing: .1px; }
-.label-medium    { font: 500 12px/16px var(--md-ref-typeface-plain); letter-spacing: .5px; }
-.label-small     { font: 500 11px/16px var(--md-ref-typeface-plain); letter-spacing: .5px; }
+.display-large   { font: var(--md-sys-typescale-display-large); letter-spacing: var(--md-sys-typescale-display-large-tracking); }
+.display-medium  { font: var(--md-sys-typescale-display-medium); letter-spacing: var(--md-sys-typescale-display-medium-tracking); }
+.display-small   { font: var(--md-sys-typescale-display-small); letter-spacing: var(--md-sys-typescale-display-small-tracking); }
+.headline-large  { font: var(--md-sys-typescale-headline-large); letter-spacing: var(--md-sys-typescale-headline-large-tracking); }
+.headline-medium { font: var(--md-sys-typescale-headline-medium); letter-spacing: var(--md-sys-typescale-headline-medium-tracking); }
+.headline-small  { font: var(--md-sys-typescale-headline-small); letter-spacing: var(--md-sys-typescale-headline-small-tracking); }
+.title-large     { font: var(--md-sys-typescale-title-large); letter-spacing: var(--md-sys-typescale-title-large-tracking); }
+.title-medium    { font: var(--md-sys-typescale-title-medium); letter-spacing: var(--md-sys-typescale-title-medium-tracking); }
+.title-small     { font: var(--md-sys-typescale-title-small); letter-spacing: var(--md-sys-typescale-title-small-tracking); }
+.body-large      { font: var(--md-sys-typescale-body-large); letter-spacing: var(--md-sys-typescale-body-large-tracking); }
+.body-medium     { font: var(--md-sys-typescale-body-medium); letter-spacing: var(--md-sys-typescale-body-medium-tracking); }
+.body-small      { font: var(--md-sys-typescale-body-small); letter-spacing: var(--md-sys-typescale-body-small-tracking); }
+.label-large     { font: var(--md-sys-typescale-label-large); letter-spacing: var(--md-sys-typescale-label-large-tracking); }
+.label-medium    { font: var(--md-sys-typescale-label-medium); letter-spacing: var(--md-sys-typescale-label-medium-tracking); }
+.label-small     { font: var(--md-sys-typescale-label-small); letter-spacing: var(--md-sys-typescale-label-small-tracking); }
 
-.display-hero { font: 400 clamp(40px, 4.2vw, 60px)/1.12 var(--md-ref-typeface-brand); letter-spacing: -.25px; }
-.display-page { font: 400 clamp(32px, 2.8vw, 40px)/1.2 var(--md-ref-typeface-brand); letter-spacing: 0; }
-.body-hero    { font: 400 16px/24px var(--md-ref-typeface-plain); letter-spacing: .15px; }
+.display-hero { font: var(--md-sys-typescale-display-large); letter-spacing: var(--md-sys-typescale-display-large-tracking); }
+.display-page { font: var(--md-sys-typescale-display-small); letter-spacing: var(--md-sys-typescale-display-small-tracking); }
+.body-hero    { font: var(--md-sys-typescale-body-large); letter-spacing: var(--md-sys-typescale-body-large-tracking); }
+@media (max-width: 1199px) {
+  .display-hero { font: var(--md-sys-typescale-display-medium); letter-spacing: var(--md-sys-typescale-display-medium-tracking); }
+}
+@media (max-width: 599px) {
+  .display-hero { font: var(--md-sys-typescale-display-small); letter-spacing: var(--md-sys-typescale-display-small-tracking); }
+  .display-page { font: var(--md-sys-typescale-headline-large); letter-spacing: var(--md-sys-typescale-headline-large-tracking); }
+}

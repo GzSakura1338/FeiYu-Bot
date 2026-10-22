@@ -10,10 +10,12 @@
     const mode = localStorage.getItem('dafeiyu.theme');
     const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.dataset.palette = localStorage.getItem('dafeiyu.palette') || 'lavender';
   })();
 </script>
 <link rel="preload" href="fonts/GoogleSansFlex-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/palettes.css">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/layout.css">
@@ -91,7 +93,7 @@
 
     <div class="stat-row">
       <div class="panel stat-tile">
-        <span class="stat-icon" data-shape="cookie"><svg data-icon="badge"></svg></span>
+        <span class="stat-icon" data-shape="cookie9Sided"><svg data-icon="badge"></svg></span>
         <span class="stat-label label-large">QQ 号</span>
         <span class="stat-value" id="stat-qq">—</span>
       </div>
@@ -101,7 +103,7 @@
         <span class="stat-value" id="stat-nickname">—</span>
       </div>
       <div class="panel stat-tile">
-        <span class="stat-icon" data-shape="clover"><svg data-icon="monitor_heart"></svg></span>
+        <span class="stat-icon" data-shape="clover4Leaf"><svg data-icon="monitor_heart"></svg></span>
         <span class="stat-label label-large">最近心跳</span>
         <span class="stat-value" id="stat-heartbeat">—</span>
       </div>
@@ -421,6 +423,8 @@
               <div class="title-large session-name" id="memory-title"></div>
               <div class="body-small session-sub" id="memory-sub"></div>
             </div>
+            <button class="tonal-button label-large state-layer" id="memory-import" type="button" title="导入 SKILL.md 或装着 SKILL.md 的 zip" hidden><svg data-icon="upload_file" class="icon-18"></svg><span>导入</span></button>
+            <input type="file" id="memory-import-file" accept=".md,.zip" hidden>
             <a class="tonal-button label-large state-layer" id="memory-download-all" href="/api/agent/memory/skills/download" download hidden><svg data-icon="download" class="icon-18"></svg><span>全部下载</span></a>
           </header>
           <div class="chat-list memory-list" id="memory-list"></div>
@@ -478,24 +482,52 @@
 
     <div class="plugin-view" data-view="settings" hidden>
       <div class="panel">
-        <div class="panel-header">
-          <h2 class="headline-small">设置</h2>
-        </div>
-        <div class="plugin-panel-body plugin-settings-panel">
-          <label class="field">
-            <span class="label-medium">QQ 里的命令前缀</span>
-            <input id="plugin-prefix" class="body-large" maxlength="3" />
-            <span class="body-small field-hint">群里或私聊发「前缀+命令名」时交给插件处理，比如 #今日人品</span>
-          </label>
-          <div class="switch-field">
-            <div>
-              <div class="title-small">开发模式</div>
-              <div class="body-small switch-hint">插件文件改动后自动重新加载，方便自己写插件时调试</div>
+        <div class="panel-header"><h2 class="headline-small">命令与调试</h2></div>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="terminal"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">命令前缀</div>
+              <div class="list-supporting body-medium">QQ 里发「前缀 + 命令名」时交给插件处理，比如 <span id="plugin-prefix-example">#今日人品</span></div>
             </div>
-            <button class="switch" type="button" role="switch" id="plugin-dev" aria-checked="false"><span class="switch-handle"></span></button>
-          </div>
-          <div class="body-small plugin-meta" id="plugin-host-info"></div>
-        </div>
+            <input id="plugin-prefix" class="plugin-prefix-input title-medium" maxlength="3" aria-label="命令前缀" />
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="build"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">开发模式</div>
+              <div class="list-supporting body-medium">插件文件改动后几秒内自动重新加载，写插件时打开</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="plugin-dev" aria-checked="false" aria-label="开发模式"><span class="switch-handle"></span></button>
+          </li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">关于</h2></div>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="folder_open"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">插件目录</div>
+              <div class="list-supporting body-medium plugin-path" id="plugin-dir-path"></div>
+            </div>
+            <button class="icon-button state-layer" type="button" id="plugin-dir-copy" title="复制路径" aria-label="复制路径"><svg data-icon="content_copy"></svg></button>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="info"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">插件宿主版本</div>
+              <div class="list-supporting body-medium" id="plugin-host-version"></div>
+            </div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="description"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">开发文档</div>
+              <div class="list-supporting body-medium">dafeiyu/docs/插件开发.md：清单格式、每个接口、SDK 用法和调试方法</div>
+            </div>
+          </li>
+        </ul>
       </div>
     </div>
   </section>
@@ -570,7 +602,7 @@
       <div class="panel-header"><h2 class="headline-small">外观</h2></div>
       <ul class="list">
         <li class="list-item settings-row">
-          <span class="list-icon"><svg data-icon="palette"></svg></span>
+          <span class="list-icon"><svg data-icon="brightness_auto"></svg></span>
           <div class="list-text">
             <div class="list-headline body-large">主题</div>
             <div class="list-supporting body-medium">跟随系统，或固定为浅色、深色</div>
@@ -580,6 +612,14 @@
             <button class="state-layer" role="radio" data-mode="light"><svg data-icon="check" class="icon-18 chip-check"></svg>浅色</button>
             <button class="state-layer" role="radio" data-mode="dark"><svg data-icon="check" class="icon-18 chip-check"></svg>深色</button>
           </div>
+        </li>
+        <li class="list-item settings-row palette-row">
+          <span class="list-icon"><svg data-icon="palette"></svg></span>
+          <div class="list-text">
+            <div class="list-headline body-large">配色</div>
+            <div class="list-supporting body-medium">当前：<span id="palette-current"></span>，浅色深色都跟着换</div>
+          </div>
+          <div class="palette-grid" role="radiogroup" aria-label="配色" id="palette-grid"></div>
         </li>
       </ul>
     </div>
@@ -771,18 +811,22 @@
   <form method="dialog" class="dialog-form">
     <header class="plugin-dialog-head">
       <span class="plugin-icon plugin-icon-large" id="plugin-detail-icon"></span>
-      <div>
+      <div class="plugin-dialog-title">
         <h2 class="headline-small" id="plugin-detail-title"></h2>
-        <div class="body-small plugin-meta" id="plugin-detail-sub"></div>
+        <div class="plugin-dialog-sub">
+          <span id="plugin-detail-status"></span>
+          <span class="body-small plugin-meta" id="plugin-detail-sub"></span>
+        </div>
       </div>
+      <button class="switch" type="button" role="switch" id="plugin-detail-toggle" aria-checked="false" aria-label="启用"><span class="switch-handle"></span></button>
     </header>
+    <div class="session-filter label-large plugin-detail-tabs" role="tablist" id="plugin-detail-tabs"></div>
     <div class="dialog-body plugin-detail-body" id="plugin-detail-body"></div>
     <div class="dialog-actions">
       <button type="button" class="text-button label-large state-layer danger-text" id="plugin-detail-uninstall">卸载</button>
       <a class="text-button label-large state-layer" id="plugin-detail-page" target="_blank" rel="noopener" hidden>打开插件页面</a>
       <span class="dialog-spacer"></span>
       <button type="button" class="text-button label-large state-layer" id="plugin-detail-reload">重新加载</button>
-      <button type="button" class="tonal-button label-large state-layer" id="plugin-detail-toggle">启用</button>
       <button class="text-button label-large state-layer" value="close">关闭</button>
     </div>
   </form>
@@ -904,9 +948,7 @@
   </form>
 </dialog>
 
-<div class="snackbar" id="snackbar" role="status" aria-live="polite" data-tone="info">
-  <span class="snackbar-icon"><svg data-icon="info"></svg></span>
-  <span class="snackbar-text body-medium"></span>
+<div class="snackbar-stack" id="snackbar-stack" role="status" aria-live="polite">
 </div>
 </body>
 </html>

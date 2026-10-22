@@ -18,7 +18,6 @@ import dafeiyu.agent.protocol.Protocols;
 import dafeiyu.agent.qq.QqMessages;
 import dafeiyu.agent.safety.ContentGuard;
 import dafeiyu.agent.tool.ToolFailure;
-import dafeiyu.agent.usage.UsageStore;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.message.StoredMessage;
 import dafeiyu.plugin.manifest.Permission;
@@ -62,16 +61,14 @@ public final class HostApi {
     private final ChatAgent agent;
     private final QqPort qq;
     private final MessageArchive archive;
-    private final UsageStore usage;
     private final PluginStore store;
     private final Map<String, Deque<Long>> sends = new ConcurrentHashMap<>();
 
-    public HostApi(Services services, ChatAgent agent, QqPort qq, MessageArchive archive, UsageStore usage, PluginStore store) {
+    public HostApi(Services services, ChatAgent agent, QqPort qq, MessageArchive archive, PluginStore store) {
         this.services = services;
         this.agent = agent;
         this.qq = qq;
         this.archive = archive;
-        this.usage = usage;
         this.store = store;
     }
 
@@ -220,7 +217,9 @@ public final class HostApi {
     }
 
     private JsonElement groups(Caller caller) throws RpcError {
-        need(caller, "qq/groups", Permission.QQ_READ);
+        if (!caller.granted().contains(Permission.QQ_SEND)) {
+            need(caller, "qq/groups", Permission.QQ_READ);
+        }
         Map<String, String> names = qq.groupNames();
         JsonArray out = new JsonArray();
         for (String id : store.groups(caller.id())) {
@@ -303,12 +302,6 @@ public final class HostApi {
     private JsonElement llm(Caller caller, JsonObject params) throws RpcError {
         need(caller, "llm/chat", Permission.LLM);
         String purpose = "plugin:" + caller.id();
-        long used = usage.tokensToday(purpose);
-        int budget = store.llmBudget(caller.id());
-        if (used >= budget) {
-            services.log(caller.id(), "warn", "今天的大模型额度用完了（" + used + " / " + budget + " token）");
-            throw new RpcError(RpcError.LIMITED, "daily token budget used up (" + used + " / " + budget + ")");
-        }
         ModelProfile profile = agent.store().active();
         if (profile == null) {
             throw new RpcError(RpcError.FAILED, "no model is selected");

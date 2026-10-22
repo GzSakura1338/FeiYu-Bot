@@ -8,7 +8,7 @@
 - 双击上一级目录的 `start-dafeiyu.bat`，或者在本目录执行 `.\gradlew.bat run`
 - 打开网页控制台：http://127.0.0.1:8090/
 - `config.properties`：控制台端口、前端目录、数据库位置，以及反向 WebSocket 的初始默认值
-- 其余配置都在网页上管理，存在 SQLite 数据库 `data/dafeiyu.db`（含 API Key，已加入 .gitignore）
+- 其余配置都在网页上管理，存在 SQLite 数据库 `data/dafeiyu.db`（含 API Key，已加入 .gitignore）；表结构升级前会自动备份到 `data/backup/dafeiyu-v<旧版本>-<时间>.db`
 
 **改前端不用重启**：`web.dir`（默认 `src/main/resources/web`）存在时，后端每次请求都直接读这个目录，改完刷新浏览器即可。改 Java 代码需要重启。
 
@@ -32,7 +32,7 @@
   - 分区：关于她自己、日记、技能、主人、认识的每个人（按 QQ 号）、每个群
   - 日记一天一篇（`label` 是 `yyyy-MM-dd`，页面显示「2026年10月22日 星期四」）：回顾时把当天已写的日记和新聊天一起交给模型，重写成按时间顺序的完整一篇；新稿比旧稿短一半以上就当成补充接在后面，防止丢内容
   - 关于她自己按主题整理成几条：性格、喜好、习惯、经历、心愿和约定（经历和约定带日期）；聊天里当场记下的零散想法，下次回顾时并进主题后删掉（手动加的不动）
-  - 技能（`skills` 表，库版本 10，`SkillStore`）：回顾时模型也会看她用了哪些工具、哪里出了错，把不会的、被人纠正或教会的、自己试了几次才做成的事总结成技能（名字、什么时候用、具体做法），已有的技能就补充或纠正；同名技能合并。全部技能放进系统提示词的「你学会的技能」（约 2.4 万字以内放全文，超出的只放名字和用途），以后聊天照着做。页面上可以查看、修改、删除、手动添加，单个下载成 `SKILL.md`，或者全部打包成 zip
+  - 技能（`skills` 表，库版本 10，`SkillStore`）：回顾时模型也会看她用了哪些工具、哪里出了错，把不会的、被人纠正或教会的、自己试了几次才做成的事总结成技能（名字、什么时候用、具体做法），已有的技能就补充或纠正；同名技能合并。全部技能放进系统提示词的「你学会的技能」（约 2.4 万字以内放全文，超出的只放名字和用途），以后聊天照着做。页面上可以查看、修改、删除、手动添加，单个下载成 `SKILL.md`，或者全部打包成 zip；也能「导入」别人写的 `SKILL.md` 或装着 `SKILL.md` 的 zip（`SkillPack`），同名的先问覆盖还是跳过
   - 整理：启动 30 秒后和每次「现在回顾」后，把同一天的零散日记合成一篇、零散的自我认识攒到 8 条以上时并进主题，并把记忆里的「#尾号」暗记换成「群友+QQ 名」（写入记忆时也会自动换）
   - 实时记：回复格式是「<内心>…</内心> 要说的话 <记住 关于="昵称">…</记住>」，聊到生日、喜好、近况、约定这类事，她当场写 `<记住>`，程序马上存进对应分区（关于可以写昵称、主人、self、group；每条回复最多两条，重复的不存，同样过内容红线和防冒充主人检查）；网页上显示成「记下了：…」
   - 自我总结（整理）：一个 QQ 会话攒了 16 条新消息，或者聊过之后安静 10 分钟（至少 4 条），她会回顾这段聊天：更新当天的日记和对自己的认识，总结学会的技能，合并 / 改写 / 删除长期记忆（每次最多 10 处改动）；上下文压缩前也会先回顾一次。可以关掉「自动回顾」，也可以点「现在回顾」或用 `/reflect`
@@ -101,13 +101,24 @@
 - DeepSeek 思考截断：模型名或地址含 deepseek 时，历史助手消息带 `reasoning_content`，只有本轮保留原文，之前各轮截断为空
 - Token 用量（左侧栏「Token 用量」，`/api/usage`）：每次模型调用都由 `Protocols.get()` 的计量包装记一条 `token_usage`（库版本 9），内容包括用途（聊天、内心、压缩、审核、识图、整理记忆、能力检测）、会话、模型、思考强度、输入/输出/缓存 token 和耗时。页面显示累计、单日峰值、最长一次调用、连续天数，一年的每日热力图（可切每日/每周/累计），以及按用途、会话和模型的排行。2026-10-22 起开始记录
 
+## 插件
+
+左侧栏「插件」页，分「已安装 / MCP 服务 / 设置」三个子页。怎么写插件见 [docs/插件开发.md](docs/插件开发.md)，设计见 [docs/插件系统设计.md](docs/插件系统设计.md)，验收结果见 [docs/插件系统验收评估表.md](docs/插件系统验收评估表.md)。
+
+- 插件是独立进程，放在 `plugins/<id>/`（`plugin.json` + 代码），通过标准输入输出说 JSON-RPC 2.0；自带 Python（只用标准库）和 Node 的 SDK（`plugins/sdk/`）。这里只提供宿主接口，具体插件由开发者自己写
+- 能做的事：QQ 命令（前缀默认 `#`）、订阅消息和通知事件、拦截或改写收到的消息、给她加工具（智能体里默认可用，QQ 聊天和内心要单独打开）、定时任务（cron）、每轮提示词补充、过滤她要发出去的话、设置表单（含加密的密钥）、自己的 kv 存储和数据目录、读写记忆、调用大模型（token 记在「插件:id」名下，不限额度）、自定义页面
+- 权限：清单里声明，启用时逐项确认；主动发消息只能发到勾选的群，和她说的话一样过内容审核，每分钟 10 条、每天 100 条
+- 沙盒：每个插件一个 AppContainer，默认断网（`network` 权限才放开，本机和局域网始终不通），只能写自己的数据目录 `data/plugins/<id>/`；内存 512 MB、CPU 50%、16 个进程
+- 稳定性：崩溃自动重启（1 秒起翻倍，10 分钟崩 5 次自动停用）；命令 5 秒、拦截和出站过滤 2 秒、提示词补充 0.5 秒超时，拦截 / 过滤连续 3 次超时就暂停 5 分钟；日志每秒最多 50 行；插件出什么问题都不影响她正常聊天
+- 安装：上传 zip、Git 地址或 zip 网址，先看清单和权限再确认；升级保留设置和数据，版本变小会提示；卸载时可选是否删数据。开发模式下改了插件文件自动重新加载
+- MCP 服务：本地（stdio，默认沙盒 + 断网）和远程（Streamable HTTP），工具名 `mcp__<服务>__<工具>`
 ## 后端结构 `src/main/java/dafeiyu`
 
 | 包 | 类 | 作用 |
 | --- | --- | --- |
 | `dafeiyu` | `Main` | 入口，组装各模块 |
 | `config` | `AppConfig`、`WsSettings`、`WsProfile`、`WsProfileStore` | config.properties、反向 WebSocket 配置列表 |
-| `db` | `Database`、`Migrations`、`Settings`、`DatabaseException` | SQLite 连接、按版本迁移表结构、键值设置 |
+| `db` | `Database`、`Migrations`、`Settings`、`DatabaseException` | SQLite 连接、按版本迁移表结构（库版本 11，升级前自动备份）、键值设置 |
 | `log` | `LogBuffer`、`LogEntry` | 最近 500 条日志（控制台输出为英文） |
 | `message` | `MessageArchive`、`StoredMessage` | QQ 收发消息记录 |
 | `onebot` | `NapCatServer`、`NapCatService`、`PendingActions`、`EventFormatter`、`NapCatStatus` | OneBot v11 反向 WebSocket、运行中切换监听、事件订阅 |
@@ -119,14 +130,22 @@
 | `agent.persona` | `Persona`、`PersonaStore` | 人格与主人 |
 | `agent.context` | `ConversationMemory`、`Compactor`、`Compaction` | 会话记录（即收即存）、上下文压缩 |
 | `agent.reply` | `Markup` | 回复里隐藏标签的唯一解析和写回处：`<内心>`、`<记住>`、`<去做>`、`<拍一拍>` |
-| `agent.memory` | `Mood`、`MemoryStore`、`SkillStore`、`Reflection` | 心情、长期记忆分区与回忆（按来源控制隐私，私聊来源只在本私聊可见、最近在别处）、一天一篇的日记和按主题的自我认识、学会的技能、自我总结与整理 |
+| `agent.memory` | `Mood`、`MemoryStore`、`SkillStore`、`SkillPack`、`Reflection` | 心情、长期记忆分区与回忆（按来源控制隐私，私聊来源只在本私聊可见、最近在别处）、一天一篇的日记和按主题的自我认识、学会的技能、自我总结与整理 |
 | `agent.mind` | `Mind`、`MindTools` | 内心：一直在想的意识流、接别处托付的事、想事情用的工具（看群、翻记录、回想、找人、去群里说、私聊、拍一拍、记下）；私聊只感知「谁来找过」，不看内容 |
 | `agent.qq` | `QqChatBridge`、`QqOutbox`、`QqContacts`、`QqBackfill`、`GroupState`、`QqMessages`、`QqText`、`QqFaces` | 收消息与调度（群聊和私聊都即收即存、忙时排队）、主动开口；NapCat 每次连上后补拉断线期间漏掉的消息（只拉最近一周有动静的群和私聊，10 分钟内的照常回复）；统一的发送管线（格式化、审核、表情包、文件、拍一拍）；群列表、好友与找人；每个群的状态；消息解析与 @ 转换；回复格式；QQ 表情 |
 | `agent.safety` | `ContentGuard` | 内容红线：关键词表 + 模型审核 |
 | `agent.sticker` | `StickerStore`、`StickerKeeper` | 表情包库、后台下载和认图、收藏导入 |
 | `agent.tool` | `Workspace`、`WorkspaceStore`、`Toolbox`、`ReadTool`、`ListTool`、`MoveTool`、`DeleteTool` 等 | 工作目录沙箱、设置与 QQ 权限、工具注册与执行 |
 | `agent.protocol` | `OpenAiChatProtocol`、`OpenAiResponsesProtocol`、`AnthropicProtocol`、`StreamCollector`、`HttpJson`、`ProviderErrors` | 三种协议（含工具调用）、流式结果收集、SSE 与空闲超时、错误分类 |
-| `web` | `WebConsole`、`ApiHandler`、`WsProfileHandler`、`AgentHandler`、`SessionHandler`、`MindHandler`、`MemoryHandler`、`StickersHandler`、`FilesHandler`、`QqDirectory`、`SseWriter`、`StaticFileHandler`、`Requests`、`HttpResponses` | HTTP 服务和接口（会话列表 / 实时事件 / 命令、内心状态与「想一想」、记忆与回顾、表情包、工作目录文件、群名和好友昵称） |
+| `agent`、`agent.qq` | `Extensions`、`MessageGate` | 插件挂进来的两个接口：工具 / 提示词补充 / 内心念头，收发消息的拦截和过滤（不依赖 `plugin` 包） |
+| `plugin` | `PluginHost`、`PluginDispatcher`、`PluginScheduler`、`PluginProcess`、`PluginSlot`、`PluginView` | 插件生命周期（扫描、启停、崩溃重启、开发模式）、把消息 / 命令 / 工具 / 提示词 / 过滤分发给插件、定时任务、子进程 |
+| `plugin.api` | `HostApi`、`QqPort` | 插件能调的宿主接口和权限检查、频率限制；QQ 收发的适配层 |
+| `plugin.manifest` | `PluginManifest`、`Permission`、`PluginVersion`、`Cron`、`SettingsSchema`、`ArgsCheck` | 清单解析与校验、权限、版本比较、cron、设置表单校验、工具参数校验 |
+| `plugin.rpc` | `RpcChannel`、`ToolResults` | 按行的 JSON-RPC 2.0、工具结果转换和截断 |
+| `plugin.store` | `PluginStore`、`Dpapi` | 启用状态、授权、设置（密钥用 DPAPI 加密）、kv、插件日志 |
+| `plugin.install` | `PluginInstaller` | zip / Git / 网址安装、升级、卸载 |
+| `plugin.mcp` | `McpManager`、`McpClient`、`StdioMcpClient`、`HttpMcpClient`、`McpServerConfig` | MCP 客户端 |
+| `web` | `WebConsole`、`ApiHandler`、`WsProfileHandler`、`AgentHandler`、`SessionHandler`、`MindHandler`、`MemoryHandler`、`StickersHandler`、`FilesHandler`、`PluginHandler`、`McpHandler`、`PluginPageHandler`、`QqDirectory`、`SseWriter`、`StaticFileHandler`、`Requests`、`HttpResponses` | HTTP 服务和接口（会话列表 / 实时事件 / 命令、内心状态与「想一想」、记忆与回顾、表情包、工作目录文件、插件和 MCP 管理、插件自定义页面、群名和好友昵称） |
 | `util` | `Jsons`、`Texts` | JSON 取值、文本截断 |
 
 依赖：Java-WebSocket、gson、sqlite-jdbc。
@@ -135,7 +154,8 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `index.html` | 页面骨架：概览 / 事件日志 / 智能体 / 设置 + 对话框 |
+| `index.html` | 页面骨架：概览 / 事件日志 / 智能体 / 插件 / 设置 + 对话框 |
+| `js/plugins.js`、`js/plugin-detail.js`、`js/plugin-settings.js`、`js/plugin-install.js`、`js/plugin-mcp.js`、`css/plugins.css` | 插件列表与开关、插件详情（权限、允许的群、日志、定时任务、卸载）、按 Schema 生成的设置表单、安装流程、MCP 服务 |
 | `css/theme.css` | MD3 颜色角色（亮/暗），以 M3 基准紫 `#6750A4` 生成 |
 | `css/tokens.css`、`components.css`、`layout.css`、`motion.css` | 令牌、组件、布局、动效 |
 | `js/agent-models.js`、`js/agent-personas.js`、`js/agent-workspace.js`、`js/workspace-files.js`、`js/agent-sessions.js`、`js/agent-mind.js`、`js/agent-memory.js`、`js/agent-stickers.js` | 模型列表、页头开关与弹窗，人格与主人，工作目录与工具设置，工作目录文件浏览，会话（QQ 会话监控与控制台 + 网页测试对话），内心，记忆分区，表情包 |

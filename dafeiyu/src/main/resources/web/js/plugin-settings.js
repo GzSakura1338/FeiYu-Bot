@@ -7,6 +7,13 @@ function labelFor(key, spec) {
   return spec.title || key;
 }
 
+function hintFor(spec) {
+  if (spec.minimum != null && spec.maximum != null) return `${spec.minimum}～${spec.maximum}`;
+  if (spec.minimum != null) return `最小 ${spec.minimum}`;
+  if (spec.maximum != null) return `最大 ${spec.maximum}`;
+  return '';
+}
+
 function stringField(key, spec, value, onInput) {
   const secret = spec.secret === true;
   const input = el('input', 'body-large');
@@ -76,6 +83,7 @@ export function buildSettingsForm(detail, onSave) {
   const schema = detail.settingsSchema ?? {};
   const values = detail.settings ?? {};
   const form = el('form', 'plugin-settings');
+  const list = el('div', 'plugin-list');
   const fields = {};
   const save = el('button', 'filled-button filled-button-medium label-large state-layer', '保存设置');
   save.type = 'submit';
@@ -91,23 +99,21 @@ export function buildSettingsForm(detail, onSave) {
       : spec.type === 'array' ? arrayField(key, spec, value, markDirty)
       : stringField(key, spec, value, markDirty);
     fields[key] = built;
-    if (built.inline) {
-      const row = el('div', 'switch-field');
-      const text = el('div');
-      text.append(el('div', 'title-small', labelFor(key, spec)));
-      if (spec.description) text.append(el('div', 'body-small switch-hint', spec.description));
-      row.append(text, built.input);
-      form.append(row);
-    } else {
-      const field = el('label', 'field');
-      field.append(el('span', 'label-medium', labelFor(key, spec)), built.input);
-      if (spec.description) field.append(el('span', 'body-small field-hint', spec.description));
-      form.append(field);
-    }
+    const row = el('label', `plugin-item plugin-setting${spec.type === 'array' ? ' plugin-item-block' : ''}`);
+    const text = el('div', 'plugin-item-text');
+    const head = el('div', 'plugin-item-head');
+    head.append(el('span', 'body-large', labelFor(key, spec)));
+    if (spec.secret) head.append(el('span', 'label-small plugin-tag', '密钥'));
+    text.append(head);
+    const hint = [spec.description, hintFor(spec)].filter(Boolean).join(' · ');
+    if (hint) text.append(el('div', 'body-medium plugin-item-sub', hint));
+    built.input.classList.add('plugin-setting-input');
+    row.append(text, built.input);
+    list.append(row);
   }
   const actions = el('div', 'plugin-settings-actions');
   actions.append(save);
-  form.append(actions);
+  form.append(list, actions);
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const out = {};

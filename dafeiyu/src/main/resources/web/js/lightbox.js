@@ -48,6 +48,6 @@ export function initLightbox() {
     if (!img || !img.src || img.closest('.lightbox')) return;
     e.preventDefault();
     e.stopPropagation();
-    showImage(img.currentSrc || img.src, img.title || img.alt || '');
+    showImage(img.currentSrc || img.src, img.title || img.dataset.tooltip || img.alt || '');
   }, true);
 }

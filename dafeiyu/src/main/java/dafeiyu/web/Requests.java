@@ -18,6 +18,13 @@ final class Requests {
         return type != null && type.toLowerCase().startsWith("application/json");
     }
 
+    static boolean isUpload(HttpExchange ex) {
+        String type = ex.getRequestHeaders().getFirst("Content-Type");
+        String t = type == null ? "" : type.toLowerCase();
+        return t.startsWith("application/zip") || t.startsWith("application/x-zip-compressed")
+                || t.startsWith("application/octet-stream") || t.startsWith("text/markdown");
+    }
+
     static <T> T readJson(HttpExchange ex, Class<T> type) throws IOException {
         T value;
         try {

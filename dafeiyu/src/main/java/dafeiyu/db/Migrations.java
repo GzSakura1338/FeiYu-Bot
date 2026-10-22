@@ -1,12 +1,17 @@
 package dafeiyu.db;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-final class Migrations {
+public final class Migrations {
 
     private static final List<String> STEPS = List.of(
             """
@@ -212,10 +217,13 @@ final class Migrations {
 
     private Migrations() {}
 
-    static void apply(Connection c) throws SQLException {
+    static void apply(Connection c, Path file) throws SQLException {
         int version;
         try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("PRAGMA user_version")) {
             version = rs.next() ? rs.getInt(1) : 0;
+        }
+        if (version > 0 && version < STEPS.size()) {
+            backup(c, file, version);
         }
         for (int i = version; i < STEPS.size(); i++) {
             c.setAutoCommit(false);
@@ -233,6 +241,26 @@ final class Migrations {
             } finally {
                 c.setAutoCommit(true);
             }
+        }
+    }
+
+    public static Path backupDir(Path file) {
+        return file.resolveSibling("backup");
+    }
+
+    private static void backup(Connection c, Path file, int version) throws SQLException {
+        Path dir = backupDir(file);
+        String name = file.getFileName().toString().replaceFirst("\\.db$", "");
+        Path target = dir.resolve(name + "-v" + version + "-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".db");
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new SQLException("cannot back up before schema migration: " + e.getMessage(), e);
+        }
+        try (Statement st = c.createStatement()) {
+            st.execute("VACUUM INTO '" + target.toString().replace("'", "''") + "'");
+        } catch (SQLException e) {
+            throw new SQLException("cannot back up before schema migration to " + target + ": " + e.getMessage(), e);
         }
     }
 }
