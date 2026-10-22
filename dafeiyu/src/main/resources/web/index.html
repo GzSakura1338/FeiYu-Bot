@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FeiYu Bot</title>
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<script>
+  (() => {
+    const mode = localStorage.getItem('dafeiyu.theme');
+    const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  })();
+</script>
+<link rel="preload" href="fonts/GoogleSansFlex-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/motion.css">
+<link rel="stylesheet" href="css/usage.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+
+<nav class="rail" aria-label="主导航">
+  <a class="rail-fab state-layer" href="#overview" title="FeiYu Bot" aria-label="FeiYu Bot 首页"><span class="logo-mask"></span></a>
+
+  <div class="rail-items">
+    <a class="rail-item" href="#overview" data-page="overview">
+      <span class="rail-indicator state-layer"><svg data-icon="dashboard"></svg></span>
+      <span class="rail-label">概览</span>
+    </a>
+    <a class="rail-item" href="#logs" data-page="logs">
+      <span class="rail-indicator state-layer"><svg data-icon="receipt_long"></svg></span>
+      <span class="rail-label">事件日志</span>
+      <span class="badge label-small" id="logs-badge" hidden></span>
+    </a>
+    <a class="rail-item" href="#agent" data-page="agent">
+      <span class="rail-indicator state-layer"><svg data-icon="auto_awesome"></svg></span>
+      <span class="rail-label">智能体</span>
+    </a>
+    <a class="rail-item" href="#usage" data-page="usage">
+      <span class="rail-indicator state-layer"><svg data-icon="monitor_heart"></svg></span>
+      <span class="rail-label">Token 用量</span>
+    </a>
+    <a class="rail-item" href="#settings" data-page="settings">
+      <span class="rail-indicator state-layer"><svg data-icon="settings"></svg></span>
+      <span class="rail-label">设置</span>
+    </a>
+  </div>
+
+  <div class="rail-bottom">
+    <a class="circle-button state-layer" href="#overview" id="rail-status" data-tone="neutral" title="读取中…" aria-label="NapCat 连接状态">
+      <svg data-icon="sync"></svg>
+    </a>
+    <button class="circle-button state-layer" id="theme-toggle" title="主题" aria-label="切换主题">
+      <svg data-icon="brightness_auto"></svg>
+    </button>
+  </div>
+</nav>
+
+<main class="content">
+
+  <section class="page" id="page-overview" data-title="概览" hidden>
+    <div class="hero">
+      <div class="panel hero-main">
+        <h1 class="display-hero">FeiYu Bot</h1>
+        <p class="body-hero">QQ 机器人控制台。通过 NapCat 接入 QQ，实时查看连接状态和群消息。</p>
+        <a class="filled-button state-layer" href="#logs">查看事件日志<svg data-icon="arrow_forward"></svg></a>
+      </div>
+      <div class="panel status-panel" id="status-card" data-tone="neutral">
+        <div class="status-shape">
+          <svg class="shape" id="status-shape" viewBox="-1 -1 2 2" aria-hidden="true"><path/></svg>
+          <svg data-icon="sync" id="status-icon"></svg>
+        </div>
+        <h2 class="headline-small" id="status-title">读取中…</h2>
+        <p class="body-large" id="status-sub"></p>
+        <div class="chip-set" id="status-chips">
+          <span class="assist-chip label-large" id="chip-heartbeat"><svg data-icon="monitor_heart" class="icon-18"></svg><span></span></span>
+          <span class="assist-chip label-large" id="chip-uptime"><svg data-icon="timer" class="icon-18"></svg><span></span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="panel stat-tile">
+        <span class="stat-icon" data-shape="cookie"><svg data-icon="badge"></svg></span>
+        <span class="stat-label label-large">QQ 号</span>
+        <span class="stat-value" id="stat-qq">—</span>
+      </div>
+      <div class="panel stat-tile">
+        <span class="stat-icon" data-shape="sunny" id="stat-avatar"><svg data-icon="person"></svg></span>
+        <span class="stat-label label-large">昵称</span>
+        <span class="stat-value" id="stat-nickname">—</span>
+      </div>
+      <div class="panel stat-tile">
+        <span class="stat-icon" data-shape="clover"><svg data-icon="monitor_heart"></svg></span>
+        <span class="stat-label label-large">最近心跳</span>
+        <span class="stat-value" id="stat-heartbeat">—</span>
+      </div>
+      <div class="panel stat-tile">
+        <span class="stat-icon" data-shape="gem"><svg data-icon="forum"></svg></span>
+        <span class="stat-label label-large">今日消息</span>
+        <span class="stat-value" id="stat-messages">0</span>
+        <span class="stat-sub body-small" id="stat-messages-total"></span>
+      </div>
+    </div>
+
+    <div class="panel-row">
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">连接详情</h2></div>
+        <ul class="list" id="info-list"></ul>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">最近消息</h2>
+          <a class="text-button label-large state-layer" href="#logs" id="recent-more">查看全部<svg data-icon="chevron_right" class="icon-18"></svg></a>
+        </div>
+        <ul class="list" id="recent-list"></ul>
+        <div class="empty-state" id="recent-empty"><svg data-icon="forum"></svg><p class="body-medium">还没有收到消息</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-logs" data-title="事件日志" hidden>
+    <div class="panel page-hero">
+      <div>
+        <h1 class="display-page">事件日志</h1>
+        <p class="body-hero">NapCat 推送的事件和大肥鱼自身的运行日志，每秒刷新。</p>
+      </div>
+      <div class="page-hero-actions">
+        <span class="count title-medium" id="log-count"></span>
+        <button class="tonal-icon-button state-layer" id="btn-autoscroll" aria-pressed="true" title="自动滚动到最新" aria-label="自动滚动到最新">
+          <svg data-icon="vertical_align_bottom"></svg>
+        </button>
+        <button class="tonal-icon-button state-layer" id="btn-clear" title="清空显示" aria-label="清空显示">
+          <svg data-icon="delete_sweep"></svg>
+        </button>
+      </div>
+    </div>
+    <div class="tab-bar" id="log-filters" role="tablist" aria-label="筛选">
+      <span class="tab-indicator" aria-hidden="true"></span>
+      <button class="tab state-layer" role="tab" data-filter="all" aria-selected="true"><svg data-icon="receipt_long"></svg>全部</button>
+      <button class="tab state-layer" role="tab" data-filter="message" aria-selected="false"><svg data-icon="forum"></svg>消息</button>
+      <button class="tab state-layer" role="tab" data-filter="warn" aria-selected="false"><svg data-icon="warning"></svg>警告与错误</button>
+    </div>
+    <div class="panel log-panel">
+      <div class="log-list" id="log-list"></div>
+      <div class="empty-state" id="log-empty"><svg data-icon="inbox"></svg><p class="body-medium">暂无日志</p></div>
+    </div>
+  </section>
+
+  <section class="page" id="page-agent" data-title="智能体" hidden>
+    <div class="panel page-hero">
+      <div>
+        <h1 class="display-page">智能体</h1>
+        <p class="body-hero">接入兼容 OpenAI 接口的大模型，在 QQ 里回复私聊和群消息。</p>
+        <p class="body-medium hero-mood" id="agent-mood" hidden></p>
+      </div>
+      <div class="hero-switches">
+        <div class="switch-field">
+          <div>
+            <div class="title-medium">QQ 自动回复</div>
+            <div class="body-small switch-hint" id="agent-switch-hint">已关闭</div>
+          </div>
+          <button class="switch" type="button" role="switch" id="agent-qq-switch" aria-checked="false" aria-label="QQ 自动回复"><span class="switch-handle"></span></button>
+        </div>
+        <div class="switch-field">
+          <div>
+            <div class="title-medium">群聊模式</div>
+            <div class="body-small switch-hint" id="agent-group-hint">已关闭 · 群里只回复 @</div>
+          </div>
+          <button class="switch" type="button" role="switch" id="agent-group-switch" aria-checked="false" aria-label="群聊模式"><span class="switch-handle"></span></button>
+        </div>
+        <div class="switch-field">
+          <div>
+            <div class="title-medium">自由活动</div>
+            <div class="body-small switch-hint" id="agent-free-hint">已关闭</div>
+          </div>
+          <button class="switch" type="button" role="switch" id="agent-free-switch" aria-checked="false" aria-label="自由活动"><span class="switch-handle"></span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-bar sub-tabs" id="agent-tabs" role="tablist" aria-label="智能体分类">
+      <span class="tab-indicator" aria-hidden="true"></span>
+      <button class="tab state-layer" role="tab" data-tab="models" aria-selected="true"><svg data-icon="memory"></svg>模型</button>
+      <button class="tab state-layer" role="tab" data-tab="personas" aria-selected="false"><svg data-icon="theater_comedy"></svg>人格</button>
+      <button class="tab state-layer" role="tab" data-tab="workspace" aria-selected="false"><svg data-icon="folder_open"></svg>工作目录</button>
+      <button class="tab state-layer" role="tab" data-tab="sessions" aria-selected="false"><svg data-icon="forum"></svg>会话</button>
+      <button class="tab state-layer" role="tab" data-tab="memory" aria-selected="false"><svg data-icon="psychology"></svg>记忆</button>
+      <button class="tab state-layer" role="tab" data-tab="stickers" aria-selected="false"><svg data-icon="mood"></svg>表情包</button>
+    </div>
+
+    <div class="agent-view" data-view="models">
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">模型</h2>
+          <button class="tonal-button label-large state-layer" id="model-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+        </div>
+        <p class="panel-desc body-medium">选中的模型用于 QQ 自动回复和测试对话。看图能力会在第一次收到图片时自动探测，也可以手动检测。</p>
+        <ul class="list ws-list" id="model-list" role="radiogroup" aria-label="使用中的模型"></ul>
+        <div class="empty-state" id="model-empty" hidden><svg data-icon="memory"></svg><p class="body-medium">还没有模型，点「添加」配置一个</p></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">思考强度</h2></div>
+        <p class="panel-desc body-medium">聊天和内心回复前想多久。想得越深回复越慢、越费 token；「关闭」就是不思考直接回。对所有模型生效，模型不支持时会忽略。识图、审核、整理记忆这些后台活不受影响。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="psychology"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">思考强度</div>
+              <div class="list-supporting body-medium" id="effort-hint">跟随模型默认</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="思考强度" id="effort-choice">
+              <button class="state-layer" role="radio" data-effort="default"><svg data-icon="check" class="icon-18 chip-check"></svg>默认</button>
+              <button class="state-layer" role="radio" data-effort="none"><svg data-icon="check" class="icon-18 chip-check"></svg>关闭</button>
+              <button class="state-layer" role="radio" data-effort="low"><svg data-icon="check" class="icon-18 chip-check"></svg>低</button>
+              <button class="state-layer" role="radio" data-effort="medium"><svg data-icon="check" class="icon-18 chip-check"></svg>中</button>
+              <button class="state-layer" role="radio" data-effort="high"><svg data-icon="check" class="icon-18 chip-check"></svg>高</button>
+              <button class="state-layer" role="radio" data-effort="max"><svg data-icon="check" class="icon-18 chip-check"></svg>最高</button>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="agent-view" data-view="personas" hidden>
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">人格</h2>
+          <button class="tonal-button label-large state-layer" id="persona-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+        </div>
+        <p class="panel-desc body-medium">人格决定机器人的身份和说话方式，会作为系统提示词发给模型；和模型分开管理，可以任意搭配。</p>
+        <div class="persona-grid" id="persona-grid" role="radiogroup" aria-label="使用中的人格"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">主人</h2></div>
+        <p class="panel-desc body-medium">主人发来的 QQ 消息会由程序加上「【主人】」标记，别人改昵称、在消息里打这几个字都冒充不了。人格里可以写「只叫带【主人】标记的人主人」这类设定。</p>
+        <form class="workspace-row" id="owners-form" novalidate autocomplete="off">
+          <div class="text-field" data-field="owners">
+            <div class="text-field-box"><input id="owners-input" name="owners" placeholder=" " spellcheck="false" inputmode="numeric"><label for="owners-input">主人的 QQ 号</label></div>
+            <span class="supporting body-small" data-hint="多个用逗号或空格分开；留空表示没有主人"></span>
+          </div>
+          <button type="submit" class="filled-button filled-button-medium state-layer" id="owners-save" disabled>保存</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="agent-view" data-view="workspace" hidden>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">工作目录</h2></div>
+        <p class="panel-desc body-medium">设置后，智能体可以像 opencode 一样在这个目录里查找、读取、新建和编辑文件，也能把文件发给对方。所有操作都限制在这个目录内，目录以外的任何位置都读不到、写不了；不提供执行命令。</p>
+        <form class="workspace-row" id="workspace-dir-form" novalidate autocomplete="off">
+          <div class="text-field" data-field="dir">
+            <div class="text-field-box"><input id="workspace-dir" name="dir" placeholder=" " spellcheck="false"><label for="workspace-dir">目录的完整路径</label></div>
+            <span class="supporting body-small" data-hint="例如 D:\bot-files，建议新建一个专用目录；留空表示不启用文件工具"></span>
+          </div>
+          <button type="submit" class="filled-button filled-button-medium state-layer" id="workspace-dir-save" disabled>保存</button>
+        </form>
+        <div class="workspace-status body-medium" id="workspace-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">文件</h2>
+          <button class="icon-button state-layer" id="files-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+        </div>
+        <p class="panel-desc body-medium">工作目录里现在的文件。她会把新做的东西按文件夹放好，也可以叫她「整理一下工作目录」。删除会先放进回收站（.trash），在回收站里再删才是彻底删除。</p>
+        <nav class="files-crumbs label-large" id="files-crumbs" aria-label="当前位置"></nav>
+        <div class="files-summary body-small" id="files-summary"></div>
+        <ul class="list files-list" id="files-list"></ul>
+        <div class="empty-state" id="files-empty" hidden><svg data-icon="folder_open"></svg><p class="body-medium" id="files-empty-text">这里是空的</p></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">工具</h2></div>
+        <p class="panel-desc body-medium">关掉的工具不会提供给模型。模型不支持工具调用时会自动改回普通对话。</p>
+        <ul class="list" id="workspace-tools"></ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">QQ 里谁可以用</h2></div>
+        <p class="panel-desc body-medium">网页测试对话始终可以使用工具。QQ 里能给机器人发消息的人都可能让它改文件，请只开放给信任的人；群里按发消息的人判断。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="shield"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">QQ 使用权限</div>
+              <div class="list-supporting body-medium" id="workspace-access-hint">只有网页测试对话可以使用工具</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="QQ 使用权限" id="workspace-access">
+              <button class="state-layer" role="radio" data-access="OFF"><svg data-icon="check" class="icon-18 chip-check"></svg>不允许</button>
+              <button class="state-layer" role="radio" data-access="LIST"><svg data-icon="check" class="icon-18 chip-check"></svg>指定 QQ 号</button>
+              <button class="state-layer" role="radio" data-access="ALL"><svg data-icon="check" class="icon-18 chip-check"></svg>所有人</button>
+            </div>
+          </li>
+        </ul>
+        <form class="workspace-row" id="workspace-users-form" novalidate autocomplete="off" hidden>
+          <div class="text-field" data-field="qqUsers">
+            <div class="text-field-box"><input id="workspace-users" name="qqUsers" placeholder=" " spellcheck="false" inputmode="numeric"><label for="workspace-users">允许的 QQ 号</label></div>
+            <span class="supporting body-small" data-hint="多个用逗号或空格分开"></span>
+          </div>
+          <button type="submit" class="filled-button filled-button-medium state-layer" id="workspace-users-save" disabled>保存</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="agent-view" data-view="sessions" hidden>
+      <div class="panel sessions-panel">
+        <aside class="session-pane">
+          <div class="panel-header">
+            <h2 class="headline-small">会话</h2>
+            <button class="tonal-button label-large state-layer" id="session-new" title="新建一个网页测试对话"><svg data-icon="add_comment" class="icon-18"></svg>新对话</button>
+            <button class="icon-button state-layer" id="sessions-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+          </div>
+          <div class="session-filter label-large" role="radiogroup" aria-label="筛选会话" id="session-filter">
+            <button class="state-layer" role="radio" data-filter="all" aria-checked="true">全部</button>
+            <button class="state-layer" role="radio" data-filter="busy" aria-checked="false">回复中</button>
+            <button class="state-layer" role="radio" data-filter="group" aria-checked="false">群聊</button>
+            <button class="state-layer" role="radio" data-filter="private" aria-checked="false">私聊</button>
+            <button class="state-layer" role="radio" data-filter="web" aria-checked="false">测试</button>
+          </div>
+          <ul class="session-list" id="session-list" role="listbox" aria-label="会话列表"></ul>
+          <div class="empty-state" id="session-list-empty" hidden><svg data-icon="history"></svg><p class="body-medium">还没有会话</p></div>
+        </aside>
+        <section class="session-detail" id="session-detail">
+          <div class="empty-state session-placeholder" id="session-placeholder"><svg data-icon="forum"></svg><p class="body-medium">选择左侧的会话查看记录，或者点「新对话」在网页里试聊</p></div>
+          <div class="session-view" id="session-view" hidden>
+            <header class="session-header">
+              <span class="session-avatar" id="session-avatar"></span>
+              <div class="session-title">
+                <div class="title-large session-name" id="session-name"></div>
+                <div class="body-small session-sub" id="session-sub"></div>
+              </div>
+              <div class="session-chips" id="session-chips" hidden>
+                <button type="button" class="chip-button label-large state-layer" id="chat-persona" title="切换人格"><svg data-icon="theater_comedy" class="icon-18"></svg><span>不使用人格</span><svg data-icon="arrow_drop_down" class="icon-18"></svg></button>
+                <button type="button" class="chip-button label-large state-layer" id="chat-model" title="切换模型"><svg data-icon="memory" class="icon-18"></svg><span>未选择模型</span><svg data-icon="arrow_drop_down" class="icon-18"></svg></button>
+              </div>
+              <button class="tonal-button label-large state-layer" id="mind-think" hidden><svg data-icon="auto_awesome" class="icon-18"></svg><span>马上想下一个念头</span></button>
+              <button class="tonal-button stop-button label-large state-layer" id="session-stop" hidden><svg data-icon="stop_circle" class="icon-18"></svg>停止</button>
+              <button class="icon-button state-layer" id="session-clear" title="清空这个会话的记忆" aria-label="清空这个会话的记忆"><svg data-icon="delete_sweep"></svg></button>
+            </header>
+            <div class="mind-status session-stats body-medium" id="session-stats"></div>
+            <div class="mind-bar" id="mind-bar" hidden>
+              <div class="mind-status body-medium" id="mind-status"></div>
+              <div class="session-filter label-large mind-pace" role="radiogroup" aria-label="思考节奏" id="mind-pace">
+                <span class="mind-pace-label">思考节奏</span>
+                <button class="state-layer" role="radio" data-pace="fast" aria-checked="false">快（约 15 秒一个念头）</button>
+                <button class="state-layer" role="radio" data-pace="normal" aria-checked="true">正常（约 40 秒）</button>
+                <button class="state-layer" role="radio" data-pace="slow" aria-checked="false">慢（约 2 分钟）</button>
+              </div>
+            </div>
+            <div class="chat-list session-timeline" id="session-timeline"></div>
+            <div class="attachments" id="chat-attachments" hidden></div>
+            <form class="composer session-composer" id="session-form">
+              <button type="button" class="icon-button state-layer" id="chat-attach" title="添加图片" aria-label="添加图片" hidden><svg data-icon="add_photo_alternate"></svg></button>
+              <input type="file" id="chat-file" accept="image/*" multiple hidden>
+              <textarea id="session-input" class="body-large" rows="1" placeholder="以控制台身份发消息，输入 / 使用命令（清空、压缩、停止…）"></textarea>
+              <button type="button" class="deliver-toggle label-medium state-layer" id="session-deliver" aria-pressed="true" title="回复是否同时发到 QQ"><svg data-icon="send" class="icon-18"></svg><span>发到 QQ</span></button>
+              <button class="send-button state-layer" id="session-send" type="submit" aria-label="发送" disabled><svg data-icon="send"></svg></button>
+            </form>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="agent-view" data-view="stickers" hidden>
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">表情包</h2>
+          <button class="tonal-button label-large state-layer" id="stickers-sync" title="从 QQ 拉取这个号收藏的表情包"><svg data-icon="sync" class="icon-18"></svg><span>同步收藏</span></button>
+          <button class="icon-button state-layer" id="stickers-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+        </div>
+        <p class="panel-desc body-medium" id="stickers-desc">这个 QQ 收藏的表情包，和她在群里见过的表情包。她会自己认图写一句说明，有说明的才会拿来用；聊天时想表达情绪、或者看到有意思的，会发一张。点一张可以手动发送、改说明或者隐藏。</p>
+        <div class="session-filter label-large" role="radiogroup" aria-label="筛选表情包" id="sticker-filter">
+          <button class="state-layer" role="radio" data-filter="all" aria-checked="true">全部</button>
+          <button class="state-layer" role="radio" data-filter="favorite" aria-checked="false">QQ 收藏</button>
+          <button class="state-layer" role="radio" data-filter="collected" aria-checked="false">她收藏的</button>
+          <button class="state-layer" role="radio" data-filter="seen" aria-checked="false">群里见过的</button>
+          <button class="state-layer" role="radio" data-filter="hidden" aria-checked="false">隐藏的</button>
+        </div>
+        <div class="sticker-grid" id="sticker-grid"></div>
+        <div class="empty-state" id="sticker-empty" hidden><svg data-icon="mood"></svg><p class="body-medium">还没有表情包，点「同步收藏」，或者等群里有人发</p></div>
+      </div>
+    </div>
+
+    <div class="agent-view" data-view="memory" hidden>
+      <div class="panel sessions-panel">
+        <aside class="session-pane">
+          <div class="panel-header">
+            <h2 class="headline-small">记忆</h2>
+            <button class="icon-button state-layer" id="memory-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+          </div>
+          <div class="memory-controls">
+            <div class="switch-field">
+              <div>
+                <div class="title-small">自动回顾</div>
+                <div class="body-small switch-hint" id="memory-auto-hint">聊过一阵后自己总结、记日记</div>
+              </div>
+              <button class="switch" type="button" role="switch" id="memory-auto" aria-checked="true" aria-label="自动回顾"><span class="switch-handle"></span></button>
+            </div>
+            <button class="tonal-button label-large state-layer" id="memory-reflect"><svg data-icon="auto_awesome" class="icon-18"></svg><span>现在回顾</span></button>
+            <div class="body-small memory-pending" id="memory-pending"></div>
+          </div>
+          <ul class="session-list" id="memory-scopes" role="listbox" aria-label="记忆分区"></ul>
+          <div class="empty-state" id="memory-none" hidden><svg data-icon="theater_comedy"></svg><p class="body-medium">记忆跟着人格走，先在「人格」里选一个人格</p></div>
+        </aside>
+        <section class="session-detail">
+          <header class="session-header">
+            <span class="session-avatar" id="memory-avatar"></span>
+            <div class="session-title">
+              <div class="title-large session-name" id="memory-title"></div>
+              <div class="body-small session-sub" id="memory-sub"></div>
+            </div>
+          </header>
+          <div class="chat-list memory-list" id="memory-list"></div>
+          <form class="composer session-composer" id="memory-form">
+            <textarea id="memory-input" class="body-large" rows="1" placeholder="手动加一条记忆，Enter 保存"></textarea>
+            <button class="send-button state-layer" id="memory-add" type="submit" aria-label="保存" disabled><svg data-icon="add"></svg></button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-usage" data-title="Token 用量" hidden>
+    <div class="panel usage-panel">
+      <header class="usage-profile">
+        <span class="usage-avatar" id="usage-avatar"></span>
+        <h1 class="usage-name" id="usage-name">大肥鱼</h1>
+        <div class="usage-handle body-large"><span id="usage-handle"></span><span class="usage-chip label-large" id="usage-model"></span></div>
+      </header>
+
+      <dl class="usage-stats" id="usage-stats"></dl>
+
+      <section class="usage-block">
+        <div class="usage-block-head">
+          <h2 class="usage-title">Token 活动</h2>
+          <div class="usage-modes label-large" role="radiogroup" aria-label="显示方式" id="usage-modes">
+            <span class="usage-mode-pill" aria-hidden="true"></span>
+            <button type="button" role="radio" data-mode="daily" aria-checked="true">每日</button>
+            <button type="button" role="radio" data-mode="weekly" aria-checked="false">每周</button>
+            <button type="button" role="radio" data-mode="cumulative" aria-checked="false">累计</button>
+          </div>
+        </div>
+        <div class="usage-heat-wrap">
+          <div class="usage-chart" id="usage-chart"></div>
+          <div class="usage-tooltip" id="usage-tooltip" role="tooltip"></div>
+        </div>
+        <div class="usage-legend label-medium" id="usage-legend"></div>
+      </section>
+
+      <div class="usage-columns">
+        <section class="usage-block">
+          <h2 class="usage-title">使用概况</h2>
+          <dl class="usage-list" id="usage-insights"></dl>
+        </section>
+        <section class="usage-block">
+          <h2 class="usage-title">用在哪里</h2>
+          <ul class="usage-ranks" id="usage-purposes"></ul>
+        </section>
+      </div>
+      <div class="usage-columns">
+        <section class="usage-block">
+          <h2 class="usage-title">用得最多的会话</h2>
+          <ul class="usage-ranks" id="usage-sessions"></ul>
+        </section>
+        <section class="usage-block">
+          <h2 class="usage-title">模型</h2>
+          <ul class="usage-ranks" id="usage-models"></ul>
+        </section>
+      </div>
+      <p class="usage-note body-small" id="usage-note"></p>
+    </div>
+  </section>
+
+  <section class="page" id="page-settings" data-title="设置" hidden>
+    <div class="panel page-hero">
+      <div>
+        <h1 class="display-page">设置</h1>
+        <p class="body-hero">修改 NapCat 的接入方式和界面外观。</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2 class="headline-small">反向 WebSocket</h2>
+        <button class="tonal-button label-large state-layer" id="ws-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+      </div>
+      <p class="panel-desc body-medium">NapCat 作为客户端连接到这里。选中的配置会立即生效；NapCat 那边要填同样的地址和 token。</p>
+      <ul class="list ws-list" id="ws-list" role="radiogroup" aria-label="使用中的反向 WebSocket"></ul>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2 class="headline-small">外观</h2></div>
+      <ul class="list">
+        <li class="list-item settings-row">
+          <span class="list-icon"><svg data-icon="palette"></svg></span>
+          <div class="list-text">
+            <div class="list-headline body-large">主题</div>
+            <div class="list-supporting body-medium">跟随系统，或固定为浅色、深色</div>
+          </div>
+          <div class="segmented label-large" role="radiogroup" aria-label="主题" id="theme-segmented">
+            <button class="state-layer" role="radio" data-mode="auto"><svg data-icon="check" class="icon-18 chip-check"></svg>跟随系统</button>
+            <button class="state-layer" role="radio" data-mode="light"><svg data-icon="check" class="icon-18 chip-check"></svg>浅色</button>
+            <button class="state-layer" role="radio" data-mode="dark"><svg data-icon="check" class="icon-18 chip-check"></svg>深色</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2 class="headline-small">关于</h2></div>
+      <ul class="list">
+        <li class="list-item">
+          <span class="list-icon"><svg data-icon="info"></svg></span>
+          <div class="list-text">
+            <div class="list-headline body-large">FeiYu Bot</div>
+            <div class="list-supporting body-medium">QQ 机器人控制台，通过 NapCat（OneBot v11 反向 WebSocket）接入 QQ</div>
+          </div>
+        </li>
+        <li class="list-item">
+          <span class="list-icon"><svg data-icon="lan"></svg></span>
+          <div class="list-text">
+            <div class="list-headline body-large">NapCat 接入地址</div>
+            <div class="list-supporting body-medium" id="about-listen">—</div>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<dialog class="dialog" id="ws-dialog" aria-labelledby="ws-dialog-title">
+  <form method="dialog" class="dialog-form" id="ws-form" novalidate autocomplete="off">
+    <span class="dialog-icon"><svg data-icon="lan"></svg></span>
+    <h2 class="dialog-title headline-small" id="ws-dialog-title">添加反向 WebSocket</h2>
+    <div class="dialog-body">
+      <div class="text-field" data-field="name">
+        <div class="text-field-box"><input id="ws-name" name="name" placeholder=" " maxlength="30"><label for="ws-name">名称</label></div>
+        <span class="supporting body-small" data-hint="例如：本机、局域网"></span>
+      </div>
+      <div class="field-row">
+        <div class="text-field" data-field="host">
+          <div class="text-field-box"><input id="ws-host" name="host" placeholder=" " spellcheck="false"><label for="ws-host">监听地址</label></div>
+          <span class="supporting body-small" data-hint="本机 127.0.0.1，局域网 0.0.0.0"></span>
+        </div>
+        <div class="text-field field-port" data-field="port">
+          <div class="text-field-box"><input id="ws-port" name="port" type="number" min="1" max="65535" placeholder=" "><label for="ws-port">端口</label></div>
+          <span class="supporting body-small" data-hint="1～65535"></span>
+        </div>
+      </div>
+      <div class="text-field" data-field="path">
+        <div class="text-field-box"><input id="ws-path" name="path" placeholder=" " spellcheck="false"><label for="ws-path">路径</label></div>
+        <span class="supporting body-small" data-hint="以 / 开头，例如 /ws"></span>
+      </div>
+      <div class="text-field" data-field="token">
+        <div class="text-field-box">
+          <input id="ws-token" name="token" type="password" placeholder=" " spellcheck="false">
+          <label for="ws-token">Access Token</label>
+          <button type="button" class="icon-button state-layer" id="ws-token-gen" title="随机生成" aria-label="随机生成 token"><svg data-icon="autorenew"></svg></button>
+          <button type="button" class="icon-button state-layer" id="ws-token-eye" title="显示 token" aria-label="显示 token"><svg data-icon="visibility"></svg></button>
+        </div>
+        <span class="supporting body-small" data-hint="留空表示不校验；要和 NapCat 配置里的 token 一致"></span>
+      </div>
+      <div class="ws-preview">
+        <div class="list-text">
+          <div class="list-supporting body-small">NapCat 里填写的地址</div>
+          <div class="list-headline body-large ws-url" id="ws-url">—</div>
+        </div>
+        <button type="button" class="icon-button state-layer" id="ws-copy" title="复制地址" aria-label="复制地址"><svg data-icon="content_copy"></svg></button>
+      </div>
+    </div>
+    <p class="dialog-error body-medium" id="ws-form-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="text-button label-large state-layer" value="cancel" id="ws-cancel">取消</button>
+      <button type="submit" class="text-button label-large state-layer" id="ws-save" disabled>保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dialog" id="model-dialog" aria-labelledby="model-dialog-title">
+  <form method="dialog" class="dialog-form" id="model-form" novalidate autocomplete="off">
+    <span class="dialog-icon"><svg data-icon="auto_awesome"></svg></span>
+    <h2 class="dialog-title headline-small" id="model-dialog-title">添加模型</h2>
+    <div class="dialog-body">
+      <div class="text-field" data-field="name">
+        <div class="text-field-box"><input id="model-name" name="name" placeholder=" " maxlength="30"><label for="model-name">名称</label></div>
+        <span class="supporting body-small" data-hint="例如：DeepSeek、本地 Ollama"></span>
+      </div>
+      <div class="text-field text-field-select" data-field="protocol">
+        <div class="text-field-box">
+          <button type="button" class="select-trigger" id="model-protocol" aria-haspopup="listbox" data-value=""><span class="select-value"></span></button>
+          <label for="model-protocol">API 协议</label>
+          <svg data-icon="arrow_drop_down" class="select-arrow"></svg>
+        </div>
+        <span class="supporting body-small" data-hint="服务商使用的接口格式"></span>
+      </div>
+      <div class="text-field" data-field="baseUrl">
+        <div class="text-field-box"><input id="model-baseUrl" name="baseUrl" placeholder=" " spellcheck="false"><label for="model-baseUrl">Base URL</label></div>
+        <span class="supporting body-small" data-hint="先选择协议"></span>
+      </div>
+      <div class="text-field" data-field="apiKey">
+        <div class="text-field-box">
+          <input id="model-apiKey" name="apiKey" type="password" placeholder=" " spellcheck="false">
+          <label for="model-apiKey">API Key</label>
+          <button type="button" class="icon-button state-layer" id="model-key-eye" title="显示" aria-label="显示 API Key"><svg data-icon="visibility"></svg></button>
+        </div>
+        <span class="supporting body-small" data-hint="本地模型（如 Ollama）可以留空"></span>
+      </div>
+      <div class="text-field" data-field="model">
+        <div class="text-field-box">
+          <input id="model-model" name="model" placeholder=" " spellcheck="false" autocomplete="off" aria-haspopup="listbox">
+          <label for="model-model">模型</label>
+          <button type="button" class="icon-button state-layer" id="model-fetch" title="获取模型列表" aria-label="获取模型列表"><svg data-icon="refresh"></svg></button>
+        </div>
+        <span class="supporting body-small" data-hint="点右侧按钮可以从接口获取模型列表"></span>
+      </div>
+      <div class="field-row-3">
+        <div class="text-field" data-field="temperature">
+          <div class="text-field-box"><input id="model-temperature" name="temperature" type="number" min="0" max="2" step="0.1" placeholder=" "><label for="model-temperature">温度</label></div>
+          <span class="supporting body-small" data-hint="留空用模型默认值"></span>
+        </div>
+        <div class="text-field" data-field="maxTokens">
+          <div class="text-field-box"><input id="model-maxTokens" name="maxTokens" type="number" min="0" step="1" placeholder=" "><label for="model-maxTokens">最大输出</label></div>
+          <span class="supporting body-small" data-hint="留空自动"></span>
+        </div>
+        <div class="text-field" data-field="contextWindow">
+          <div class="text-field-box"><input id="model-contextWindow" name="contextWindow" type="number" min="4096" step="1024" placeholder=" "><label for="model-contextWindow">上下文窗口</label></div>
+          <span class="supporting body-small" data-hint="留空自动"></span>
+        </div>
+      </div>
+    </div>
+    <p class="dialog-error body-medium" id="model-form-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="text-button label-large state-layer" id="model-cancel">取消</button>
+      <button type="submit" class="text-button label-large state-layer" id="model-save" disabled>保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dialog dialog-wide" id="persona-dialog" aria-labelledby="persona-dialog-title">
+  <form method="dialog" class="dialog-form" id="persona-form" novalidate autocomplete="off">
+    <span class="dialog-icon"><svg data-icon="theater_comedy"></svg></span>
+    <h2 class="dialog-title headline-small" id="persona-dialog-title">添加人格</h2>
+    <div class="dialog-body">
+      <div class="persona-identity">
+        <div class="avatar-upload" data-field="avatar">
+          <button type="button" class="avatar-picker" id="persona-avatar-pick" title="上传头像" aria-label="上传头像">
+            <span class="avatar-preview" id="persona-avatar-preview"></span>
+            <span class="avatar-badge"><svg data-icon="add_photo_alternate" class="icon-18"></svg></span>
+          </button>
+          <input type="file" id="persona-avatar-file" accept="image/*" hidden>
+          <button type="button" class="text-button label-medium state-layer" id="persona-avatar-clear" hidden>移除头像</button>
+          <span class="supporting body-small" data-hint=""></span>
+        </div>
+        <div class="text-field" data-field="name">
+          <div class="text-field-box"><input id="persona-name" name="name" placeholder=" " maxlength="30"><label for="persona-name">名称</label></div>
+          <span class="supporting body-small" data-hint="例如：大肥鱼、毒舌猫娘"></span>
+        </div>
+      </div>
+      <div class="text-field text-field-area prompt-field" data-field="prompt">
+        <div class="text-field-box">
+          <textarea id="persona-prompt" name="prompt" rows="14" placeholder=" " spellcheck="false"></textarea>
+          <label for="persona-prompt">系统提示词</label>
+        </div>
+        <div class="supporting-row">
+          <span class="supporting body-small" data-hint="写清楚身份、性格、说话方式和禁忌；模型不认 system 角色时会自动改用对话开头注入"></span>
+          <span class="prompt-count body-small" id="persona-prompt-count">0 / 20000</span>
+        </div>
+      </div>
+    </div>
+    <p class="dialog-error body-medium" id="persona-form-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="text-button label-large state-layer" id="persona-cancel">取消</button>
+      <button type="submit" class="text-button label-large state-layer" id="persona-save" disabled>保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dialog dialog-wide file-preview" id="file-dialog" aria-labelledby="file-dialog-title">
+  <form method="dialog" class="dialog-form">
+    <div class="file-preview-head">
+      <h2 class="dialog-title headline-small" id="file-dialog-title"></h2>
+      <span class="body-small file-preview-meta" id="file-dialog-meta"></span>
+    </div>
+    <div class="file-preview-body" id="file-dialog-body"></div>
+    <div class="dialog-actions">
+      <a class="text-button label-large state-layer" id="file-dialog-open" target="_blank" rel="noopener">新标签页打开</a>
+      <a class="text-button label-large state-layer" id="file-dialog-download">下载</a>
+      <button class="filled-button label-large state-layer" value="close">关闭</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dialog dialog-small" id="confirm-dialog" aria-labelledby="confirm-title">
+  <form method="dialog" class="dialog-form">
+    <span class="dialog-icon"><svg data-icon="help" id="confirm-icon"></svg></span>
+    <h2 class="dialog-title headline-small" id="confirm-title"></h2>
+    <p class="dialog-text body-medium" id="confirm-text"></p>
+    <div class="dialog-actions">
+      <button class="text-button label-large state-layer" value="cancel">取消</button>
+      <button class="text-button label-large state-layer" value="confirm" id="confirm-ok">确定</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="snackbar" id="snackbar" role="status" aria-live="polite" data-tone="info">
+  <span class="snackbar-icon"><svg data-icon="info"></svg></span>
+  <span class="snackbar-text body-medium"></span>
+</div>
+</body>
+</html>

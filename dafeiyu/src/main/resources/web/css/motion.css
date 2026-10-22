@@ -1,0 +1,126 @@
+:root {
+  --md-sys-motion-easing-emphasized: cubic-bezier(.2, 0, 0, 1);
+  --md-sys-motion-duration-medium4: 400ms;
+  --md-sys-motion-duration-long2: 500ms;
+}
+
+.page.entering > :not(.hero) {
+  animation: page-in var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate) both;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+.page.entering .hero > * {
+  animation: page-in var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate) both;
+  animation-delay: calc(var(--j, 0) * 70ms);
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(24px) scale(.98); }
+}
+
+.rail-indicator::after {
+  transition: transform var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate),
+              opacity var(--md-sys-motion-duration-short4) linear;
+}
+
+.tab-indicator {
+  transition: transform var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized),
+              width var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized);
+}
+
+.filled-button, .circle-button, .tonal-icon-button, .rail-fab, .text-button {
+  transition: border-radius var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized),
+              background-color var(--md-sys-motion-duration-short4) linear,
+              color var(--md-sys-motion-duration-short4) linear;
+}
+.filled-button { border-radius: 28px; }
+.filled-button:active { border-radius: 12px; }
+.filled-button-medium { border-radius: 20px; }
+.filled-button-medium:active { border-radius: 8px; }
+.circle-button { border-radius: 24px; }
+.circle-button:active { border-radius: 14px; }
+.tonal-icon-button { border-radius: 24px; }
+.tonal-icon-button:active, .tonal-icon-button[aria-pressed="true"] { border-radius: 14px; }
+.rail-fab:active { border-radius: 28px; }
+.filled-button .icon { transition: transform var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized); }
+.filled-button:hover .icon { transform: translateX(4px); }
+
+#status-shape path {
+  transition: d var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized);
+}
+
+.stat-icon .shape { transition: transform var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized); }
+.stat-tile:hover .stat-icon .shape { transform: rotate(45deg) scale(1.06); }
+.stat-value.bump { animation: bump var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate); }
+@keyframes bump {
+  from { opacity: .3; transform: translateY(8px); }
+}
+
+.log-row.new, .recent-item.new {
+  animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both;
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(12px); }
+}
+
+.badge:not([hidden]) { animation: badge-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate); }
+@keyframes badge-in {
+  from { transform: scale(0); }
+}
+
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) {
+  animation: theme-reveal var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+@keyframes theme-reveal {
+  from { clip-path: circle(0 at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
+  to { clip-path: circle(var(--reveal-r, 150%) at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::view-transition-new(root) {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.dialog[open] { animation: dialog-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate); }
+.dialog[open]::backdrop { animation: scrim-in var(--md-sys-motion-duration-medium4) linear; }
+.dialog.closing { animation: dialog-out var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-accelerate) forwards; }
+.dialog.closing::backdrop { animation: scrim-in var(--md-sys-motion-duration-short4) linear reverse forwards; }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(-24px) scale(.94); } }
+@keyframes dialog-out { to { opacity: 0; transform: translateY(-12px) scale(.97); } }
+@keyframes scrim-in { from { opacity: 0; } }
+.tonal-button { transition: border-radius var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
+.tonal-button:active { border-radius: 8px; }
+
+.switch, .switch-handle {
+  transition: background-color var(--md-sys-motion-duration-short4) linear,
+              border-color var(--md-sys-motion-duration-short4) linear,
+              left var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized),
+              width var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized),
+              height var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized);
+}
+.menu:popover-open { animation: menu-in var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate); }
+.menu:popover-open > * { animation: menu-item-in var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate) both; }
+@keyframes menu-in { from { opacity: 0; transform: scaleY(.6); } }
+@keyframes menu-item-in { from { opacity: 0; } }
+.bubble.new { animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both; }
+.bubble-typing span { animation: typing 1.2s ease-in-out infinite; }
+.bubble-typing span:nth-child(2) { animation-delay: .15s; }
+.bubble-typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes typing {
+  0%, 60%, 100% { opacity: .35; transform: none; }
+  30% { opacity: .9; transform: translateY(-4px); }
+}
+.send-button { transition: border-radius var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
+.send-button:not(:disabled):active { border-radius: 12px; }
+
+.dialog.shake { animation: shake 360ms var(--md-sys-motion-easing-standard); }
+@keyframes shake {
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.dialog-wide, .dialog { transition: width var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized); }
+.reply.new { animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both; }
+.agent-view.view-enter { animation: page-in var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate) both; }
+.persona-card:active { transform: scale(.98); }
+.persona-card { transition: background-color var(--md-sys-motion-duration-short4) linear, border-color var(--md-sys-motion-duration-short4) linear, transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }

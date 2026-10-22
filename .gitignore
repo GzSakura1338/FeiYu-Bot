@@ -1,0 +1,8 @@
+CLAUDE.md
+.ws_token
+.idea/
+*.log
+
+astrbot/
+napcat/
+file/

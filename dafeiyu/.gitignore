@@ -1,0 +1,8 @@
+build/
+.gradle/
+config.properties
+ws-profiles.json
+ws-profiles.json.imported
+.idea/
+data/
+skid/
