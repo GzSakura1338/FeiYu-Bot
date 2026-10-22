@@ -36,6 +36,10 @@ public final class MemoryStore {
     public static final String KNOWLEDGE = "knowledge";
     private static final int MAX_KNOWLEDGE = 500;
     private static final int MAX_RELEVANT_KNOWLEDGE = 5;
+    private static final int SELF_BUDGET = 600;
+    private static final int GROUP_BUDGET = 900;
+    private static final int PERSON_BUDGET = 700;
+    private static final int LOOKUP_BUDGET = 4_000;
     private static final Pattern TERM = Pattern.compile("^\\s*[「“\"']?([^」”\"'：:\\n]{1,30})[」”\"']?\\s*[：:]\\s*(.+)$", Pattern.DOTALL);
     public static final List<String> SELF_TOPICS = List.of("性格", "喜好", "习惯", "经历", "心愿和约定");
     public static final int MAX_CONTENT = 200;
@@ -51,6 +55,7 @@ public final class MemoryStore {
     private static final String COLUMNS = "id, scope, label, content, source, created_at, updated_at";
 
     private static final long LATELY_MS = 6 * 3_600_000L;
+    private static final long THREAD_MS = 30 * 60_000L;
 
     private final Database db;
     private final Settings settings;
@@ -286,26 +291,111 @@ public final class MemoryStore {
     }
 
     List<Memory> recall(String personaId, String scope, String session, Set<String> owners, int limit) {
-        return recent(personaId, scope, 40).stream().filter(m -> visible(m, session, owners)).limit(limit).toList();
+        return recent(personaId, scope, Math.max(limit, 40)).stream().filter(m -> visible(m, session, owners)).limit(limit).toList();
+    }
+
+    public String lookup(String personaId, String scope, String session, Set<String> owners, String query, int offset) {
+        List<Memory> all = visibleIn(personaId, scope, session, owners);
+        if (query != null && !query.isBlank()) {
+            String q = query.strip().toLowerCase(Locale.ROOT);
+            Set<String> words = dafeiyu.util.Texts.bigrams(q);
+            all = all.stream()
+                    .filter(m -> (m.label() + m.content()).toLowerCase(Locale.ROOT).contains(q)
+                            || dafeiyu.util.Texts.overlap(words, dafeiyu.util.Texts.bigrams(m.label() + m.content())) >= 0.5)
+                    .toList();
+        }
+        if (all.isEmpty()) {
+            return query == null || query.isBlank() ? "（关于这个你还什么都没记）" : "（没有记着跟「" + query.strip() + "」有关的）";
+        }
+        int from = Math.max(0, Math.min(offset, all.size()));
+        List<String> lines = new ArrayList<>();
+        int used = 0;
+        int i = from;
+        for (; i < all.size(); i++) {
+            String line = "- " + line(all.get(i)) + "（" + day(all.get(i).updatedAt()) + "）";
+            if (!lines.isEmpty() && used + line.length() > LOOKUP_BUDGET) {
+                break;
+            }
+            lines.add(line);
+            used += line.length();
+        }
+        String head = "一共 " + all.size() + " 条" + (from > 0 ? "，从第 " + (from + 1) + " 条开始" : "") + "：\n";
+        return head + String.join("\n", lines) + (i < all.size() ? "\n（还有 " + (all.size() - i) + " 条，offset 填 " + i + " 接着看）" : "");
+    }
+
+    public List<String> scopesNamed(String personaId, String name) {
+        String n = name.strip();
+        List<String> exact = db.list("SELECT DISTINCT scope FROM memories WHERE persona_id = ? AND scope LIKE 'user:%' AND label = ?",
+                rs -> rs.getString(1), personaId, n);
+        return !exact.isEmpty() ? exact : db.list(
+                "SELECT DISTINCT scope FROM memories WHERE persona_id = ? AND scope LIKE 'user:%' AND label LIKE ? ORDER BY updated_at DESC LIMIT 5",
+                rs -> rs.getString(1), personaId, "%" + n + "%");
+    }
+
+    public List<String> aliases(String groupId, String qq, String current) {
+        return db.list("""
+                SELECT sender_name FROM messages WHERE direction = 'in' AND message_type = 'group' AND group_id = ? AND user_id = ? AND sender_name <> ''
+                GROUP BY sender_name ORDER BY MAX(id) DESC LIMIT 4
+                """, rs -> QqMessages.unforgeable(nonNull(rs.getString(1))), groupId, qq).stream()
+                .filter(n -> !n.equals(current) && !QqMessages.displayName(n).equals(QqMessages.displayName(current))).limit(3).toList();
+    }
+
+    private List<Memory> visibleIn(String personaId, String scope, String session, Set<String> owners) {
+        return list(personaId, scope).stream().filter(m -> visible(m, session, owners)).toList();
+    }
+
+    private static List<Memory> pick(List<Memory> all, Set<String> words, int budget) {
+        List<Memory> ranked = new ArrayList<>(all);
+        java.util.Map<Long, Double> score = new java.util.HashMap<>();
+        for (int i = 0; i < all.size(); i++) {
+            Memory m = all.get(i);
+            double relevance = words.isEmpty() ? 0 : dafeiyu.util.Texts.overlap(dafeiyu.util.Texts.bigrams(m.label() + m.content()), words);
+            score.put(m.id(), relevance * 3 + 1.0 / (1 + i * 0.3));
+        }
+        ranked.sort(Comparator.comparingDouble((Memory m) -> score.get(m.id())).reversed());
+        List<Memory> out = new ArrayList<>();
+        int used = 0;
+        for (Memory m : ranked) {
+            if (!out.isEmpty() && used + m.content().length() > budget) {
+                continue;
+            }
+            out.add(m);
+            used += m.content().length();
+        }
+        out.sort(Comparator.comparingLong(Memory::updatedAt).reversed());
+        return out;
+    }
+
+    private static String counted(String title, int shown, int total) {
+        return total > shown ? title + "（你一共记了 " + total + " 条，这里是跟现在相关的 " + shown + " 条，想知道更多用 recall 查）" : title;
     }
 
     public String recall(String personaId, String session, List<String> people, Set<String> owners) {
+        return recall(personaId, session, people, owners, "");
+    }
+
+    public String recall(String personaId, String session, List<String> people, Set<String> owners, String context) {
+        Set<String> words = context == null || context.isBlank() ? Set.of() : dafeiyu.util.Texts.bigrams(context);
         StringBuilder out = new StringBuilder();
         List<Memory> topics = selfTopics(personaId);
         if (!topics.isEmpty()) {
             out.append("关于你自己：\n");
             topics.forEach(m -> out.append("- ").append(m.label()).append("：").append(m.content().replace("\n", " ")).append('\n'));
         }
-        section(out, topics.isEmpty() ? "关于你自己" : "关于你自己（最近新想到的）",
-                recall(personaId, SELF, session, owners, 12).stream().filter(m -> !SELF_TOPICS.contains(m.label())).limit(5).toList());
+        List<Memory> loose = visibleIn(personaId, SELF, session, owners).stream().filter(m -> !SELF_TOPICS.contains(m.label())).toList();
+        List<Memory> self = pick(loose, words, SELF_BUDGET);
+        section(out, counted(topics.isEmpty() ? "关于你自己" : "关于你自己（最近新想到的）", self.size(), loose.size()), self);
         if (session.startsWith("group:")) {
-            section(out, "关于这个群", recall(personaId, session, session, owners, 5));
+            List<Memory> all = visibleIn(personaId, session, session, owners);
+            List<Memory> group = pick(all, words, GROUP_BUDGET);
+            section(out, counted("关于这个群", group.size(), all.size()), group);
         }
-        for (String qq : people.stream().distinct().limit(6).toList()) {
-            List<Memory> about = recall(personaId, "user:" + qq, session, owners, 4);
-            if (!about.isEmpty()) {
-                String name = about.stream().map(Memory::label).filter(l -> !l.isBlank()).findFirst().orElse("QQ " + qq);
-                section(out, "关于" + name + "（QQ " + qq + (owners.contains(qq) ? "，你的主人" : "") + "）", about);
+        for (String qq : people.stream().distinct().limit(8).toList()) {
+            List<Memory> all = visibleIn(personaId, "user:" + qq, session, owners);
+            if (!all.isEmpty()) {
+                List<Memory> about = pick(all, words, PERSON_BUDGET);
+                String name = all.stream().map(Memory::label).filter(l -> !l.isBlank()).findFirst().orElse("QQ " + qq);
+                section(out, counted("关于" + name + "（QQ " + qq + (owners.contains(qq) ? "，你的主人" : "") + "）", about.size(), all.size()), about);
             }
         }
         List<Memory> diary = list(personaId, DIARY).stream().filter(m -> visible(m, session, owners)).limit(2).toList();
@@ -334,11 +424,19 @@ public final class MemoryStore {
                     """, rs -> new Seen(rs.getLong(1), QqMessages.unforgeable(nonNull(rs.getString(2))), rs.getString(3)),
                     qq, here, now - LATELY_MS, group ? 2 : 3));
         }
-        if (!group) {
-            seen.addAll(db.list("""
-                    SELECT time, '', content FROM messages WHERE direction = 'out' AND message_type = 'group' AND time >= ?
-                    ORDER BY id DESC LIMIT 3
-                    """, rs -> new Seen(rs.getLong(1), "", rs.getString(3)), now - LATELY_MS / 2));
+        if (!group && !people.isEmpty()) {
+            String qq = people.getFirst();
+            String groupId = db.one("""
+                    SELECT group_id FROM messages WHERE direction = 'in' AND message_type = 'group' AND user_id = ? AND time >= ? ORDER BY id DESC LIMIT 1
+                    """, rs -> rs.getString(1), qq, now - THREAD_MS);
+            if (groupId != null) {
+                seen.removeIf(s -> !s.who().isEmpty());
+                seen.addAll(db.list("""
+                        SELECT time, CASE WHEN direction = 'out' THEN '' ELSE sender_name END, content FROM messages
+                        WHERE message_type = 'group' AND group_id = ? AND time >= ? AND (direction = 'out' OR user_id = ?)
+                        ORDER BY id DESC LIMIT 10
+                        """, rs -> new Seen(rs.getLong(1), QqMessages.unforgeable(nonNull(rs.getString(2))), rs.getString(3)), groupId, now - THREAD_MS, qq));
+            }
         }
         List<String> lines = seen.stream().sorted(Comparator.comparingLong(Seen::time))
                 .map(s -> new Seen(s.time(), s.who(), abbreviate(QqMessages.plain(s.text()), 80)))
@@ -347,7 +445,9 @@ public final class MemoryStore {
                         + (s.who().isEmpty() ? "你说" : s.who() + "说") + "：" + s.text())
                 .toList();
         if (!lines.isEmpty()) {
-            out.append("最近在别处（只是背景，别主动拿到这里说）：\n").append(String.join("\n", lines)).append('\n');
+            out.append(group ? "最近在别处（只是背景，别主动拿到这里说）：\n"
+                    : "你们最近在群里的来回（这件事可能群里的你正在办，别在这里重复做一遍，接着那边的进度说）：\n")
+                    .append(String.join("\n", lines)).append('\n');
         }
     }
 
@@ -441,7 +541,7 @@ public final class MemoryStore {
     }
 
     private void prune(String personaId, String scope) {
-        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : scope.equals(KNOWLEDGE) ? MAX_KNOWLEDGE : 30;
+        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : scope.equals(KNOWLEDGE) ? MAX_KNOWLEDGE : 200;
         db.update("""
                 DELETE FROM memories WHERE persona_id = ? AND scope = ? AND id NOT IN (
                     SELECT id FROM memories WHERE persona_id = ? AND scope = ? ORDER BY updated_at DESC, id DESC LIMIT ?)

@@ -106,6 +106,11 @@ final class AgentHandler {
                 store.setReasoningEffort(effort);
                 log.info("agent: reasoning effort set to " + effort);
                 HttpResponses.json(ex, state());
+            } else if (path.equals("/pacing") && method.equals("PUT")) {
+                AgentStore.Pacing pacing = Requests.readJson(ex, AgentStore.Pacing.class);
+                store.setPacing(pacing);
+                log.info("agent: send pacing set to " + pacing.intervalMs() + " ms, up to " + pacing.maxPieces() + " piece(s)");
+                HttpResponses.json(ex, state());
             } else if (path.equals("/models") && method.equals("POST")) {
                 models(ex);
             } else if (path.equals("/chat") && method.equals("POST")) {
@@ -372,7 +377,8 @@ final class AgentHandler {
         WorkspaceStore.Config next = Requests.readJson(ex, WorkspaceStore.Config.class);
         WorkspaceStore.Config saved = agent.workspaces().update(next);
         log.info("agent: workspace " + (saved.dir().isEmpty() ? "cleared" : "set to " + saved.dir())
-                + ", tools " + String.join(",", saved.enabled()) + ", QQ access " + saved.qqAccess());
+                + ", tools " + String.join(",", saved.enabled()) + ", QQ access " + saved.qqAccess()
+                + ", shell network " + (saved.shellNetwork() ? "on" : "off"));
         HttpResponses.json(ex, workspace());
     }
 
@@ -427,6 +433,7 @@ final class AgentHandler {
         body.add("mood", gson.toJsonTree(agent.mood().current(agent.personas().activeId())));
         body.addProperty("freeWill", store.freeWill());
         body.addProperty("reasoningEffort", store.reasoningEffort());
+        body.add("pacing", gson.toJsonTree(store.pacing()));
         body.addProperty("active", store.activeId());
         body.add("profiles", profiles);
         return body.toString();

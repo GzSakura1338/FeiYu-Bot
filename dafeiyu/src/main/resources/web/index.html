@@ -233,6 +233,33 @@
           </li>
         </ul>
       </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">发送节奏</h2></div>
+        <p class="panel-desc body-medium">长回复会像人打字一样拆成几条短消息依次发出，表情包也算一条。发得太密容易被腾讯风控，间隔调大、条数调少更稳。实际间隔会在设定值上随机多等最多一半，字多的那条再多等一会。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="forum"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">最多分几条</div>
+              <div class="list-supporting body-medium" id="pacing-pieces-hint"></div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="最多分几条" id="pacing-pieces">
+              <button class="state-layer" role="radio" data-pieces="1"><svg data-icon="check" class="icon-18 chip-check"></svg>不拆</button>
+              <button class="state-layer" role="radio" data-pieces="2"><svg data-icon="check" class="icon-18 chip-check"></svg>2</button>
+              <button class="state-layer" role="radio" data-pieces="3"><svg data-icon="check" class="icon-18 chip-check"></svg>3</button>
+              <button class="state-layer" role="radio" data-pieces="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4</button>
+              <button class="state-layer" role="radio" data-pieces="6"><svg data-icon="check" class="icon-18 chip-check"></svg>6</button>
+            </div>
+          </li>
+        </ul>
+        <form class="workspace-row" id="pacing-form" novalidate autocomplete="off">
+          <div class="text-field" data-field="pacing">
+            <div class="text-field-box"><input id="pacing-interval" name="interval" placeholder=" " spellcheck="false" inputmode="decimal"><label for="pacing-interval">每条之间的间隔（秒）</label></div>
+            <span class="supporting body-small" id="pacing-interval-hint">0.5～30 秒，默认 2 秒</span>
+          </div>
+          <button type="submit" class="filled-button filled-button-medium state-layer" id="pacing-save" disabled>保存</button>
+        </form>
+      </div>
     </div>
 
     <div class="agent-view" data-view="personas" hidden>

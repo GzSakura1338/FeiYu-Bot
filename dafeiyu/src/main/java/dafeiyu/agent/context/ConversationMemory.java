@@ -68,14 +68,19 @@ public final class ConversationMemory {
                 : new Conversation(state.summary(), state.recent(), turns, state.measuredTokens(), state.measuredBy(), lastId[0]);
     }
 
+    public record Heard(long id, String content) {}
+
+    public record Appended(List<Heard> heard, long lastId) {}
+
     public void append(String session, List<ChatMessage> messages, int measuredTokens, String measuredBy) {
-        append(session, List.of(), 0, "", messages, measuredTokens, measuredBy);
+        append(session, List.of(), 0, "", messages, measuredTokens, measuredBy, Long.MAX_VALUE);
     }
 
-    public void append(String session, List<ChatMessage> asked, long askedAt, String askedAttachments, List<ChatMessage> messages,
-                       int measuredTokens, String measuredBy) {
+    public Appended append(String session, List<ChatMessage> asked, long askedAt, String askedAttachments, List<ChatMessage> messages,
+                           int measuredTokens, String measuredBy, long heardAfter) {
         long now = System.currentTimeMillis();
-        db.transaction(c -> {
+        return db.transaction(c -> {
+            List<Heard> heard = heardSince(c, session, heardAfter);
             insertTurns(c, session, asked, askedAt > 0 ? Math.min(askedAt, now) : now, askedAttachments);
             insertTurns(c, session, messages, now, "");
             Database.update(c, """
@@ -83,8 +88,22 @@ public final class ConversationMemory {
                     ON CONFLICT (session) DO UPDATE SET measured_tokens = excluded.measured_tokens,
                         measured_by = excluded.measured_by, updated_at = excluded.updated_at
                     """, session, measuredTokens, measuredBy, now);
-            return null;
+            return new Appended(heard, lastId(c, session));
         });
+    }
+
+    public List<Heard> heardSince(String session, long afterId) {
+        return db.transaction(c -> heardSince(c, session, afterId));
+    }
+
+    private static List<Heard> heardSince(java.sql.Connection c, String session, long afterId) throws SQLException {
+        return Database.list(c, "SELECT id, content FROM conversation_turns WHERE session = ? AND id > ? AND role = 'user' ORDER BY id",
+                rs -> new Heard(rs.getLong(1), rs.getString(2)), session, afterId);
+    }
+
+    private static long lastId(java.sql.Connection c, String session) throws SQLException {
+        List<Long> ids = Database.list(c, "SELECT COALESCE(MAX(id), 0) FROM conversation_turns WHERE session = ?", rs -> rs.getLong(1), session);
+        return ids.isEmpty() ? 0 : ids.getFirst();
     }
 
     public void appendKeepingMeasure(String session, List<ChatMessage> messages) {
@@ -99,16 +118,16 @@ public final class ConversationMemory {
         });
     }
 
-    public void hear(String session, ChatMessage message, long tokens, String attachments) {
+    public long hear(String session, ChatMessage message, long tokens, String attachments) {
         long now = System.currentTimeMillis();
-        db.transaction(c -> {
+        return db.transaction(c -> {
             insertTurns(c, session, List.of(message), now, attachments);
             Database.update(c, """
                     INSERT INTO conversation_sessions (session, measured_tokens, measured_by, updated_at) VALUES (?, 0, '', ?)
                     ON CONFLICT (session) DO UPDATE SET updated_at = excluded.updated_at,
                         measured_tokens = CASE WHEN measured_tokens > 0 THEN measured_tokens + ? ELSE 0 END
                     """, session, now, tokens);
-            return null;
+            return lastId(c, session);
         });
     }
 
@@ -185,18 +204,22 @@ public final class ConversationMemory {
     }
 
     public SessionDetail detail(String session, int limit) {
+        return detail(session, limit, Long.MAX_VALUE);
+    }
+
+    public SessionDetail detail(String session, int limit, long before) {
         State state = db.one("SELECT summary, recent, measured_tokens, measured_by FROM conversation_sessions WHERE session = ?",
                 rs -> new State(rs.getString(1), rs.getString(2), rs.getInt(3), rs.getString(4)), session);
         Integer compactions = db.one("SELECT compactions FROM conversation_sessions WHERE session = ?", rs -> rs.getInt(1), session);
         Integer total = db.one("SELECT COUNT(*) FROM conversation_turns WHERE session = ?", rs -> rs.getInt(1), session);
         List<SessionDetail.Entry> turns = new ArrayList<>(db.list("""
                 SELECT id, role, content, tool_calls, tool_call_id, tool_name, tool_error, reasoning, created_at, attachments
-                FROM conversation_turns WHERE session = ? ORDER BY id DESC LIMIT ?
+                FROM conversation_turns WHERE session = ? AND id < ? ORDER BY id DESC LIMIT ?
                 """, rs -> {
             ChatMessage m = map(rs);
             return new SessionDetail.Entry(rs.getLong("id"), m.role(), m.content(), m.reasoning() == null ? "" : m.reasoning(), m.toolCalls(),
                     m.toolCallId(), m.toolError(), rs.getLong("created_at"), Objects.requireNonNullElse(rs.getString("attachments"), ""));
-        }, session, limit));
+        }, session, before, limit));
         Collections.reverse(turns);
         return new SessionDetail(session, state == null ? null : state.summary(), state == null ? null : state.recent(),
                 compactions == null ? 0 : compactions, state == null ? 0 : state.measuredTokens(), total == null ? 0 : total, turns);

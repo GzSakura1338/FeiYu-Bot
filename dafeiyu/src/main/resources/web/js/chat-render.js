@@ -199,8 +199,9 @@ export function createReply(list, attach) {
     const follow = nearBottom();
     if (pendingReasoning && thinking) {
       const body = $('.thinking-text', thinking);
+      const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
       body.append(pendingReasoning);
-      if (body.scrollHeight - body.scrollTop - body.clientHeight < 80) body.scrollTop = body.scrollHeight;
+      if (atBottom) body.scrollTop = body.scrollHeight;
     }
     pendingReasoning = '';
     if (pendingText) {
@@ -367,6 +368,10 @@ export function createReply(list, attach) {
     finish(result) {
       hideTyping();
       closeThinking();
+      if (result.finishReason === 'merged') {
+        wrap.remove();
+        return;
+      }
       if (!content.trim() && result.content) wrap.append(el('div', 'bubble bubble-assistant body-large', result.content));
       if (result.model) wrap.append(metaLine(result));
       scrollDown();

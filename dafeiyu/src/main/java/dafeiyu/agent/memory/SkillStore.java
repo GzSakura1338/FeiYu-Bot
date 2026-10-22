@@ -116,6 +116,19 @@ public final class SkillStore {
         return render(list(personaId)).text();
     }
 
+    public String detail(String personaId, String name) {
+        String n = name.strip().replaceFirst("^#", "");
+        List<Skill> all = list(personaId);
+        Skill hit = all.stream().filter(s -> s.name().equals(n) || String.valueOf(s.id()).equals(n) || ("S" + s.id()).equalsIgnoreCase(n))
+                .findFirst().orElse(null);
+        if (hit == null && !n.isEmpty()) {
+            Set<String> words = Texts.bigrams(n);
+            hit = all.stream().filter(s -> s.name().contains(n) || n.contains(s.name()) || score(s, words) >= 0.6)
+                    .max(Comparator.comparingDouble(s -> score(s, words))).orElse(null);
+        }
+        return hit == null ? null : full(hit).strip();
+    }
+
     public String relevant(String personaId, String context) {
         List<Skill> brief = render(list(personaId)).brief();
         if (brief.isEmpty() || context.isBlank()) {
@@ -139,17 +152,16 @@ public final class SkillStore {
             return new Rendered("", List.of());
         }
         StringBuilder out = new StringBuilder("【你学会的技能】\n这些是你以前在聊天里学会、总结下来的本事。碰到对应的事就照着做，别再从头摸索；做法过时了也没关系，回顾时会更新。"
-                + "只写了用途的技能，碰到对应的事时详细做法会放在“<用得上的技能>”里给你。\n");
+                + "只写了用途的技能，碰到对应的事时用 skill 工具按名字查看详细做法（有时也会直接放在“<用得上的技能>”里给你）。\n");
         List<Skill> brief = new ArrayList<>();
         int used = out.length();
         for (Skill s : skills) {
             String full = full(s);
             boolean fits = used + full.length() <= PROMPT_BUDGET;
             String piece = fits ? full
-                    : "\n## " + s.name() + "\n" + (s.description().isEmpty() ? abbreviate(s.content().strip(), 80) : "什么时候用：" + s.description()) + "\n";
-            if (used + piece.length() > PROMPT_BUDGET + 4_000) {
-                break;
-            }
+                    : used <= PROMPT_BUDGET + 4_000
+                    ? "\n## " + s.name() + "\n" + (s.description().isEmpty() ? abbreviate(s.content().strip(), 80) : "什么时候用：" + s.description()) + "\n"
+                    : "\n## " + s.name() + "\n";
             if (!fits) {
                 brief.add(s);
             }

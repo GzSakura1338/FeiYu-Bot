@@ -133,6 +133,7 @@ function renderList() {
   $('#model-list').replaceChildren(...items);
   $('#model-empty').hidden = items.length > 0;
   renderEffort();
+  renderPacing(document.activeElement !== $('#pacing-interval'));
 }
 
 const EFFORT_HINT = {
@@ -157,6 +158,40 @@ async function setEffort(effort) {
     showSnackbar(`思考强度：${EFFORT_HINT[effort]}`, 'success');
   } catch (err) {
     showSnackbar(`保存失败：${err.message}`, 'error');
+  }
+}
+
+const pacing = () => state.pacing ?? { intervalMs: 2000, maxPieces: 4 };
+const seconds = ms => String(Math.round(ms / 100) / 10);
+
+function renderPacing(resetInput = true) {
+  const { intervalMs, maxPieces } = pacing();
+  for (const button of $$('#pacing-pieces button')) button.setAttribute('aria-checked', String(Number(button.dataset.pieces) === maxPieces));
+  $('#pacing-pieces-hint').textContent = maxPieces <= 1 ? '一次回复整段发出，不拆开' : `一次回复最多拆成 ${maxPieces} 条`;
+  if (resetInput) $('#pacing-interval').value = seconds(intervalMs);
+  syncPacing();
+}
+
+function readInterval() {
+  const value = Number($('#pacing-interval').value.trim());
+  return Number.isFinite(value) && value >= 0.5 && value <= 30 ? Math.round(value * 1000) : null;
+}
+
+function syncPacing() {
+  const ms = readInterval();
+  const field = $('#pacing-interval').closest('.text-field');
+  field.classList.toggle('invalid', ms === null && $('#pacing-interval').value.trim() !== '');
+  $('#pacing-save').disabled = ms === null || ms === pacing().intervalMs;
+}
+
+async function savePacing(patch, success) {
+  try {
+    state = await request('PUT', '/pacing', { ...pacing(), ...patch });
+    renderPacing();
+    showSnackbar(success, 'success');
+  } catch (err) {
+    showSnackbar(`保存失败：${err.message}`, 'error');
+    renderPacing();
   }
 }
 
@@ -205,7 +240,7 @@ async function toggleGroupMode() {
     const ok = await confirmDialog({
       icon: 'groups',
       title: '开启群聊模式？',
-      text: `开启后，机器人在所有群里会像群友一样聊天：被 @、有人回复它、或者有人叫“${(state.wakeWords ?? []).join('”“')}”时一定会回；没人叫它时，它会自己看群里在聊什么，按心情和兴趣决定接不接话（每分钟最多 3 条，每小时最多 30 条）。每次看群都会调用一次模型。消息都以当前登录的 QQ 号发出。`,
+      text: `开启后，机器人在所有群里会像群友一样聊天：被 @、有人回复它、或者有人叫“${(state.wakeWords ?? []).join('”“')}”时一定会回；没人叫它时，它会自己看群里在聊什么，按心情和兴趣决定接不接话。每次看群都会调用一次模型，发送间隔在「模型」页的「发送节奏」里调。消息都以当前登录的 QQ 号发出。`,
       confirm: '开启',
     });
     if (!ok) return;
@@ -486,6 +521,19 @@ async function fetchModels() {
 export function initAgentModels() {
   $('#model-add').addEventListener('click', () => openEditor(null));
   for (const button of $$('#effort-choice button')) button.addEventListener('click', () => setEffort(button.dataset.effort));
+  for (const button of $$('#pacing-pieces button')) {
+    button.addEventListener('click', () => {
+      const maxPieces = Number(button.dataset.pieces);
+      if (maxPieces === pacing().maxPieces) return;
+      savePacing({ maxPieces }, maxPieces <= 1 ? '回复不再拆开发' : `回复最多拆成 ${maxPieces} 条`);
+    });
+  }
+  $('#pacing-form').addEventListener('input', syncPacing);
+  $('#pacing-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const intervalMs = readInterval();
+    if (intervalMs !== null) savePacing({ intervalMs }, `每条之间间隔 ${seconds(intervalMs)} 秒`);
+  });
   $('#model-form').addEventListener('input', e => {
     if (e.target.name) touched.add(e.target.name);
     renderForm();

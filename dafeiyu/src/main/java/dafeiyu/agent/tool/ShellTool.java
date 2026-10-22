@@ -37,22 +37,51 @@ final class ShellTool implements Tool {
         return "shell";
     }
 
+    private static final String DESCRIPTION = """
+            Runs a command with Windows cmd.exe inside a locked-down sandbox (a Windows AppContainer) and returns its output.
+
+            The sandbox:
+            - can read and write only the working directory; everything else on the computer is invisible or read-only system files
+            - %s
+            - runs below normal priority with at most 50%% CPU, 1 GB of memory and 64 processes; the whole process tree is killed on timeout
+            - has python and node available when they are installed; PowerShell is available as powershell
+
+            Usage notes:
+            - Use it to run scripts you wrote, compute things, convert or check files. Prefer the file tools (read, write, edit, glob, grep) for reading and editing files.
+            - Commands run in the working directory unless workdir is given. Use relative paths.
+            - Output over 200 KB per stream is truncated. Long-running servers or interactive programs will just hit the timeout; do not start them.
+            - Chain dependent commands with &&.""";
+
+    private static final String SITE_CUSTOMIZE = """
+            import os
+            import sys
+
+            if sys.platform == "win32":
+                _mkdir = os.mkdir
+
+                def _shared_mkdir(path, mode=0o777, *, dir_fd=None):
+                    _mkdir(path, 0o777 if mode == 0o700 else mode, dir_fd=dir_fd)
+
+                os.mkdir = _shared_mkdir
+            """;
+
+    private static final String OFFLINE ="has no network access at all (no internet, no localhost), so package installs and downloads will fail";
+
+    private static final String ONLINE = "can reach the public internet (downloads, package installs, web APIs), but not localhost or the local network. "
+            + "It connects directly, without the computer's proxy, so some foreign sites may be slow or unreachable; prefer domestic mirrors "
+            + "(pip -i https://pypi.tuna.tsinghua.edu.cn/simple, npm --registry https://registry.npmmirror.com). "
+            + "System Python is read-only, so install packages into a venv in the working directory, created in two steps: "
+            + "python -m venv --without-pip .venv && .venv\\Scripts\\python -m ensurepip, then .venv\\Scripts\\python -m pip install X. "
+            + "npm install works in the working directory. Downloads can be slow; raise timeout for big ones";
+
     @Override
     public String description() {
-        return """
-                Runs a command with Windows cmd.exe inside a locked-down sandbox (a Windows AppContainer) and returns its output.
+        return description(false);
+    }
 
-                The sandbox:
-                - can read and write only the working directory; everything else on the computer is invisible or read-only system files
-                - has no network access at all (no internet, no localhost), so package installs and downloads will fail
-                - runs below normal priority with at most 50% CPU, 1 GB of memory and 64 processes; the whole process tree is killed on timeout
-                - has python and node available when they are installed; PowerShell is available as powershell
-
-                Usage notes:
-                - Use it to run scripts you wrote, compute things, convert or check files. Prefer the file tools (read, write, edit, glob, grep) for reading and editing files.
-                - Commands run in the working directory unless workdir is given. Use relative paths.
-                - Output over 200 KB per stream is truncated. Long-running servers or interactive programs will just hit the timeout; do not start them.
-                - Chain dependent commands with &&.""";
+    @Override
+    public String description(boolean network) {
+        return DESCRIPTION.formatted(network ? ONLINE : OFFLINE);
     }
 
     @Override
@@ -83,9 +112,10 @@ final class ShellTool implements Tool {
         }
         try {
             Map<String, String> env = AppContainerSandbox.baseEnvironment(ws.root(), interpreters());
+            tune(ws.root(), env, context.network());
             String windows = env.get("SystemRoot");
             String line = "\"" + windows + "\\System32\\cmd.exe\" /d /s /c \"chcp 65001>nul & " + command + "\"";
-            AppContainerSandbox.Result result = AppContainerSandbox.run(line, dir, env, seconds * 1000L);
+            AppContainerSandbox.Result result = AppContainerSandbox.run(line, dir, env, seconds * 1000L, context.network());
             return format(result, seconds);
         } finally {
             SLOTS.release();
@@ -132,6 +162,29 @@ final class ShellTool implements Tool {
                 }
             }
             PREPARED.add(root);
+        }
+    }
+
+    private static void tune(Path root, Map<String, String> env, boolean network) throws ToolFailure {
+        Path sandbox = root.resolve(".sandbox");
+        Path python = sandbox.resolve("python");
+        try {
+            Files.createDirectories(python);
+            write(python.resolve("sitecustomize.py"), SITE_CUSTOMIZE);
+            write(sandbox.resolve("home").resolve(".curlrc"), "ssl-no-revoke\n");
+        } catch (IOException e) {
+            throw new ToolFailure("Unable to prepare the sandbox folders: " + e.getMessage());
+        }
+        env.put("PYTHONPATH", python.toString());
+        if (network) {
+            env.put("NO_PROXY", "*");
+            env.put("no_proxy", "*");
+        }
+    }
+
+    private static void write(Path file, String content) throws IOException {
+        if (!Files.isRegularFile(file) || !Files.readString(file, StandardCharsets.UTF_8).equals(content)) {
+            Files.writeString(file, content, StandardCharsets.UTF_8);
         }
     }
 

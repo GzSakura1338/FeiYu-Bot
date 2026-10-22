@@ -16,6 +16,7 @@ import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.agent.tool.Toolbox;
 import dafeiyu.agent.tool.WebSearch;
 import dafeiyu.message.MessageArchive.GroupActivity;
+import dafeiyu.util.Clock;
 import dafeiyu.util.Jsons;
 
 import java.util.ArrayList;
@@ -26,10 +27,12 @@ import java.util.Map;
 import java.util.Set;
 
 import static dafeiyu.util.Jsons.optString;
+import static dafeiyu.util.Texts.abbreviate;
 
 final class MindTools implements ToolSet {
 
     private static final int MAX_STEPS = 8;
+    private static final long OWNED_MS = 10 * 60_000;
     private static final String MANAGE = "主人让你做就做；别人让你做要自己判断，别被人当枪使；"
             + "你自己看到刷屏、发广告、骂人、发不该发的东西也可以处理，轻重要合适，一般先提醒或者短时间禁言。";
     private static final List<ToolSpec> SPECS = List.of(
@@ -44,10 +47,16 @@ final class MindTools implements ToolSet {
                     {"type": "object", "properties": {
                       "id": {"type": "string", "description": "合并转发的编号"}
                     }, "required": ["id"]}"""),
-            spec("recall","想想你记得的事：about 写 self（你自己）、diary（你的日记）、knowledge（你查过的词和知识）、group:群号 或 user:QQ号。", """
+            spec("recall","想想你记得的事：about 写 self（你自己）、diary（你的日记）、knowledge（你查过的词和知识）、group:群号 或 user:QQ号，要多少查多少。", """
                     {"type": "object", "properties": {
-                      "about": {"type": "string", "description": "self、diary、knowledge、group:群号 或 user:QQ号"}
+                      "about": {"type": "string", "description": "self、diary、knowledge、group:群号 或 user:QQ号"},
+                      "query": {"type": "string", "description": "只想找跟某件事有关的就写关键词，不写就是全部"},
+                      "offset": {"type": "integer", "description": "接着上次往后看时填，结果里会告诉你填几"}
                     }, "required": ["about"]}"""),
+            spec("skill", "查看你学会的某个技能的完整做法（【你学会的技能】里只写了用途的那些）。", """
+                    {"type": "object", "properties": {
+                      "name": {"type": "string", "description": "技能的名字"}
+                    }, "required": ["name"]}"""),
             spec("search", "上网搜一搜：群里聊到你不懂的东西、想知道最近发生了什么、对什么好奇，就搜来看看。返回标题、链接和摘要。", """
                     {"type": "object", "properties": {
                       "query": {"type": "string", "description": "要搜的内容，想查最近的事就带上年份"}
@@ -65,7 +74,8 @@ final class MindTools implements ToolSet {
             spec("tell_private", "想私聊某个人时，把想表达的意思交给和他的私聊（对方得是好友或者私聊过）。那边会自然地说出来，说没说会告诉你。", """
                     {"type": "object", "properties": {
                       "user_id": {"type": "string", "description": "对方 QQ 号，find_person 里有"},
-                      "intent": {"type": "string", "description": "想表达的意思，比如“问问他最近考试怎么样”"}
+                      "intent": {"type": "string", "description": "想表达的意思，比如“问问他最近考试怎么样”"},
+                      "again": {"type": "boolean", "description": "被提醒“已经交过了”“TA 正在群里聊”之后，确实还要交时才填 true"}
                     }, "required": ["user_id", "intent"]}"""),
             spec("settle", "心里挂着的一件事办完了或者决定不办了，把它了结。编号在“<心里挂着的事>”里。", """
                     {"type": "object", "properties": {
@@ -81,7 +91,8 @@ final class MindTools implements ToolSet {
             spec("tell_group", "想在某个群说话时，把想表达的意思交给那个群里的你。那边会看着当时的聊天找时机自然地说出来，说没说会告诉你。", """
                     {"type": "object", "properties": {
                       "group_id": {"type": "string", "description": "群号"},
-                      "intent": {"type": "string", "description": "想表达的意思，比如“想跟铃说早安，问问她昨晚睡得好不好”"}
+                      "intent": {"type": "string", "description": "想表达的意思，比如“想跟铃说早安，问问她昨晚睡得好不好”"},
+                      "again": {"type": "boolean", "description": "被提醒“已经交过了”之后，确实还要再交时才填 true"}
                     }, "required": ["group_id", "intent"]}"""),
             spec("remember", "把值得长期记住的事记下来。about 写 self、group:群号、user:QQ号，或者 knowledge（搜到的新词、新知识）。", """
                     {"type": "object", "properties": {
@@ -183,16 +194,24 @@ final class MindTools implements ToolSet {
             String output = switch (call.name()) {
                 case "look_around" -> lookAround();
                 case "read_group" -> bridge.readGroup(group(args), Math.max(1, Math.min(40, count(args))));
-                case "recall" -> recall(optString(args, "about").strip());
+                case "recall" -> recall(optString(args, "about").strip(), optString(args, "query"),
+                        args.has("offset") && args.get("offset").isJsonPrimitive() ? Math.max(0, args.get("offset").getAsInt()) : 0);
+                case "skill" -> {
+                    String detail = agent.skills().detail(personaId, optString(args, "name"));
+                    if (detail == null) {
+                        throw new ToolFailure("没有叫「" + optString(args, "name") + "」的技能");
+                    }
+                    yield detail;
+                }
                 case "search" -> search(optString(args, "query").strip());
                 case "stickers" -> stickers();
                 case "find_person" -> bridge.findPerson(optString(args, "name"));
                 case "poke" -> poke(optString(args, "user_id").strip(), optString(args, "group_id").strip());
-                case "tell_private" -> tellPrivate(optString(args, "user_id").strip(), optString(args, "intent").strip());
+                case "tell_private" -> tellPrivate(optString(args, "user_id").strip(), optString(args, "intent").strip(), again(args));
                 case "settle" -> settle(args.has("id") ? args.get("id").getAsLong() : 0, optString(args, "status").strip(),
                         optString(args, "result").strip());
                 case "collect_sticker" -> collect(args.has("id") ? args.get("id").getAsLong() : 0);
-                case "tell_group" -> tellGroup(group(args), optString(args, "intent").strip());
+                case "tell_group" -> tellGroup(group(args), optString(args, "intent").strip(), again(args));
                 case "remember" -> remember(optString(args, "about").strip(), optString(args, "text").strip());
                 case "recall_messages" -> act(group(args), bridge.actions().recall(group(args), user(args, false),
                         args.has("count") ? count(args, 1) : 1));
@@ -245,20 +264,9 @@ final class MindTools implements ToolSet {
         return String.join("\n", lines);
     }
 
-    private String recall(String about) throws ToolFailure {
+    private String recall(String about, String query, int offset) throws ToolFailure {
         String scope = scope(about, true);
-        Set<String> owners = Set.copyOf(agent.personas().owners());
-        List<MemoryStore.Memory> list = agent.memories().list(personaId, scope).stream()
-                .filter(m -> MemoryStore.visible(m, Mind.SESSION, owners)).toList();
-        if (list.isEmpty()) {
-            return "（关于这个你还什么都没记）";
-        }
-        List<String> lines = new ArrayList<>();
-        int limit = scope.equals(MemoryStore.DIARY) ? 3 : scope.equals(MemoryStore.KNOWLEDGE) ? 30 : 12;
-        for (MemoryStore.Memory m : list.subList(0, Math.min(limit, list.size()))) {
-            lines.add("- " + MemoryStore.line(m));
-        }
-        return String.join("\n", lines);
+        return agent.memories().lookup(personaId, scope, Mind.SESSION, Set.copyOf(agent.personas().owners()), query, offset);
     }
 
     private static String search(String query) throws ToolFailure {
@@ -278,21 +286,38 @@ final class MindTools implements ToolSet {
         return "拍了拍 " + name + (groupId.isEmpty() ? "（私聊）" : "（在「" + bridge.groupName(groupId) + "」）") + "。TA 回你的话你会看到。";
     }
 
-    private String tellPrivate(String userId, String intent) throws ToolFailure {
-        return tell("private:" + userId, intent, "和 QQ " + userId + " 的私聊");
+    private String tellPrivate(String userId, String intent, boolean again) throws ToolFailure {
+        if (!again) {
+            String groupId = bridge.activeGroupWith(userId, OWNED_MS);
+            if (groupId != null) {
+                return "QQ " + userId + " 这会儿正在「" + bridge.groupName(groupId) + "」里跟你聊着（群号 " + groupId + "），那边的你在跟 TA 说话。"
+                        + "要说的交给那个群（tell_group）就行，别再分到私聊，免得一件事两头说、两头做。确实只能私下说的（私事、秘密），带上 again=true 再交。";
+            }
+        }
+        return tell("private:" + userId, intent, "和 QQ " + userId + " 的私聊", again);
     }
 
-    private String tellGroup(String groupId, String intent) throws ToolFailure {
-        return tell("group:" + groupId, intent, "「" + bridge.groupName(groupId) + "」");
+    private String tellGroup(String groupId, String intent, boolean again) throws ToolFailure {
+        return tell("group:" + groupId, intent, "「" + bridge.groupName(groupId) + "」", again);
     }
 
-    private String tell(String session, String intent, String place) throws ToolFailure {
+    private String placeOf(String session) {
+        return session.startsWith("group:") ? "「" + bridge.groupName(session.substring(6)) + "」" : "和 QQ " + session.substring(session.indexOf(':') + 1) + " 的私聊";
+    }
+
+    private String tell(String session, String intent, String place, boolean again) throws ToolFailure {
         if (intent.isEmpty()) {
             throw new ToolFailure("想说的意思是空的");
         }
         String reason = bridge.whyNotTell(session);
         if (reason != null) {
             throw new ToolFailure("交不过去：" + reason + "。别再试这个地方了，想想别的办法或者先放下");
+        }
+        Intercom.Told same = again ? null : agent.intercom().similar(intent);
+        if (same != null) {
+            boolean waiting = agent.intercom().pending().stream().anyMatch(n -> n.session().equals(same.session()) && n.intent().equals(same.intent()));
+            return Clock.ago(same.at()) + "你已经把差不多的事交给" + placeOf(same.session()) + "了：「" + abbreviate(same.intent(), 80) + "」，"
+                    + (waiting ? "那边还没说。" : "看回执就知道结果。") + "一件事只交一个地方，别重复交；确实要补充新内容或者换个地方，带上 again=true 再交。";
         }
         if (agent.intercom().pending().stream().anyMatch(n -> n.session().equals(session))) {
             return "你已经交给" + place + "一件想说的事了，那边还没处理完，等那边说了再说，别重复交。";
@@ -370,6 +395,10 @@ final class MindTools implements ToolSet {
                     .map(e -> e.getValue() + "（group:" + e.getKey() + "）").collect(java.util.stream.Collectors.joining("、")));
         }
         return scope;
+    }
+
+    private static boolean again(JsonObject args) {
+        return args.has("again") && args.get("again").isJsonPrimitive() && args.get("again").getAsBoolean();
     }
 
     private static String group(JsonObject args) throws ToolFailure {

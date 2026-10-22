@@ -21,6 +21,8 @@ public final class AgentStore {
     private static final List<String> PACES = List.of("fast", "normal", "slow");
     private static final String EFFORT_KEY = "agent.reasoningEffort";
     private static final String REPLYING_KEY = "agent.replying";
+    private static final String PACING_KEY = "agent.pacing";
+    public static final Pacing DEFAULT_PACING = new Pacing(2_000, 4);
     private static final com.google.gson.Gson GSON = new com.google.gson.Gson();
     private static final List<String> EFFORTS = List.of("default", "none", "low", "medium", "high", "max");
     private static final List<String> DEFAULT_WAKE_WORDS = List.of("小鲸鱼", "大肥鱼");
@@ -202,6 +204,32 @@ public final class AgentStore {
         } catch (RuntimeException ignored) {
         }
         return out;
+    }
+
+    public record Pacing(int intervalMs, int maxPieces) {
+
+        public String problem() {
+            if (intervalMs < 500 || intervalMs > 30_000) return "分段间隔要在 0.5～30 秒之间";
+            if (maxPieces < 1 || maxPieces > 8) return "最多分几条要在 1～8 之间";
+            return null;
+        }
+    }
+
+    public Pacing pacing() {
+        try {
+            Pacing saved = GSON.fromJson(settings.get(PACING_KEY), Pacing.class);
+            return saved == null || saved.problem() != null ? DEFAULT_PACING : saved;
+        } catch (RuntimeException e) {
+            return DEFAULT_PACING;
+        }
+    }
+
+    public synchronized void setPacing(Pacing pacing) {
+        String problem = pacing.problem();
+        if (problem != null) {
+            throw new IllegalArgumentException(problem);
+        }
+        settings.put(PACING_KEY, GSON.toJson(pacing));
     }
 
     public String reasoningEffort() {

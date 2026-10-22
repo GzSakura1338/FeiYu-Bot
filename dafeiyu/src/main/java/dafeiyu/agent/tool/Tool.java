@@ -8,6 +8,10 @@ interface Tool {
 
     String description();
 
+    default String description(boolean network) {
+        return description();
+    }
+
     JsonObject parameters();
 
     String run(JsonObject args, ToolContext context) throws ToolFailure;

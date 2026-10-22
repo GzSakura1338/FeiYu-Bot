@@ -16,9 +16,10 @@ public final class WorkspaceStore {
 
     public enum QqAccess { OFF, LIST, ALL }
 
-    public record Config(String dir, List<String> enabled, QqAccess qqAccess, List<String> qqUsers) {}
+    public record Config(String dir, List<String> enabled, QqAccess qqAccess, List<String> qqUsers, boolean shellNetwork) {}
 
     private static final String DIR_KEY = "agent.workdir";
+    private static final String NETWORK_KEY = "agent.tools.shellNetwork";
     private static final String DISABLED_KEY = "agent.tools.disabled";
     private static final String QQ_ACCESS_KEY = "agent.tools.qqAccess";
     private static final String QQ_USERS_KEY = "agent.tools.qqUsers";
@@ -55,7 +56,8 @@ public final class WorkspaceStore {
         } catch (IllegalArgumentException e) {
             access = QqAccess.OFF;
         }
-        return new Config(value(DIR_KEY, ""), enabled, access, List.copyOf(split(settings.get(QQ_USERS_KEY))));
+        return new Config(value(DIR_KEY, ""), enabled, access, List.copyOf(split(settings.get(QQ_USERS_KEY))),
+                "true".equals(settings.get(NETWORK_KEY)));
     }
 
     public synchronized Config update(Config next) {
@@ -87,6 +89,7 @@ public final class WorkspaceStore {
         settings.put(OPT_IN_KEY, OPT_IN.stream().filter(enabled::contains).sorted().collect(Collectors.joining(",")));
         settings.put(QQ_ACCESS_KEY, access.name());
         settings.put(QQ_USERS_KEY, String.join(",", users));
+        settings.put(NETWORK_KEY, String.valueOf(next.shellNetwork()));
         return config();
     }
 

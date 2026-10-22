@@ -81,7 +81,7 @@ final class SessionHandler {
             } else if (rest.endsWith("/command") && method.equals("POST")) {
                 command(ex, session(rest.substring(1, rest.length() - "/command".length())));
             } else if (rest.length() > 1 && method.equals("GET")) {
-                HttpResponses.json(ex, detail(session(rest.substring(1))));
+                HttpResponses.json(ex, detail(session(rest.substring(1)), ex.getRequestURI().getRawQuery()));
             } else if (rest.length() > 1 && method.equals("DELETE")) {
                 String session = session(rest.substring(1));
                 agent.reset(session);
@@ -153,13 +153,31 @@ final class SessionHandler {
         String kind = s.session().substring(0, s.session().indexOf(':'));
         item.addProperty("kind", kind);
         item.addProperty("target", s.session().substring(s.session().indexOf(':') + 1));
-        item.addProperty("name", name(s.session(), kind.equals("web") ? (s.title().isBlank() ? "新对话" : s.title()) : names.of(s.session())));
+        item.addProperty("name", name(s.session(), kind.equals("web") ? (s.title().isBlank() ? "新对话" : s.title())
+                : kind.equals("task") ? "后台任务：" + s.title().replaceFirst("^你在后台帮.*?做一件事：「(.*?)」.*$", "$1") : names.of(s.session())));
         item.addProperty("busy", busy);
         return item;
     }
 
-    private String detail(String session) {
-        SessionDetail detail = agent.session(session, DETAIL_LIMIT);
+    private static long queryNumber(String query, String key, long fallback) {
+        if (query == null) {
+            return fallback;
+        }
+        for (String pair : query.split("&")) {
+            if (pair.startsWith(key + "=")) {
+                try {
+                    return Long.parseLong(pair.substring(key.length() + 1));
+                } catch (NumberFormatException e) {
+                    return fallback;
+                }
+            }
+        }
+        return fallback;
+    }
+
+    private String detail(String session, String query) {
+        int limit = (int) Math.max(1, Math.min(DETAIL_LIMIT, queryNumber(query, "limit", DETAIL_LIMIT)));
+        SessionDetail detail = agent.session(session, limit, queryNumber(query, "before", Long.MAX_VALUE));
         JsonObject body = gson.toJsonTree(detail).getAsJsonObject();
         body.addProperty("name", name(session, session.startsWith("web:") ? "新对话" : directory.names().of(session)));
         body.addProperty("kind", session.substring(0, session.indexOf(':')));

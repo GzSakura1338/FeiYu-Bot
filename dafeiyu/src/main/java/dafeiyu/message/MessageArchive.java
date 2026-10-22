@@ -134,6 +134,19 @@ public final class MessageArchive {
                 rs.getString("sender_name"), rs.getString("message_id"), rs.getString("content")), limit);
     }
 
+    public String activeGroupWith(String userId, long since) {
+        return db.one("""
+                SELECT m.group_id FROM messages m WHERE m.direction = 'in' AND m.message_type = 'group' AND m.user_id = ? AND m.time >= ?
+                AND EXISTS (SELECT 1 FROM messages o WHERE o.direction = 'out' AND o.message_type = 'group' AND o.group_id = m.group_id AND o.time >= ?)
+                ORDER BY m.id DESC LIMIT 1
+                """, rs -> rs.getString(1), userId, since, since);
+    }
+
+    public String lastKnownName(String userId) {
+        return db.one("SELECT sender_name FROM messages WHERE direction = 'in' AND user_id = ? AND sender_name <> '' ORDER BY id DESC LIMIT 1",
+                rs -> rs.getString(1), userId);
+    }
+
     public Map<String, String> privateSenderNames() {
         Map<String, String> names = new HashMap<>();
         db.list("""

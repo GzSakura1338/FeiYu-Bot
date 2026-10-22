@@ -23,8 +23,6 @@ final class GroupState {
     private static final int MAX_LINES = 40;
     private static final long MAX_AGE_MS = 30 * 60 * 1000;
     private static final int QUOTE_CHARS = 30;
-    private static final long BURST_WINDOW_MS = 60_000;
-    private static final int BURST_LIMIT = 5;
     private static final long STREAK_GAP_MS = 3 * 60_000;
     private static final int STREAK_LIMIT = 4;
     private static final long STREAK_COOLDOWN_MS = 5 * 60_000;
@@ -45,8 +43,6 @@ final class GroupState {
     boolean pendingAddressed;
     ScheduledFuture<?> ambient;
     long ambientDeadline;
-    ScheduledFuture<?> calm;
-    boolean calmAddressed;
 
     GroupState(String groupId) {
         this.groupId = groupId;
@@ -75,15 +71,6 @@ final class GroupState {
         if (!messageId.isEmpty()) {
             recent.put(messageId, line);
         }
-    }
-
-    synchronized long calmIn() {
-        long now = System.currentTimeMillis();
-        List<Long> burst = botTimes.stream().filter(t -> now - t < BURST_WINDOW_MS).toList();
-        if (burst.size() < BURST_LIMIT) {
-            return 0;
-        }
-        return burst.get(burst.size() - BURST_LIMIT) + BURST_WINDOW_MS - now;
     }
 
     synchronized int spokenWithin(long ms) {
@@ -152,6 +139,15 @@ final class GroupState {
 
     synchronized boolean hasNewLines() {
         return buffer.stream().anyMatch(l -> !l.seen());
+    }
+
+    synchronized boolean consumed(java.util.Collection<String> texts) {
+        List<Line> lines = new ArrayList<>(buffer);
+        buffer.clear();
+        for (Line l : lines) {
+            buffer.addLast(!l.seen() && texts.contains(l.text()) ? l.asSeen() : l);
+        }
+        return buffer.stream().anyMatch(l -> !l.seen() && l.addressed());
     }
 
     synchronized String know(String userId, String name, Predicate<String> reserved) {

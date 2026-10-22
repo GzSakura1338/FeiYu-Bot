@@ -1,14 +1,18 @@
 package dafeiyu.agent.qq;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 public final class QqText {
 
-    private static final int CASUAL_MAX_CHARS = 150;
+    private static final int BUBBLE_MAX = 30;
+    private static final int LONG_MESSAGE = 600;
+    private static final Pattern SENTENCE_END = Pattern.compile("(?<=[。！？!?~～…])");
+    private static final Pattern CLAUSE_END = Pattern.compile("(?<=[，,；;])");
     private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+");
-    private static final Pattern LIST_LINE = Pattern.compile("(?m)^\\s*(\\d+[.、)]|[-*•·])\\s");
-    private static final Pattern LINE_BREAKS = Pattern.compile("\\s*\\n\\s*");
+    private static final Pattern LIST_LINE = Pattern.compile("^\\s*(\\d+[.、)]|[-*•·]|[一二三四五六七八九十]+、)\\s*");
     private static final Pattern EXTRA_BLANK_LINES = Pattern.compile("\\n{3,}");
     private static final Pattern STRAY_TAIL = Pattern.compile("(^|[^\\p{IsHan}\\p{L}\\p{N}）)])#\\d{4}(?!\\d)");
     private static final Pattern HTML_BREAK = Pattern.compile("(?i)<br\\s*/?>");
@@ -25,11 +29,62 @@ public final class QqText {
         if (clean.contains("```")) {
             return clean;
         }
-        if (clean.length() <= CASUAL_MAX_CHARS && !LIST_LINE.matcher(clean).find()) {
-            String line = LINE_BREAKS.matcher(clean).replaceAll(" ");
-            return line.endsWith("。") && !line.endsWith("。。") ? line.substring(0, line.length() - 1) : line;
-        }
         return EXTRA_BLANK_LINES.matcher(clean).replaceAll("\n\n");
+    }
+
+    public static List<String> bubbles(String text, int maxPieces) {
+        if (maxPieces <= 1 || text.contains("```") || text.length() > LONG_MESSAGE) {
+            return List.of(text);
+        }
+        List<String> out = new ArrayList<>();
+        for (String raw : text.split("\n")) {
+            String line = raw.strip();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (!out.isEmpty() && LIST_LINE.matcher(line).lookingAt()) {
+                out.set(out.size() - 1, out.getLast() + "\n" + line);
+            } else if (line.length() > BUBBLE_MAX && !line.contains("http")) {
+                out.addAll(sentences(line));
+            } else {
+                out.add(line);
+            }
+        }
+        while (out.size() > maxPieces) {
+            String last = out.removeLast();
+            out.set(out.size() - 1, out.getLast() + " " + last);
+        }
+        out.replaceAll(QqText::casualEnd);
+        return out.isEmpty() ? List.of(text) : out;
+    }
+
+    private static List<String> sentences(String line) {
+        List<String> parts = new ArrayList<>();
+        for (String sentence : SENTENCE_END.split(line)) {
+            parts.addAll(sentence.length() > BUBBLE_MAX ? List.of(CLAUSE_END.split(sentence)) : List.of(sentence));
+        }
+        List<String> out = new ArrayList<>();
+        StringBuilder chunk = new StringBuilder();
+        for (String part : parts) {
+            if (!chunk.isEmpty() && chunk.length() + part.length() > BUBBLE_MAX) {
+                out.add(chunk.toString().strip());
+                chunk.setLength(0);
+            }
+            chunk.append(part);
+        }
+        if (!chunk.isEmpty()) {
+            out.add(chunk.toString().strip());
+        }
+        return out;
+    }
+
+    private static String casualEnd(String line) {
+        String trimmed = line.endsWith("，") || line.endsWith(",") ? line.substring(0, line.length() - 1) : line;
+        return trimmed.endsWith("。") && !trimmed.endsWith("。。") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+    }
+
+    static long bubblePause(String text, int intervalMs) {
+        return intervalMs + ThreadLocalRandom.current().nextLong(intervalMs / 2 + 1) + Math.min(1_500, 30L * text.length());
     }
 
     static long typingPause(String text, long thinkingMs) {

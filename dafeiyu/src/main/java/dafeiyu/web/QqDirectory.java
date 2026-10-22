@@ -26,6 +26,8 @@ final class QqDirectory {
     private volatile Map<String, String> friends = Map.of();
     private volatile long loadedAt;
     private final Map<String, Card> cards = new ConcurrentHashMap<>();
+    private final Map<String, String> strangers = new ConcurrentHashMap<>();
+    private final Map<String, Long> misses = new ConcurrentHashMap<>();
 
     QqDirectory(NapCatService napcat, MessageArchive archive) {
         this.napcat = napcat;
@@ -82,10 +84,11 @@ final class QqDirectory {
 
     Names names() {
         refresh();
-        return new Names(groups, friends, archive.privateSenderNames());
+        return new Names(groups, friends, archive.privateSenderNames(), this::stranger);
     }
 
-    record Names(Map<String, String> groups, Map<String, String> friends, Map<String, String> senders) {
+    record Names(Map<String, String> groups, Map<String, String> friends, Map<String, String> senders,
+                 java.util.function.UnaryOperator<String> stranger) {
 
         String of(String session) {
             if (session.startsWith("group:")) {
@@ -98,10 +101,44 @@ final class QqDirectory {
                 if (name == null || name.isBlank()) {
                     name = senders.get(id);
                 }
+                if (name == null || name.isBlank()) {
+                    name = stranger.apply(id);
+                }
                 return name == null || name.isBlank() ? "QQ " + id : name;
             }
             return "网页测试 " + session.substring(session.indexOf(':') + 1);
         }
+    }
+
+    private String stranger(String qq) {
+        String known = strangers.get(qq);
+        if (known != null) {
+            return known;
+        }
+        Long missed = misses.get(qq);
+        if (missed != null && System.currentTimeMillis() - missed < REFRESH_MS * 10) {
+            return "";
+        }
+        String name = QqMessages.displayName(java.util.Objects.requireNonNullElse(archive.lastKnownName(qq), ""));
+        if (name.isBlank() && napcat.status().connected() && qq.matches("\\d{5,12}")) {
+            try {
+                JsonObject params = new JsonObject();
+                params.addProperty("user_id", Long.parseLong(qq));
+                JsonObject data = optObject(napcat.callAction("get_stranger_info", params, Duration.ofSeconds(2))
+                        .get(2_500, TimeUnit.MILLISECONDS), "data");
+                name = data == null ? "" : optString(data, "nickname");
+            } catch (Exception e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        if (name.isBlank()) {
+            misses.put(qq, System.currentTimeMillis());
+            return "";
+        }
+        strangers.put(qq, name);
+        return name;
     }
 
     private void refresh() {

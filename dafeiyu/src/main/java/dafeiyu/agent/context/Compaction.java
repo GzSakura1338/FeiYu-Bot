@@ -3,6 +3,7 @@ package dafeiyu.agent.context;
 import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ImagePart;
 import dafeiyu.agent.ToolCall;
+import dafeiyu.agent.model.ModelLimits.Limits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,10 +23,10 @@ public final class Compaction {
     }
 
     static final int KEEP_TOKENS = 15_000;
-    static final int CHAT_KEEP_TOKENS = 10_000;
+    static final int CHAT_KEEP_TOKENS = 15_000;
     static final int MIND_KEEP_TOKENS = 15_000;
     static final int RESERVE_MIN = 16_000;
-    static final double RESERVE_SHARE = 0.15;
+    static final int OUTPUT_TOKEN_MAX = 32_000;
     static final int UNKNOWN_WINDOW = 200_000;
     static final double[] SHRINK_STEPS = {0.7, 0.5, 0.35};
     static final int IMAGE_TOKEN_ESTIMATE = 1_500;
@@ -80,13 +81,14 @@ public final class Compaction {
     static final String MIND_NUDGE = "刚才没有写出回忆。不要调用工具，直接用第一人称把这段时间的回忆写出来。";
 
     private static final String MIND_SUMMARY = """
-            把上面这段时间你脑子里转过的念头，整理成一段写给稍后的自己看的回忆，用第一人称“我”。
-            要写到：
-            - 这段时间外面发生了什么：哪个群在聊什么、谁找过我、我去哪里说了什么、别人怎么回的，带上大概的时间（几点、上午还是晚上）
-            - 我在想什么、在意什么，心情是怎么变的
-            - 还没做完的打算、想等会儿再去看看的事
-            保留具体的群名、昵称、QQ 号和时间。写成几段短话，不用标题和模板，不超过 600 字。
-            不要提“总结”“压缩”“回忆整理”这些字眼，也不要接着想新的念头或调用工具，只输出这段回忆。""";
+            把上面这段时间你脑子里转过的念头，整理成一份写给稍后的自己看的回忆，用第一人称“我”。按下面几段写，每段开头写段名：
+            【外面发生的事】哪个群在聊什么、谁找过我、我去哪里说了什么、别人怎么回的，带上大概的时间（几点、上午还是晚上）
+            【人】这段时间打过交道的人：昵称、QQ 号、和我的关系、最近的状态、托过我什么
+            【交出去的事】我交给哪个群、哪个私聊去说或去做的事，说了没有、做到哪一步了、结果怎样
+            【还没了结的】答应别人的、自己打算做的、等着结果的事
+            【心情】我在想什么、在意什么，心情是怎么变的
+            保留具体的群名、昵称、QQ 号和时间，别漏掉还没了结的事。不超过 1500 字。
+            不要提“总结”“压缩”“回忆整理”这些字眼，也不要接着想新的念头或调用工具，只输出这份回忆。""";
 
     private static final String MIND_UPDATE = """
             上面 <conversation-checkpoint> 里是我之前写给自己的回忆，后面是之后新转过的念头。
@@ -97,13 +99,12 @@ public final class Compaction {
     private Compaction() {}
 
     private static final String CHAT_SUMMARY = """
-            把上面这段聊天整理成一份给自己看的聊天纪要，用第一人称“我”。要写到：
-            - 现在在聊什么话题，最近几轮是谁在跟我说话、说了什么、我是怎么回的
-            - 出现过的人怎么称呼（QQ 名），他们和我的关系、最近的状态和喜好
-            - 我答应过谁什么事、还没回答的问题、正在进行的游戏或活动
-            - 如果在帮人做事（写文件、做游戏等），做到哪一步了、相关的文件路径
-            - 已经聊完、过去了的话题一句带过，不用细写
-            保留具体的人名、群名和大概时间。写成几段短话，不用标题和模板，不超过 600 字。
+            把上面这段聊天整理成一份给自己看的聊天纪要，用第一人称“我”。按下面几段写，每段开头写段名：
+            【人】出现过的每个人：现在的名字、QQ 号（看得出来的话）、以前用过的名字、和我的关系、最近的状态、喜好和梗
+            【在聊什么】现在在聊的话题，最近几轮是谁在跟我说话、说了什么、我是怎么回的
+            【答应的事】我答应过谁什么事、做到哪一步、相关的文件路径；还没回答的问题；正在进行的游戏或活动
+            【过去的事】已经聊完的话题，一句一个带过
+            保留具体的人名、QQ 号、群名和大概时间，别漏掉还没了结的事。不超过 1500 字。
             不要提“纪要”“总结”“压缩”这些字眼，不要接着聊天，也不要调用工具，只输出这份纪要。""";
 
     private static final String CHAT_UPDATE = """
@@ -157,8 +158,8 @@ public final class Compaction {
         return style != Style.TASK ? summary.strip().length() >= 20 : summary.lines().map(String::strip).anyMatch(HEADINGS::contains);
     }
 
-    public static long threshold(int window) {
-        return ceiling(window);
+    public static long threshold(Limits limits) {
+        return usable(limits.context(), limits.output());
     }
 
     public static String checkpointMessage(String summary, String recent) {
@@ -172,11 +173,12 @@ public final class Compaction {
         return text.append("\n</conversation-checkpoint>").toString();
     }
 
-    public static long ceiling(int window) {
+    public static long usable(int window, int output) {
         if (window <= 0) {
             return Long.MAX_VALUE;
         }
-        return window - Math.max((long) Math.floor(window * RESERVE_SHARE), window >= 2 * RESERVE_MIN ? RESERVE_MIN : 0);
+        int reserve = output > 0 ? Math.min(output, OUTPUT_TOKEN_MAX) : OUTPUT_TOKEN_MAX;
+        return Math.max(window / 2, window - reserve);
     }
 
     static long summaryRoom(int window) {

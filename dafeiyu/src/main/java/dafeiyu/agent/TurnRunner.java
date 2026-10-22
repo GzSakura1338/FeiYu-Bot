@@ -58,6 +58,34 @@ public final class TurnRunner {
                     {"type": "object", "properties": {
                       "id": {"type": "string", "description": "合并转发的编号"}
                     }, "required": ["id"]}""").getAsJsonObject());
+    static final String RECALL = "recall";
+    static final ToolSpec RECALL_SPEC = new ToolSpec(RECALL,
+            "想想你记得的事。“<你记得>”里只放了跟现在相关的一部分；想起更多关于某个人、这个群、你自己的事，翻日记或查过的词，就用它，要多少查多少。",
+            com.google.gson.JsonParser.parseString("""
+                    {"type": "object", "properties": {
+                      "about": {"type": "string", "description": "想谁或想什么：名字、QQ 号、self（你自己）、group（这个群）、knowledge（查过的词）、diary（日记）"},
+                      "query": {"type": "string", "description": "只想找跟某件事有关的就写关键词，不写就是全部"},
+                      "offset": {"type": "integer", "description": "接着上次往后看时填，结果里会告诉你填几"}
+                    }, "required": ["about"]}""").getAsJsonObject());
+    static final String SKILL = "skill";
+    static final ToolSpec SKILL_SPEC = new ToolSpec(SKILL,
+            "查看你学会的某个技能的完整做法。“【你学会的技能】”里只写了用途的技能，碰到对应的事先用它看清楚怎么做。",
+            com.google.gson.JsonParser.parseString("""
+                    {"type": "object", "properties": {
+                      "name": {"type": "string", "description": "技能的名字"}
+                    }, "required": ["name"]}""").getAsJsonObject());
+    static final String START_TASK = "start_task";
+    static final ToolSpec START_TASK_SPEC = new ToolSpec(START_TASK,
+            "把要动手的活交给后台去做：写网页、做小游戏、做或改文件、改代码、跑命令、查一堆资料整理成文档这类要好几步的事。"
+                    + "交出去以后聊天这边马上就能接着聊，后台做好了会让你把结果告诉对方、把文件发出去。这类活不要在聊天里自己一步步做。",
+            com.google.gson.JsonParser.parseString("""
+                    {"type": "object", "properties": {
+                      "title": {"type": "string", "description": "一句话的任务名，比如“网页版狼人杀”"},
+                      "instructions": {"type": "string", "description": "完整的要求：要做成什么样、给谁用、有什么细节，改已有文件就写清楚文件路径和要改什么"}
+                    }, "required": ["title", "instructions"]}""").getAsJsonObject());
+    private static final Set<String> HANDS_ON = Set.of("write", "edit", "patch", "move", "delete", "shell");
+    private static final java.util.regex.Pattern SENT_FILE = java.util.regex.Pattern.compile("文件：([^。；\\n]+)");
+    private static final int CONTEXT_LINES = 16;
     private static final int FACE_COOLDOWN = 2;
     private static final int MAX_NOTES = 2;
     private static final int STICKER_CATALOG = 40;
@@ -86,15 +114,21 @@ public final class TurnRunner {
     private final Reflection reflection;
     private final List<String> owners;
     private final Workspace workspace;
+    private final boolean network;
     private List<String> enabled;
     private List<ToolSpec> tools;
     private final int maxSteps;
     private final Deque<String> recentCalls = new ArrayDeque<>();
     private String contributed;
+    private String chatContext;
+    private String presentPeople;
     private String system;
     private boolean systemRole;
     private Conversation conversation;
     private final List<ChatMessage> live = new ArrayList<>();
+    private final List<ConversationMemory.Heard> arrived = new ArrayList<>();
+    private final List<String> sentFiles = new ArrayList<>();
+    private long heardId;
     private boolean userSaved;
     private ChatMessage marker;
     private long startedAt;
@@ -127,15 +161,20 @@ public final class TurnRunner {
         this.owners = agent.personas().owners();
         WorkspaceStore workspaces = agent.workspaces();
         this.workspace = workspaces.workspace();
+        this.network = workspaces.config().shellNetwork();
         if (turn.tools() != null) {
             this.tools = capabilities.toolCall(profile) ? turn.tools().specs() : List.of();
             this.enabled = tools.stream().map(ToolSpec::name).toList();
         } else {
-            boolean allowed = !ambient() && workspaces.allows(turn.qqUser()) && capabilities.toolCall(profile);
+            boolean allowed = (workspaces.allows(turn.qqUser()) || "note".equals(turn.source())) && capabilities.toolCall(profile);
             Set<String> chosen = allowed ? Set.copyOf(workspaces.config().enabled()) : Set.of();
             List<String> builtin = workspace == null ? List.of()
-                    : chosen.stream().filter(Toolbox::exists).filter(n -> turn.files() != null || !n.equals("send_file")).toList();
-            List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin)));
+                    : chosen.stream().filter(Toolbox::exists).filter(n -> turn.files() != null || !n.equals("send_file"))
+                    .filter(n -> !qqSession() || !HANDS_ON.contains(n)).toList();
+            List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin), network));
+            if (qqSession() && allowed && workspace != null && chosen.stream().anyMatch(HANDS_ON::contains)) {
+                all.add(START_TASK_SPEC);
+            }
             if (allowed) {
                 all.addAll(agent.extensions().tools(qqSession(), false, chosen));
             }
@@ -144,6 +183,12 @@ public final class TurnRunner {
             }
             if (qqSession() && capabilities.toolCall(profile)) {
                 all.add(READ_FORWARD_SPEC);
+                if (persona != null) {
+                    all.add(RECALL_SPEC);
+                    if (agent.skills().count(persona.id()) > 0) {
+                        all.add(SKILL_SPEC);
+                    }
+                }
             }
             this.tools = List.copyOf(all);
             this.enabled = tools.stream().map(ToolSpec::name).toList();
@@ -155,6 +200,7 @@ public final class TurnRunner {
     ChatResult run() throws AgentException {
         long started = System.nanoTime();
         conversation = memory.load(turn.session());
+        heardId = conversation.lastId();
         measured = conversation.measuredTokens() > 0 && measuredBy.equals(conversation.measuredBy()) ? conversation.measuredTokens() : -1;
         live.add(prepareImages(turn.user()));
         userSaved = turn.heard();
@@ -167,7 +213,10 @@ public final class TurnRunner {
         int step = 1;
         while (true) {
             checkCancelled();
-            if (hasHistory() && estimateContext() >= Compaction.threshold(limits.context())) {
+            if (step > 1) {
+                interject();
+            }
+            if (hasHistory() && estimateContext() >= Compaction.threshold(limits)) {
                 compact(Trigger.AUTO);
             }
             boolean lastStep = step >= maxSteps;
@@ -234,9 +283,10 @@ public final class TurnRunner {
                 agent.intercom().finish(turn.session(), done);
             }
             String stored = new Markup(thought, content, notes, errands, poked, promises, finished).render();
+            List<ToolCall> toRun = calls.isEmpty() ? unsentFiles(finished) : calls;
             List<ChatMessage> fresh = new ArrayList<>();
-            fresh.add(ChatMessage.assistant(stored, result.reasoning(), calls));
-            for (ToolCall call : calls) {
+            fresh.add(ChatMessage.assistant(stored, result.reasoning(), toRun));
+            for (ToolCall call : toRun) {
                 fresh.add(runTool(call));
             }
             save(fresh, result);
@@ -263,14 +313,14 @@ public final class TurnRunner {
 
     private ChatRequest request(boolean lastStep) {
         List<ChatMessage> messages = new ArrayList<>(Prompt.head(system, systemRole));
-        messages.addAll(Prompt.history(conversation, true));
+        messages.addAll(Prompt.pruned(Prompt.history(conversation, true)));
         messages.addAll(live);
         if (lastStep && !tools.isEmpty()) {
             messages.add(ChatMessage.user(turn.mind() ? Prompt.MIND_STEPS : Prompt.MAX_STEPS));
         }
         List<ChatMessage> prepared = Prompt.mergeUsers(Prompt.forRequest(messages, !tools.isEmpty()));
-        String skills = persona == null || turn.mind() ? ""
-                : memories.knowledge(persona.id(), turn.user().content()) + agent.skills().relevant(persona.id(), turn.user().content());
+        String context = chatContext();
+        String skills = persona == null ? "" : memories.knowledge(persona.id(), context) + agent.skills().relevant(persona.id(), context);
         if (contributed == null) {
             contributed = turn.mind() ? "" : agent.extensions().contribute(turn.session(), turn.people());
         }
@@ -289,7 +339,8 @@ public final class TurnRunner {
                 }
             }
             prepared = Prompt.prefixLastUser(prepared, mood.note(persona.id(), turn.session(), lastSpoke)
-                    + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners))
+                    + presentPeople()
+                    + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners), context)
                     + skills
                     + (catalog.isEmpty() ? "" : "<你的表情包>\n" + catalog + "</你的表情包>\n\n"));
         }
@@ -301,6 +352,43 @@ public final class TurnRunner {
 
     private boolean ambient() {
         return "ambient".equals(turn.source());
+    }
+
+    private String chatContext() {
+        if (chatContext == null) {
+            StringBuilder text = new StringBuilder(turn.user().content());
+            List<ChatMessage> turns = conversation.turns();
+            int n = 0;
+            for (int i = turns.size() - 1; i >= 0 && n < CONTEXT_LINES; i--) {
+                ChatMessage m = turns.get(i);
+                if (m.isTool() || m.content().isBlank()) {
+                    continue;
+                }
+                text.append('\n').append(dafeiyu.util.Texts.abbreviate(m.content(), 300));
+                n++;
+            }
+            chatContext = text.toString();
+        }
+        return chatContext;
+    }
+
+    private String presentPeople() {
+        if (presentPeople == null) {
+            presentPeople = "";
+            if (turn.session().startsWith("group:") && !turn.people().isEmpty()) {
+                String groupId = turn.session().substring(6);
+                List<String> lines = new ArrayList<>();
+                for (String qq : turn.people().stream().distinct().limit(12).toList()) {
+                    String name = turn.roster().entrySet().stream().filter(e -> e.getValue().equals(qq)).map(Map.Entry::getKey)
+                            .findFirst().orElse("");
+                    List<String> before = memories.aliases(groupId, qq, name);
+                    lines.add("- " + (name.isEmpty() ? "QQ " + qq : name + "：QQ " + qq) + (owners.contains(qq) ? "，你的主人" : "")
+                            + (before.isEmpty() ? "" : "，以前叫 " + String.join("、", before)));
+                }
+                presentPeople = "<在场的人>\n" + String.join("\n", lines) + "\n</在场的人>\n\n";
+            }
+        }
+        return presentPeople;
     }
 
     private String feel(String thought) {
@@ -491,9 +579,18 @@ public final class TurnRunner {
         listener.onToolCall(call);
         Toolbox.Outcome outcome = turn.tools() != null ? turn.tools().run(call)
                 : call.name().equals(READ_FORWARD) && enabled.contains(READ_FORWARD) ? readForward(call)
+                : call.name().equals(RECALL) && enabled.contains(RECALL) ? recallTool(call)
+                : call.name().equals(SKILL) && enabled.contains(SKILL) ? skillTool(call)
+                : call.name().equals(START_TASK) && enabled.contains(START_TASK) ? startTask(call)
                 : agent.extensions().owns(call.name()) && enabled.contains(call.name()) ? agent.extensions().run(call, turn.session())
-                : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files()));
+                : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files(), network));
         listener.onToolResult(call, outcome.output(), outcome.error());
+        if (call.name().equals("send_file") && !outcome.error()) {
+            JsonObject sent = Jsons.parseObject(call.arguments());
+            if (sent != null) {
+                sentFiles.add(Jsons.optString(sent, "path").replace('\\', '/'));
+            }
+        }
         String output = outcome.output();
         if (repeating(call)) {
             output += "\n\n[You have now made this exact same " + call.name() + " call " + DOOM_LOOP
@@ -510,6 +607,86 @@ public final class TurnRunner {
         } catch (ToolFailure e) {
             return new Toolbox.Outcome(e.getMessage(), true);
         }
+    }
+
+    private Toolbox.Outcome recallTool(ToolCall call) {
+        JsonObject args = Jsons.parseObject(call.arguments());
+        String about = args == null ? "" : Jsons.optString(args, "about").strip();
+        String query = args == null ? "" : Jsons.optString(args, "query");
+        int offset = args != null && args.has("offset") && args.get("offset").isJsonPrimitive() ? Math.max(0, args.get("offset").getAsInt()) : 0;
+        List<String> scopes = recallScopes(about);
+        if (scopes.isEmpty()) {
+            return new Toolbox.Outcome("不知道「" + about + "」是谁或什么。about 写名字、QQ 号、self、group、knowledge 或 diary。", true);
+        }
+        String text = memories.lookup(persona.id(), scopes.getFirst(), turn.session(), Set.copyOf(owners), query, offset);
+        return new Toolbox.Outcome(scopes.size() > 1 ? text + "\n（叫这个名字的不止一个人，这是 " + scopes.getFirst()
+                + "；其他的：" + String.join("、", scopes.subList(1, scopes.size())) + "，可以填 QQ 号查）" : text, false);
+    }
+
+    private List<String> recallScopes(String about) {
+        String lower = about.toLowerCase(Locale.ROOT);
+        if (about.isEmpty()) {
+            return List.of();
+        }
+        if (lower.equals(MemoryStore.DIARY) || about.equals("日记")) {
+            return List.of(MemoryStore.DIARY);
+        }
+        if (lower.startsWith("user:") || about.matches("\\d{5,12}")) {
+            return List.of("user:" + about.replaceFirst("(?i)^user:", "").strip());
+        }
+        if (lower.startsWith("group:") && about.substring(6).strip().matches("\\d{5,12}")) {
+            return List.of("group:" + about.substring(6).strip());
+        }
+        String scope = noteScope(about);
+        if (scope != null) {
+            return List.of(scope);
+        }
+        return memories.scopesNamed(persona.id(), about);
+    }
+
+    private List<ToolCall> unsentFiles(List<String> finished) {
+        if (!qqSession() || !enabled.contains("send_file") || turn.files() == null) {
+            return List.of();
+        }
+        StringBuilder text = new StringBuilder(String.join("\n", finished));
+        if ("note".equals(turn.source())) {
+            java.util.regex.Matcher m = SENT_FILE.matcher(turn.user().content());
+            while (m.find()) {
+                text.append('\n').append(m.group(1).replace("、", "\n"));
+            }
+        }
+        if (text.isEmpty()) {
+            return List.of();
+        }
+        List<ToolCall> out = new ArrayList<>();
+        for (String path : agent.tasks().files(text.toString())) {
+            String name = path.substring(path.lastIndexOf('/') + 1);
+            if (sentFiles.stream().noneMatch(s -> s.endsWith(name))) {
+                JsonObject args = new JsonObject();
+                args.addProperty("path", path);
+                out.add(new ToolCall("auto_send_" + out.size(), "send_file", args.toString()));
+            }
+        }
+        return out;
+    }
+
+    private Toolbox.Outcome startTask(ToolCall call) {
+        JsonObject args = Jsons.parseObject(call.arguments());
+        String title = args == null ? "" : Jsons.optString(args, "title").strip();
+        String instructions = args == null ? "" : Jsons.optString(args, "instructions").strip();
+        if (title.isEmpty() || instructions.isEmpty()) {
+            return new Toolbox.Outcome("title 和 instructions 都要写", true);
+        }
+        agent.tasks().start(turn.session(), requester(), turn.qqUser() == null ? "" : turn.qqUser(), title, instructions);
+        return new Toolbox.Outcome("「" + title + "」已经交给后台在做了。现在先回对方一句在做了（别说已经做好）；做好后会让你把结果告诉对方、把文件发出去。"
+                + "别在这里自己再动手做一遍。", false);
+    }
+
+    private Toolbox.Outcome skillTool(ToolCall call) {
+        JsonObject args = Jsons.parseObject(call.arguments());
+        String name = args == null ? "" : Jsons.optString(args, "name");
+        String detail = agent.skills().detail(persona.id(), name);
+        return detail == null ? new Toolbox.Outcome("没有叫「" + name + "」的技能，看看【你学会的技能】里的名字", true) : new Toolbox.Outcome(detail, false);
     }
 
     private boolean repeating(ToolCall call) {
@@ -530,10 +707,44 @@ public final class TurnRunner {
             asked.add(ChatMessage.user(turn.user().content()));
         }
         measured = result.promptTokens() > 0 ? result.promptTokens() + Compaction.estimate(fresh) : -1;
-        memory.append(turn.session(), asked, startedAt, turn.attachments(), fresh, (int) Math.max(0, measured), measured > 0 ? measuredBy : "");
+        ConversationMemory.Appended appended = memory.append(turn.session(), asked, startedAt, turn.attachments(), fresh,
+                (int) Math.max(0, measured), measured > 0 ? measuredBy : "", heardId);
+        arrive(appended.heard());
+        heardId = Math.max(heardId, appended.lastId());
         userSaved = true;
         live.addAll(fresh);
         listener.onSaved();
+    }
+
+    private boolean interjectable() {
+        return !turn.mind() && turn.tools() == null && ChatAgent.interjectable(turn.session());
+    }
+
+    private void arrive(List<ConversationMemory.Heard> heard) {
+        if (!interjectable()) {
+            return;
+        }
+        for (ConversationMemory.Heard h : heard) {
+            heardId = Math.max(heardId, h.id());
+            if (!h.content().isBlank() && !h.content().strip().matches("【[^】]*】")) {
+                arrived.add(h);
+            }
+        }
+    }
+
+    private void interject() {
+        if (!interjectable()) {
+            return;
+        }
+        arrive(memory.heardSince(turn.session(), heardId));
+        if (arrived.isEmpty()) {
+            return;
+        }
+        StringBuilder text = new StringBuilder("（你在忙的时候又来了新消息。先看看要不要据此调整正在做的事，有人纠正你、改了要求就照新的来）");
+        arrived.forEach(h -> text.append('\n').append(h.content()));
+        live.add(ChatMessage.user(text.toString()));
+        agent.interjected(turn.session(), List.copyOf(arrived));
+        arrived.clear();
     }
 
     private void compact(Trigger trigger) throws AgentException {
@@ -558,7 +769,7 @@ public final class TurnRunner {
             return measured + (userSaved || live.isEmpty() ? 0 : Compaction.estimate(live.getFirst()));
         }
         List<ChatMessage> all = new ArrayList<>(Prompt.head(system, systemRole));
-        all.addAll(Prompt.history(conversation, true));
+        all.addAll(Prompt.pruned(Prompt.history(conversation, true)));
         all.addAll(live);
         return Compaction.estimate(all) + (systemRole ? 0 : Compaction.estimate(system));
     }

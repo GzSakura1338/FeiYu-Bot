@@ -59,6 +59,7 @@ public final class QqChatBridge {
     private static final String RESUMED = "你刚才正在回这条，回到一半被重启打断了，对方还没收到你的回复。接着把它回完；刚才在做的事（写文件、调工具）如果没做完，"
             + "看看聊天记录里做到哪一步了，接着做完，别从头重来。";
     private static final String FOCUS ="对方在说什么就接什么，先回应这条，别答非所问；别扯回前面已经聊完的话题，也别突然提起很久以前的事或者别处的事，除非对方自己提到。";
+    private static final java.util.regex.Pattern BOT_NAME = java.util.regex.Pattern.compile("(?i)机器人|智能体|bot|助手");
     private static final long AMBIENT_QUIET_MIN_MS = 2_000;
     private static final long AMBIENT_QUIET_MAX_MS = 4_000;
     private static final long AMBIENT_MAX_WAIT_MS = 8_000;
@@ -132,6 +133,7 @@ public final class QqChatBridge {
             }
         });
         agent.intercom().onNotes(this::deliverNotes);
+        agent.setInterjections(this::interjected);
         agent.held().takeAll().forEach((session, lines) -> {
             lines.forEach(h -> agent.hear(session, h.line(), h.userId(), h.attachments()));
             log.info("agent [" + session + "] restored " + lines.size() + " message(s) heard while a reply was cut off");
@@ -470,7 +472,7 @@ public final class QqChatBridge {
                 agent.personas().isOwner(targetId), this::reservedName);
         String line = (owner ? OWNER_TAG : "") + POKE_TAG + name + " " + action + " " + target + suffix;
         observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, action + " " + target + suffix, me);
-        boolean addressed = me && !state.cooling(userId) && !looksLikeMe(name);
+        boolean addressed = me && !(botLike(name) && state.cooling(userId)) && !looksLikeMe(name);
         state.add(new Line("", userId, name, line, System.currentTimeMillis(), addressed, List.of(), false));
         hear(state, line, userId, attachments.toString());
         if (!agent.store().groupMode()) {
@@ -502,7 +504,7 @@ public final class QqChatBridge {
         boolean addressed = agent.store().groupMode()
                 ? (incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()) || (!incoming.mentionedOthers() && calledByName(incoming.text()))
                         || continuing)
-                        && !looksLikeMe(name) && (owner || !state.cooling(userId))
+                        && !looksLikeMe(name) && (owner || !(botLike(name) && state.cooling(userId)))
                 : incoming.mentionedMe();
         observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, flat,
                 addressed || incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()));
@@ -514,33 +516,11 @@ public final class QqChatBridge {
     }
 
     private void react(GroupState state, String selfId, boolean addressed) {
-        long wait = state.calmIn();
-        if (wait > 0) {
-            holdBack(state, selfId, addressed, wait);
-        } else if (addressed) {
+        if (addressed) {
             lastActivity = System.currentTimeMillis();
             startGroupTurn(state, selfId, Mode.ADDRESSED);
         } else {
             scheduleAmbient(state, selfId);
-        }
-    }
-
-    private void holdBack(GroupState state, String selfId, boolean addressed, long wait) {
-        synchronized (state) {
-            state.calmAddressed |= addressed;
-            if (state.calm != null) {
-                return;
-            }
-            log.info("agent [group " + state.groupId + "] said a lot just now, looking again in " + (wait / 1000 + 1) + "s");
-            state.calm = scheduler.schedule(() -> {
-                boolean again;
-                synchronized (state) {
-                    again = state.calmAddressed;
-                    state.calmAddressed = false;
-                    state.calm = null;
-                }
-                react(state, selfId, again);
-            }, wait + 500, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -625,12 +605,28 @@ public final class QqChatBridge {
     }
 
     private void hear(GroupState state, String line, String userId, String attachments) {
-        synchronized (state) {
-            if (state.busy) {
-                agent.held().add("group:" + state.groupId, new HeldLines.Line(line, userId, attachments));
-                return;
+        heardNow(state, line, userId, attachments);
+    }
+
+    private void interjected(String session, List<String> lines) {
+        if (session.startsWith("group:")) {
+            GroupState state = groups.get(session.substring(6));
+            if (state != null) {
+                synchronized (state) {
+                    state.pendingAddressed = state.consumed(lines);
+                }
             }
-            heardNow(state, line, userId, attachments);
+            return;
+        }
+        Inbox inbox = inboxes.get(session);
+        if (inbox != null) {
+            synchronized (inbox) {
+                inbox.lines.removeIf(lines::contains);
+                if (inbox.lines.isEmpty()) {
+                    inbox.images.clear();
+                    inbox.pending = false;
+                }
+            }
         }
     }
 
@@ -659,7 +655,6 @@ public final class QqChatBridge {
     private void release(GroupState state, String selfId) {
         boolean again;
         synchronized (state) {
-            agent.held().take("group:" + state.groupId).forEach(h -> heardNow(state, h.line(), h.userId(), h.attachments()));
             state.busy = false;
             again = state.pendingAddressed;
             state.pendingAddressed = false;
@@ -699,7 +694,8 @@ public final class QqChatBridge {
             state.restore(lines);
             return;
         }
-        if (lines.isEmpty() && notes.isEmpty()) {
+        if (notes.isEmpty() && lines.stream().allMatch(Line::seen)) {
+            state.restore(lines);
             return;
         }
         String place = "「" + groupName(state.groupId) + "」";
@@ -714,7 +710,7 @@ public final class QqChatBridge {
         Line trigger = null;
         if (mode == Mode.ADDRESSED) {
             for (int i = lines.size() - 1; i >= 0 && trigger == null; i--) {
-                trigger = lines.get(i).addressed() ? lines.get(i) : null;
+                trigger = lines.get(i).addressed() && !lines.get(i).seen() ? lines.get(i) : null;
             }
         }
         StringBuilder prompt = new StringBuilder();
@@ -758,7 +754,8 @@ public final class QqChatBridge {
         List<String> present = people.stream().distinct().limit(6).toList();
         Map<String, String> roster = state.roster(people.stream().distinct().toList());
         ChatTurn turn = trigger == null
-                ? new ChatTurn(session, ChatMessage.user(prompt.toString()), "0", null, notes.isEmpty() ? "ambient" : "note", present, roster, true)
+                ? new ChatTurn(session, ChatMessage.user(prompt.toString()), "0", outbox.files(target),
+                        notes.isEmpty() ? "ambient" : "note", present, roster, true)
                 : new ChatTurn(session, ChatMessage.user(prompt.toString(), images), trigger.userId(), outbox.files(target), "qq", present, roster, true);
         if (trigger != null) {
             agent.store().markReplying(new AgentStore.Replying(session, trigger.userId(), trigger.messageId(), trigger.speaker(), trigger.text(),
@@ -786,9 +783,9 @@ public final class QqChatBridge {
                 countProactive();
             }
         } else if (sent != null) {
-            String flat = abbreviate(sent.replace('\n', ' '), 80);
+            String flat = abbreviate(sent.replace('\n', ' '), 300);
             agent.intercom().report(session, trigger != null
-                    ? place + "：" + trigger.speaker() + " 跟你说「" + abbreviate(trigger.text().replace('\n', ' '), 50) + "」，你回：" + flat
+                    ? place + "：" + trigger.speaker() + " 跟你说「" + abbreviate(trigger.text().replace('\n', ' '), 200) + "」，你回：" + flat
                     : place + "：你插了一句：" + flat);
         }
     }
@@ -813,11 +810,6 @@ public final class QqChatBridge {
             if (!agent.store().qqReply() || !agent.store().groupMode() || state.busy || !state.hasNewLines()) {
                 return;
             }
-        }
-        long wait = state.calmIn();
-        if (wait > 0) {
-            holdBack(state, selfId, false, wait);
-            return;
         }
         startGroupTurn(state, selfId, Mode.AMBIENT);
     }
@@ -1065,6 +1057,10 @@ public final class QqChatBridge {
         return lines.isEmpty() ? "（这个群还没有聊天记录）" : String.join("\n", lines);
     }
 
+    public String activeGroupWith(String userId, long withinMs) {
+        return archive.activeGroupWith(userId, System.currentTimeMillis() - withinMs);
+    }
+
     public Map<String, String> groupNames() {
         return contacts.groups();
     }
@@ -1109,6 +1105,10 @@ public final class QqChatBridge {
         String lower = text.toLowerCase(Locale.ROOT);
         return agent.store().wakeWords().stream().map(String::strip).filter(w -> !w.isEmpty())
                 .anyMatch(w -> lower.contains(w.toLowerCase(Locale.ROOT)));
+    }
+
+    private boolean botLike(String label) {
+        return looksLikeMe(label) || BOT_NAME.matcher(label).find();
     }
 
     private boolean looksLikeMe(String label) {

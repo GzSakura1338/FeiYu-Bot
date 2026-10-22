@@ -105,6 +105,16 @@ public final class Database implements AutoCloseable {
         }
     }
 
+    public static <T> List<T> list(Connection c, String sql, RowMapper<T> mapper, Object... params) throws SQLException {
+        try (PreparedStatement ps = prepare(c, sql, params); ResultSet rs = ps.executeQuery()) {
+            List<T> rows = new ArrayList<>();
+            while (rs.next()) {
+                rows.add(mapper.map(rs));
+            }
+            return rows;
+        }
+    }
+
     private synchronized <T> T run(Work<T> work) {
         try {
             return work.run(connection);

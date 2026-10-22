@@ -448,6 +448,7 @@ body {
   display: inline-flex; flex: none; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border: 0;
   border-radius: var(--md-sys-shape-corner-full); background: rgb(255 255 255 / .14); color: #fff; text-decoration: none; cursor: pointer;
 }
+.timeline-older { align-self: center; flex: none; }
 .chat-divider {
   display: flex; align-items: center; gap: 12px; margin: 4px 0; color: var(--md-sys-color-on-surface-variant);
 }
@@ -523,6 +524,7 @@ body {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 #workspace-tools .list-headline { display: flex; align-items: center; }
+#workspace-tools .tool-sub { padding-left: 80px; }
 .files-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 0 24px 4px 16px; color: var(--md-sys-color-on-surface-variant); }
 .files-crumb { height: 32px; padding: 0 8px; border-radius: var(--md-sys-shape-corner-small); color: var(--md-sys-color-primary); }
 .files-sep { opacity: .6; }

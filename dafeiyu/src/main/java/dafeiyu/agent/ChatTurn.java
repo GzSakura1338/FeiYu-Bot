@@ -36,6 +36,10 @@ public record ChatTurn(String session, ChatMessage user, String qqUser, FileSink
         return new ChatTurn(session, user, qqUser, files, source, people, roster, heard, set, attachments);
     }
 
+    public ChatTurn asHeard(ChatMessage instruction) {
+        return new ChatTurn(session, instruction, qqUser, files, source, people, roster, true, tools, "");
+    }
+
     public ChatTurn withAttachments(String json) {
         return new ChatTurn(session, user, qqUser, files, source, people, roster, heard, tools, json);
     }

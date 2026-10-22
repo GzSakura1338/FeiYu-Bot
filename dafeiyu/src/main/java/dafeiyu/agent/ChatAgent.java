@@ -26,6 +26,7 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -46,8 +47,12 @@ public final class ChatAgent {
     private final StickerKeeper stickers;
     private final Intercom intercom;
     private final HeldLines held;
+    private final BackgroundTasks tasks;
     private final SessionMonitor monitor = new SessionMonitor();
     private final Map<String, ReentrantLock> sessions = new ConcurrentHashMap<>();
+    private final Map<String, Set<Long>> consumed = new ConcurrentHashMap<>();
+    private volatile java.util.function.BiConsumer<String, List<String>> interjections = (session, lines) -> {};
+    static final String CONTINUE = "（上面是刚发来的消息，接着回应）";
 
     public ChatAgent(Database db, AgentStore store, PersonaStore personas, WorkspaceStore workspaces) {
         this.store = store;
@@ -64,6 +69,11 @@ public final class ChatAgent {
         this.stickers = new StickerKeeper(this, new StickerStore(db, db.file().toAbsolutePath().getParent().resolve("stickers")), guard);
         this.intercom = new Intercom(db);
         this.held = new HeldLines(db);
+        this.tasks = new BackgroundTasks(this);
+    }
+
+    public BackgroundTasks tasks() {
+        return tasks;
     }
 
     public HeldLines held() {
@@ -188,9 +198,43 @@ public final class ChatAgent {
     }
 
     public ChatResult chat(ChatTurn turn, StreamListener listener) throws AgentException {
-        ChatResult result = locked(turn, listener, TurnRunner::run, r -> r);
+        ChatTurn actual = turn;
+        long heardId = -1;
+        if (!turn.heard() && turn.user().images().isEmpty() && interjectable(turn.session()) && busy(turn.session())) {
+            heardId = hear(turn.session(), turn.user().content(), turn.qqUser() == null ? "" : turn.qqUser(), turn.attachments());
+            actual = turn.asHeard(ChatMessage.user(CONTINUE));
+        }
+        long id = heardId;
+        ChatResult result = locked(actual, listener, runner -> id >= 0 && takeConsumed(turn.session(), id)
+                ? new ChatResult("", "", List.of(), "", 0, 0, 0, 0, "merged") : runner.run(), r -> r);
         reflection.touched(turn.session());
         return result;
+    }
+
+    static boolean interjectable(String session) {
+        return session.startsWith("group:") || session.startsWith("private:") || session.startsWith("web:");
+    }
+
+    public boolean busy(String session) {
+        ReentrantLock lock = sessions.get(session);
+        return lock != null && lock.isLocked() && !lock.isHeldByCurrentThread();
+    }
+
+    public void setInterjections(java.util.function.BiConsumer<String, List<String>> handler) {
+        this.interjections = handler;
+    }
+
+    void interjected(String session, List<ConversationMemory.Heard> heard) {
+        consumed.computeIfAbsent(session, k -> ConcurrentHashMap.newKeySet()).addAll(heard.stream().map(ConversationMemory.Heard::id).toList());
+        try {
+            interjections.accept(session, heard.stream().map(ConversationMemory.Heard::content).toList());
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private boolean takeConsumed(String session, long id) {
+        Set<Long> ids = consumed.get(session);
+        return ids != null && ids.remove(id);
     }
 
     public Compacted compact(String session) throws AgentException {
@@ -209,15 +253,16 @@ public final class ChatAgent {
         hear(session, line, userId, "");
     }
 
-    public void hear(String session, String line, String userId, String attachments) {
+    public long hear(String session, String line, String userId, String attachments) {
         long now = System.currentTimeMillis();
         if (!session.startsWith("mind:") && Clock.gap(memory.lastAt(session), now)) {
             String marker = Clock.marker(now);
             memory.hear(session, ChatMessage.user(marker), Compaction.estimate(marker), "");
             monitor.heard(session, marker, "", "");
         }
-        memory.hear(session, ChatMessage.user(line), Compaction.estimate(line), attachments);
+        long id = memory.hear(session, ChatMessage.user(line), Compaction.estimate(line), attachments);
         monitor.heard(session, line, userId, attachments);
+        return id;
     }
 
     public void record(String session, ChatMessage message) {
@@ -282,18 +327,26 @@ public final class ChatAgent {
         return memory.detail(session, limit);
     }
 
+    public SessionDetail session(String session, int limit, long before) {
+        return memory.detail(session, limit, before);
+    }
+
     public long contextTokens(String session) {
         ConversationMemory.Conversation conversation = memory.load(session);
-        return conversation.measuredTokens() > 0 ? conversation.measuredTokens() : Compaction.estimate(Prompt.history(conversation, true));
+        return conversation.measuredTokens() > 0 ? conversation.measuredTokens() : Compaction.estimate(Prompt.pruned(Prompt.history(conversation, true)));
     }
 
     public int contextWindow() {
+        return limits().context();
+    }
+
+    private ModelLimits.Limits limits() {
         ModelProfile profile = store.active();
-        return profile == null ? 0 : ModelLimits.resolve(profile).context();
+        return profile == null ? new ModelLimits.Limits(0, 0) : ModelLimits.resolve(profile);
     }
 
     public long compactAt(String session) {
-        long at = Compaction.threshold(contextWindow());
+        long at = Compaction.threshold(limits());
         return at == Long.MAX_VALUE ? 0 : at;
     }
 

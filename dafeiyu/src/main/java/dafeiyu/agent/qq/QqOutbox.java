@@ -3,6 +3,7 @@ package dafeiyu.agent.qq;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dafeiyu.agent.ChatAgent;
+import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.safety.ContentGuard;
 import dafeiyu.agent.sticker.StickerStore;
 import dafeiyu.agent.tool.FileSink;
@@ -142,6 +143,8 @@ final class QqOutbox {
         Map<Long, StickerStore.Sticker> byId = new HashMap<>();
         stickers.forEach(s -> byId.put(s.id(), s));
         List<StickerStore.Piece> pieces = stickers.isEmpty() ? List.of(new StickerStore.Piece(words, 0)) : StickerStore.pieces(filtered);
+        AgentStore.Pacing pacing = agent.store().pacing();
+        boolean sentAny = false;
         for (StickerStore.Piece piece : pieces) {
             if (piece.isSticker()) {
                 StickerStore.Sticker sticker = byId.get(piece.sticker());
@@ -149,6 +152,10 @@ final class QqOutbox {
                     continue;
                 }
                 stickerSent++;
+                if (sentAny) {
+                    pause(QqText.bubblePause("", pacing.intervalMs()));
+                }
+                sentAny = true;
                 try {
                     sendSticker(target, sticker);
                 } catch (ToolFailure e) {
@@ -156,13 +163,20 @@ final class QqOutbox {
                 }
                 continue;
             }
-            JsonArray message = new JsonArray();
-            if (!quoted && target.group() && quote != null && !quote.isEmpty()) {
-                message.add(segment("reply", "id", quote));
+            List<String> bubbles = QqText.bubbles(piece.text(), pacing.maxPieces());
+            for (String bubble : bubbles) {
+                if (sentAny) {
+                    pause(QqText.bubblePause(bubble, pacing.intervalMs()));
+                }
+                sentAny = true;
+                JsonArray message = new JsonArray();
+                if (!quoted && target.group() && quote != null && !quote.isEmpty()) {
+                    message.add(segment("reply", "id", quote));
+                }
+                quoted = true;
+                message.addAll(content(target, bubble));
+                send(target, message, QqMessages.withoutTails(bubble), true);
             }
-            quoted = true;
-            message.addAll(content(target, piece.text()));
-            send(target, message, QqMessages.withoutTails(piece.text()), true);
         }
         gate.said(target.session(), filtered);
         if (stickerFailed != null) {
@@ -171,6 +185,14 @@ final class QqOutbox {
             }
             log.warn("agent [" + target.where() + "] sticker send failed: " + stickerFailed.getMessage());
             agent.hear(target.session(), "（你上面那句的文字发出去了，表情包没发出去：" + abbreviate(stickerFailed.getMessage(), 80) + "）");
+        }
+    }
+
+    private static void pause(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

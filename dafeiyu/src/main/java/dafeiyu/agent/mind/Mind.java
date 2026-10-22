@@ -205,7 +205,7 @@ public final class Mind implements QqChatBridge.Observer {
             String now = "【" + LocalTime.now().format(CLOCK) + "】";
             agent.hear(SESSION, now + (perceived.isEmpty() ? "四周安静。" : "\n" + perceived) + (cue == null ? "" : "\n" + cue));
             MindTools tools = new MindTools(agent, bridge, persona.id());
-            ChatTurn turn = new ChatTurn(SESSION, ChatMessage.user(context(persona)), null, null, "mind", List.of(), Map.of(), true).withTools(tools);
+            ChatTurn turn = new ChatTurn(SESSION, ChatMessage.user(context(persona, perceived)), null, null, "mind", List.of(), Map.of(), true).withTools(tools);
             ChatResult result = agent.chat(turn, StreamListener.NONE);
             String flat = result.content().replaceAll("\\s+", " ").strip();
             notice(flat, !perceived.isEmpty() || tools.used());
@@ -312,8 +312,8 @@ public final class Mind implements QqChatBridge.Observer {
         return "私聊里";
     }
 
-    private String context(Persona persona) {
-        String memories = agent.memories().recall(persona.id(), SESSION, List.of(), Set.copyOf(agent.personas().owners()));
+    private String context(Persona persona, String perceived) {
+        String memories = agent.memories().recall(persona.id(), SESSION, List.of(), Set.copyOf(agent.personas().owners()), perceived);
         long last = bridge.lastActivity();
         List<Intercom.Commitment> open = agent.intercom().open();
         if (!open.isEmpty()) {

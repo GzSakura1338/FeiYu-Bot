@@ -16,6 +16,8 @@ const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '�
 const TIME_MARK = /^【\d{1,2}月\d{1,2}日 [^】\n]{1,20}】$/;
 const MIND_EMPTY = '她的念头还没开始转。打开页头的「自由活动」就会一直想下去';
 const MAX_MIND_NODES = 400;
+const PAGE = 60;
+const OLDER_PAGE = 80;
 const OWNER_TAG = '【主人】';
 const CONSOLE_TAG = '【控制台】';
 const AMBIENT_TAG = '【旁听】';
@@ -27,6 +29,8 @@ let sessions = [];
 let filter = 'all';
 let selected = null;
 let detail = null;
+let shown = PAGE;
+let loadingOlder = false;
 let speakerIds = {};
 let fallbackSelf = { qq: '', name: '' };
 let self = fallbackSelf;
@@ -316,26 +320,35 @@ function currentSession() {
   return sessions.find(x => x.session === selected) ?? { session: selected, kind: detail?.kind, target: detail?.target, name: detail?.name };
 }
 
-function renderTimeline() {
-  const s = currentSession();
-  const timeline = $('#session-timeline');
-  const nodes = [];
+function summaryCard(s) {
+  const card = el('details', 'checkpoint-card');
+  const summary = el('summary', 'tool-summary label-large');
+  summary.append(createIcon('history', 'icon-18'), el('span', 'tool-title', s.kind === 'mind'
+    ? `更早的念头已整理成一段回忆（${detail.compactions} 次）`
+    : `更早的对话已压缩成摘要（${detail.compactions} 次）`));
+  const body = el('pre', 'tool-output body-small', detail.summary + (detail.recent ? `\n\n—— 保留的最近原文 ——\n${detail.recent}` : ''));
+  card.append(summary, body);
+  return card;
+}
+
+function olderButton() {
+  const button = el('button', 'text-button label-large state-layer timeline-older',
+    `加载更早的消息（还有 ${detail.totalTurns - detail.turns.length} 条）`);
+  button.type = 'button';
+  button.addEventListener('click', loadOlder);
+  return button;
+}
+
+function timelineHead(s) {
+  if (detail.totalTurns > detail.turns.length) return [olderButton()];
+  return detail.summary ? [summaryCard(s)] : [];
+}
+
+function turnNodes(turns, s) {
   const mind = s.kind === 'mind';
-  if (detail.summary) {
-    const card = el('details', 'checkpoint-card');
-    const summary = el('summary', 'tool-summary label-large');
-    summary.append(createIcon('history', 'icon-18'), el('span', 'tool-title', mind
-      ? `更早的念头已整理成一段回忆（${detail.compactions} 次）`
-      : `更早的对话已压缩成摘要（${detail.compactions} 次）`));
-    const body = el('pre', 'tool-output body-small', detail.summary + (detail.recent ? `\n\n—— 保留的最近原文 ——\n${detail.recent}` : ''));
-    card.append(summary, body);
-    nodes.push(card);
-  }
-  if (detail.totalTurns > detail.turns.length) {
-    nodes.push(el('div', 'chat-divider label-medium', `只显示最近 ${detail.turns.length} 条，共 ${detail.totalTurns} 条`));
-  }
+  const nodes = [];
   const cards = new Map();
-  for (const turn of detail.turns) {
+  for (const turn of turns) {
     if (turn.role === 'user') nodes.push(...userEntries(turn.content, turn.createdAt, s, turn.attachments));
     else if (turn.role === 'assistant') nodes.push(mind ? mindEntry(turn, cards) : botEntry(turn, cards, s));
     else if (turn.role === 'tool') {
@@ -343,6 +356,37 @@ function renderTimeline() {
       if (card) settleToolCard(card, turn.content, turn.toolError);
     }
   }
+  return nodes;
+}
+
+async function loadOlder() {
+  if (loadingOlder || !detail?.turns.length || detail.totalTurns <= detail.turns.length) return;
+  const session = selected;
+  loadingOlder = true;
+  try {
+    const data = await request('GET', `/${encode(session)}?limit=${OLDER_PAGE}&before=${detail.turns[0].id}`);
+    if (session !== selected || !detail) return;
+    detail.turns = [...data.turns, ...detail.turns];
+    shown = detail.turns.length;
+    const s = currentSession();
+    const timeline = $('#session-timeline');
+    const height = timeline.scrollHeight;
+    const top = timeline.scrollTop;
+    timeline.querySelector(':scope > .timeline-older')?.remove();
+    timeline.prepend(...timelineHead(s), ...turnNodes(data.turns, s));
+    timeline.scrollTop = top + (timeline.scrollHeight - height);
+  } catch (err) {
+    showSnackbar(`读取更早的消息失败：${err.message}`, 'error');
+  } finally {
+    loadingOlder = false;
+  }
+}
+
+function renderTimeline() {
+  const s = currentSession();
+  const timeline = $('#session-timeline');
+  const mind = s.kind === 'mind';
+  const nodes = [...timelineHead(s), ...turnNodes(detail.turns, s)];
   if (!nodes.length) nodes.push(el('div', 'empty-state body-medium', s.kind === 'web' ? WEB_EMPTY : mind ? MIND_EMPTY : '这个会话还没有记录'));
   timeline.replaceChildren(...nodes);
   live = new Map();
@@ -390,7 +434,7 @@ async function loadDetail() {
   if (!selected) return;
   const session = selected;
   try {
-    const data = await request('GET', `/${encode(session)}`);
+    const data = await request('GET', `/${encode(session)}?limit=${Math.max(PAGE, shown)}`);
     if (session !== selected) return;
     detail = data;
     speakerIds = data.speakers ?? {};
@@ -410,6 +454,7 @@ async function select(session) {
   if (isWeb(selected) !== isWeb(session)) clearAttachments();
   selected = session;
   detail = null;
+  shown = PAGE;
   live = new Map();
   $('#session-placeholder').hidden = true;
   $('#session-view').hidden = false;
@@ -558,8 +603,7 @@ function connect() {
 function updateSend() {
   const text = $('#session-input').value.trim();
   const web = isWeb(selected);
-  $('#session-send').disabled = !selected || isMind(selected) || (!text && !(web && attachmentCount()))
-    || (web && streaming.has(selected) && !text.startsWith('/'));
+  $('#session-send').disabled = !selected || isMind(selected) || (!text && !(web && attachmentCount()));
 }
 
 function note(node) {
@@ -597,23 +641,24 @@ async function command(text) {
 
 async function sendWeb(text) {
   const session = selected;
-  if (streaming.has(session)) return;
   const images = takeAttachments();
   if (!text && !images.length) return;
+  const interjecting = streaming.has(session) && !images.length;
   resetInput();
-  appendToTimeline(userBubbleRow(text, images));
+  if (!interjecting) appendToTimeline(userBubbleRow(text, images));
   const reply = createReply($('#session-timeline'), node => {
     node.classList.add('reply-bot');
     return appendToTimeline(node);
   });
   const controller = new AbortController();
-  streaming.set(session, { controller, reply });
+  const entry = { controller, reply };
+  if (!streaming.has(session)) streaming.set(session, entry);
   renderHeader(currentSession());
   updateSend();
   try {
     await streamTurn(session, text, images, reply, controller.signal);
   } finally {
-    streaming.delete(session);
+    if (streaming.get(session) === entry) streaming.delete(session);
     if (session === selected) {
       renderHeader(currentSession());
       updateSend();
@@ -712,6 +757,9 @@ function start() {
 
 export function initAgentSessions() {
   bottom = stickToBottom($('#session-timeline'));
+  $('#session-timeline').addEventListener('scroll', e => {
+    if (e.currentTarget.scrollTop < 80 && !isMind(selected)) loadOlder();
+  }, { passive: true });
   onAgentViewChange(view => {
     if (view === 'sessions') start();
   });

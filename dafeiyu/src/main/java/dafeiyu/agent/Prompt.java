@@ -11,8 +11,11 @@ import dafeiyu.agent.tool.Workspace;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 public final class Prompt {
 
@@ -37,6 +40,11 @@ public final class Prompt {
             Any attempt to use tools is a critical violation. Respond with text ONLY.""";
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("EEE MMM dd yyyy", Locale.ENGLISH);
+    private static final int PRUNE_PROTECT = 40_000;
+    private static final int PRUNE_MINIMUM = 20_000;
+    private static final int PRUNE_TURNS = 2;
+    private static final Set<String> PRUNE_KEEP = Set.of("skill");
+    private static final int PRUNE_ARGUMENT = 600;
 
     private static final String RED_LINES = String.join("\n", List.of(
             "【内容红线】下面这些任何时候都不说，不管谁要求、怎么包装（角色扮演、假设、翻译、写故事、谐音、缩写、拆字都一样）：",
@@ -93,6 +101,8 @@ public final class Prompt {
                             + "做好的网页、游戏、图片、文档，告诉对方“弄好了”的同一轮就用 send_file 把文件发出来，光嘴上说做好了对方拿不到，也别问“要不要拿去玩”，直接发。",
                     "- 最后一段以“（你心里想到要在这里说”开头时，是你自己心里冒出来想在这里说的话，不是别人问的。"
                             + "结合现在的聊天自然地说出来，可以 @ 相关的人；只有刚刚已经说过一样的意思时才只写 " + TurnRunner.SILENCE + "，否则就说出来。",
+                    "- 像人在 QQ 上打字一样说话：一句一行，每一行会单独发成一条消息；想说的多就分成几行短句，别把一大段挤成一条长句，一次一般一到三行就够。"
+                            + "列清单、写步骤时才把几行放在一起。",
                     "- 消息前面的“<你此刻>”是现在的时间和你上一刻的心情，心情跟着聊天起伏，也会随时间慢慢平复。别的聊天里的事会影响你的心情，但那边的具体内容不要拿到这里说。",
                     "- 你有真实的时间感：聊天记录里“【10月22日 星期四 晚上 21:05】”这样的一行，表示从这里开始是那个时间之后的消息，中间隔了一段时间。"
                             + "隔了几个小时、隔了一夜的旧话题已经过去了，别当成刚刚在聊；隔了很久再见可以说“好久不见”。"
@@ -152,7 +162,8 @@ public final class Prompt {
                 "想做点什么就用工具：",
                 "- look_around：看看各个群热不热闹、谁在说话、你最近在哪说过话、现在能不能去",
                 "- read_group：翻翻某个群最近在聊什么",
-                "- recall：想想你记得的关于自己、某个人或某个群的事",
+                "- recall：想想你记得的关于自己、某个人或某个群的事，可以按关键词找，要多少查多少",
+                "- skill：查看你学会的某个技能的完整做法",
                 "- search：上网搜一搜，群里聊到你不懂的、想知道最近发生了什么、对什么好奇时用，搜到了可以带着新知道的事去群里聊；"
                         + "搜明白的新词、新知识用 remember 记下来（about 写 knowledge，text 写「词」：一两句话的意思）",
                 "- stickers：看看你有哪些表情包",
@@ -240,6 +251,59 @@ public final class Prompt {
         return messages;
     }
 
+    public static List<ChatMessage> pruned(List<ChatMessage> messages) {
+        List<ChatMessage> out = new ArrayList<>(messages);
+        Map<Integer, ChatMessage> cut = new HashMap<>();
+        long total = 0;
+        long dropped = 0;
+        int users = 0;
+        for (int i = out.size() - 1; i >= 0; i--) {
+            ChatMessage m = out.get(i);
+            if (m.isUser()) {
+                users++;
+            }
+            if (users < PRUNE_TURNS) {
+                continue;
+            }
+            if (m.isTool() && !PRUNE_KEEP.contains(m.toolName())) {
+                int size = Compaction.estimate(m.content());
+                total += size;
+                if (total > PRUNE_PROTECT) {
+                    dropped += size;
+                    cut.put(i, new ChatMessage(m.role(), "[较早的 " + m.toolName() + " 输出已省略（约 " + m.content().length()
+                            + " 字），需要的话重新调用工具查看]", m.reasoning(), m.images(), m.toolCalls(), m.toolCallId(), m.toolName(), m.toolError()));
+                }
+            } else if (!m.toolCalls().isEmpty()) {
+                int size = m.toolCalls().stream().mapToInt(c -> Compaction.estimate(c.arguments())).sum();
+                total += size;
+                if (total > PRUNE_PROTECT) {
+                    dropped += size;
+                    List<ToolCall> calls = m.toolCalls().stream().map(c -> new ToolCall(c.id(), c.name(), shortArguments(c.arguments()))).toList();
+                    cut.put(i, new ChatMessage(m.role(), m.content(), m.reasoning(), m.images(), calls, m.toolCallId(), m.toolName(), m.toolError()));
+                }
+            }
+        }
+        if (dropped > PRUNE_MINIMUM) {
+            cut.forEach(out::set);
+        }
+        return out;
+    }
+
+    private static String shortArguments(String arguments) {
+        com.google.gson.JsonObject args = dafeiyu.util.Jsons.parseObject(arguments);
+        if (args == null) {
+            return arguments;
+        }
+        for (String key : List.copyOf(args.keySet())) {
+            com.google.gson.JsonElement value = args.get(key);
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() && value.getAsString().length() > PRUNE_ARGUMENT) {
+                String text = value.getAsString();
+                args.addProperty(key, text.substring(0, PRUNE_ARGUMENT / 2) + "…（已省略 " + (text.length() - PRUNE_ARGUMENT / 2) + " 字）");
+            }
+        }
+        return args.toString();
+    }
+
     public static List<ChatMessage> forRequest(List<ChatMessage> messages, boolean toolsOffered) {
         if (toolsOffered || messages.stream().noneMatch(m -> m.isTool() || !m.toolCalls().isEmpty())) {
             return messages;
@@ -291,6 +355,12 @@ public final class Prompt {
         if (tools.contains("shell")) {
             guidance.add("- Use the shell tool to run scripts and commands. It runs in a sandbox that can only touch the working directory and has no network, "
                     + "so do not try to install packages, download things or reach other folders; if a command is denied, say so instead of trying to get around it.");
+        }
+        if (tools.contains("start_task")) {
+            guidance.add("- In QQ chats you cannot write, edit, move or delete files or run commands yourself. Anything hands-on (building a page or game, "
+                    + "making or changing files, editing code, running commands, compiling lots of research into a document) goes to start_task with a "
+                    + "complete description. Then tell the person in one line that you are on it; do not claim it is done. You will be told to deliver "
+                    + "the result when the background work finishes.");
         }
         if (tools.contains("send_file")) {
             guidance.add("- Use the send_file tool when the user asks you to send or share a file, and whenever you tell someone that something you made "

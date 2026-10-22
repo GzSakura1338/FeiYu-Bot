@@ -259,7 +259,7 @@ public final class AppContainerSandbox {
         }
     }
 
-    static Result run(String commandLine, Path cwd, Map<String, String> env, long timeoutMs) throws ToolFailure {
+    static Result run(String commandLine, Path cwd, Map<String, String> env, long timeoutMs, boolean network) throws ToolFailure {
         sid();
         long started = System.nanoTime();
         try (Arena arena = Arena.ofConfined()) {
@@ -283,8 +283,8 @@ public final class AppContainerSandbox {
                 check((int) INIT_ATTRIBUTES.invokeExact(attributes, 2, 0, size), "InitializeProcThreadAttributeList");
                 MemorySegment caps = arena.allocate(24);
                 caps.set(ADDRESS, 0, sid);
-                caps.set(ADDRESS, 8, MemorySegment.NULL);
-                caps.set(JAVA_INT, 16, 0);
+                caps.set(ADDRESS, 8, network ? capabilities(arena) : MemorySegment.NULL);
+                caps.set(JAVA_INT, 16, network ? networkCapabilities().size() : 0);
                 caps.set(JAVA_INT, 20, 0);
                 check((int) UPDATE_ATTRIBUTE.invokeExact(attributes, 0, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, caps, 24L,
                         MemorySegment.NULL, MemorySegment.NULL), "UpdateProcThreadAttribute(security)");

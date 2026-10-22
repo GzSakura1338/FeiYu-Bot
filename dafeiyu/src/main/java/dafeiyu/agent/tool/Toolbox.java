@@ -28,9 +28,13 @@ public final class Toolbox {
     }
 
     public static List<ToolSpec> specs(Set<String> enabled) {
+        return specs(enabled, false);
+    }
+
+    public static List<ToolSpec> specs(Set<String> enabled, boolean network) {
         return ALL.stream()
                 .filter(t -> enabled.contains(t.name()))
-                .map(t -> new ToolSpec(t.name(), t.description(), t.parameters().deepCopy()))
+                .map(t -> new ToolSpec(t.name(), t.description(network), t.parameters().deepCopy()))
                 .toList();
     }
 

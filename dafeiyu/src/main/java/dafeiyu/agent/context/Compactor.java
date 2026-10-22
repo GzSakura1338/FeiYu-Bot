@@ -61,7 +61,7 @@ public final class Compactor {
         }
         listener.onCompaction(trigger.name().toLowerCase(java.util.Locale.ROOT));
 
-        long cap = Compaction.ceiling(target.window());
+        long cap = Compaction.usable(target.window(), target.limits().output());
         long budget = trigger == Trigger.OVERFLOW ? Math.min(cap, (long) Math.floor(contextEstimate * Compaction.SHRINK_STEPS[0])) : cap;
         String prompt = Compaction.buildPrompt(previous, target.style());
         long overhead = Compaction.estimate(prompt) + Compaction.estimate(target.nudge());

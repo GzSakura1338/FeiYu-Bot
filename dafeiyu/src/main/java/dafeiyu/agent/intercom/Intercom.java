@@ -33,6 +33,8 @@ public final class Intercom {
 
     public record Event(long at, String kind, String session, String text) {}
 
+    public record Told(String session, String intent, long at) {}
+
     public static final String OPEN = "open";
     public static final String DONE = "done";
     public static final String DROPPED = "dropped";
@@ -40,6 +42,9 @@ public final class Intercom {
     private static final String NOTES_KEY = "agent.intercom.notes";
     private static final String INBOX_KEY = "agent.intercom.inbox";
     private static final int MAX_NOTES = 4;
+    private static final int MAX_TOLD = 60;
+    private static final long TOLD_MS = 30 * 60_000;
+    private static final double SAME_INTENT = 0.55;
     private static final int MAX_INBOX = 60;
     private static final int MAX_EVENTS = 80;
     private static final int MAX_COMMITMENTS = 40;
@@ -49,6 +54,7 @@ public final class Intercom {
     private final Settings settings;
     private final Map<String, Deque<Note>> notes = new ConcurrentHashMap<>();
     private final Deque<String> inbox = new ArrayDeque<>();
+    private final Deque<Told> told = new ArrayDeque<>();
     private int crowdedOut;
     private final Deque<Event> events = new ArrayDeque<>();
     private final List<Commitment> commitments = new ArrayList<>();
@@ -80,9 +86,32 @@ public final class Intercom {
             }
         }
         saveNotes();
+        synchronized (told) {
+            told.addLast(new Told(session, note.intent(), note.at()));
+            while (told.size() > MAX_TOLD) {
+                told.pollFirst();
+            }
+        }
         event("note", session, note.intent());
         deliver.accept(session);
         return note;
+    }
+
+    public Told similar(String intent) {
+        long now = System.currentTimeMillis();
+        synchronized (told) {
+            told.removeIf(t -> now - t.at() > TOLD_MS);
+            Told best = null;
+            double score = SAME_INTENT;
+            for (Told t : told) {
+                double s = overlap(t.intent(), intent);
+                if (s >= score) {
+                    best = t;
+                    score = s;
+                }
+            }
+            return best;
+        }
     }
 
     public boolean hasNotes(String session) {
@@ -133,8 +162,8 @@ public final class Intercom {
     public void receipt(List<Note> delivered, String place, String said, String reason) {
         for (Note note : delivered) {
             String text = said != null
-                    ? place + "那边：你想说的「" + abbreviate(note.intent(), 60) + "」已经说了：" + abbreviate(said.replace('\n', ' '), 120)
-                    : place + "那边：你想说的「" + abbreviate(note.intent(), 60) + "」没说出口（" + reason + "）";
+                    ? place + "那边：你想说的「" + abbreviate(note.intent(), 120) + "」已经说了：" + abbreviate(said.replace('\n', ' '), 400)
+                    : place + "那边：你想说的「" + abbreviate(note.intent(), 120) + "」没说出口（" + reason + "）";
             post("receipt", note.session(), text, true);
         }
     }

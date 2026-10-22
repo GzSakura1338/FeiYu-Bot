@@ -16,7 +16,7 @@ export const TOOLS = {
   todowrite: { icon: 'check', label: '任务清单', desc: '步骤多的活先列清单，做完一项勾一项' },
   websearch: { icon: 'travel_explore', label: '网络检索', desc: '上网搜索新闻、资料、教程和不认识的词，中文走必应、英文走 Exa，需要细节时再打开网页读' },
   webfetch: { icon: 'link', label: '读网页', desc: '打开公网网页转成文字来读；本机和内网地址一律拒绝' },
-  shell: { icon: 'terminal', label: '沙盒执行', desc: '在 Windows 应用容器沙盒里跑命令（cmd / python）：只能读写工作目录、完全断网、限时限内存，默认关闭' },
+  shell: { icon: 'terminal', label: '沙盒执行', desc: '在 Windows 应用容器沙盒里跑命令（cmd / python）：只能读写工作目录、默认断网、限时限内存，默认关闭' },
   send_file: { icon: 'upload_file', label: '发送文件', desc: '把目录里的文件发给对方，图片直接显示' },
 };
 
@@ -43,7 +43,9 @@ const ACCESS_HINT = {
   ALL: '所有能给机器人发消息的人都可以让它读写文件，有风险',
 };
 
-let state = { dir: '', enabled: [], qqAccess: 'OFF', qqUsers: [], tools: [], problem: null };
+const NETWORK = { icon: 'travel_explore', label: '沙盒联网', desc: '让沙盒里的命令能上公网：下载文件、pip / npm 装包、调接口；本机和局域网仍然连不上' };
+
+let state = { dir: '', enabled: [], qqAccess: 'OFF', qqUsers: [], shellNetwork: false, tools: [], problem: null };
 
 async function request(method, body) {
   const res = await fetch('/api/agent/workspace', {
@@ -60,7 +62,7 @@ async function request(method, body) {
 const parseUsers = text => text.split(/[\s,，、;；]+/).map(s => s.trim()).filter(Boolean);
 
 function config(patch = {}) {
-  return { dir: state.dir, enabled: state.enabled, qqAccess: state.qqAccess, qqUsers: state.qqUsers, ...patch };
+  return { dir: state.dir, enabled: state.enabled, qqAccess: state.qqAccess, qqUsers: state.qqUsers, shellNetwork: state.shellNetwork, ...patch };
 }
 
 async function save(patch, success) {
@@ -95,30 +97,44 @@ function renderTools() {
     label: t.label,
     desc: `${t.description}${t.qq ? '' : '（QQ 里没开，在插件页打开）'}`,
   }]));
-  list.replaceChildren(...state.tools.map(name => {
+  list.replaceChildren(...state.tools.flatMap(name => {
     const meta = TOOLS[name] ?? extra[name] ?? { icon: 'build', label: name, desc: '' };
-    const item = el('li', 'list-item');
-    const icon = el('span', 'list-icon');
-    icon.append(createIcon(meta.icon));
-    const text = el('div', 'list-text');
-    const headline = el('div', 'list-headline body-large');
-    headline.append(el('span', null, meta.label), el('code', 'tool-name label-small', name));
-    text.append(headline, el('div', 'list-supporting body-medium', meta.desc));
     const on = state.enabled.includes(name);
-    const toggle = el('button', 'switch');
-    toggle.type = 'button';
-    toggle.setAttribute('role', 'switch');
-    toggle.setAttribute('aria-checked', String(on));
-    toggle.ariaLabel = meta.label;
-    toggle.append(el('span', 'switch-handle'));
-    toggle.addEventListener('click', () => {
+    const item = toolItem(meta, name, on, () => {
       const enabled = on ? state.enabled.filter(n => n !== name) : [...state.enabled, name];
-      toggle.setAttribute('aria-checked', String(!on));
       save({ enabled }, `已${on ? '关闭' : '开启'}「${meta.label}」`);
     });
-    item.append(icon, text, toggle);
-    return item;
+    if (name !== 'shell' || !on) return [item];
+    const online = state.shellNetwork;
+    const network = toolItem(NETWORK, null, online, () => {
+      save({ shellNetwork: !online }, `已${online ? '关闭' : '开启'}「${NETWORK.label}」`);
+    });
+    network.classList.add('tool-sub');
+    return [item, network];
   }));
+}
+
+function toolItem(meta, name, on, onToggle) {
+  const item = el('li', 'list-item');
+  const icon = el('span', 'list-icon');
+  icon.append(createIcon(meta.icon));
+  const text = el('div', 'list-text');
+  const headline = el('div', 'list-headline body-large');
+  headline.append(el('span', null, meta.label));
+  if (name) headline.append(el('code', 'tool-name label-small', name));
+  text.append(headline, el('div', 'list-supporting body-medium', meta.desc));
+  const toggle = el('button', 'switch');
+  toggle.type = 'button';
+  toggle.setAttribute('role', 'switch');
+  toggle.setAttribute('aria-checked', String(on));
+  toggle.ariaLabel = meta.label;
+  toggle.append(el('span', 'switch-handle'));
+  toggle.addEventListener('click', () => {
+    toggle.setAttribute('aria-checked', String(!on));
+    onToggle();
+  });
+  item.append(icon, text, toggle);
+  return item;
 }
 
 function renderAccess() {
