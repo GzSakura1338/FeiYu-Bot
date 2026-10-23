@@ -65,6 +65,7 @@ public final class MessageArchive {
                         """, rs -> rs.getString(1), a.groupId()))).toList();
     }
 
+    private static final java.util.regex.Pattern RECORD_FILE = java.util.regex.Pattern.compile("\\[CQ:record,file=([A-Za-z0-9._-]{1,120})");
     private final Database db;
 
     public MessageArchive(Database db) {
@@ -79,8 +80,39 @@ public final class MessageArchive {
         String card = sender == null ? "" : optString(sender, "card");
         String name = !card.isEmpty() ? card : sender == null ? "" : optString(sender, "nickname");
         String groupId = optString(event, "group_id");
-        insert(eventTime(event), "in", optString(event, "message_type"), groupId.isEmpty() ? null : groupId,
-                optString(event, "user_id"), name, optString(event, "message_id"), optString(event, "raw_message"));
+        String messageId = optString(event, "message_id");
+        long time = eventTime(event);
+        if (!messageId.isEmpty() && db.one("SELECT 1 FROM messages WHERE time >= ? AND message_id = ? AND direction = 'in' LIMIT 1",
+                rs -> rs.getInt(1), time - 600_000, messageId) != null) {
+            return;
+        }
+        insert(time, "in", optString(event, "message_type"), groupId.isEmpty() ? null : groupId,
+                optString(event, "user_id"), name, messageId, optString(event, "raw_message"));
+    }
+
+    public List<StoredMessage> since(long since, int limit) {
+        List<StoredMessage> rows = new java.util.ArrayList<>(db.list("SELECT * FROM messages WHERE time >= ? ORDER BY id DESC LIMIT ?",
+                rs -> new StoredMessage(rs.getLong("id"), rs.getLong("time"), rs.getString("direction"), rs.getString("message_type"),
+                        rs.getString("group_id"), rs.getString("user_id"), rs.getString("sender_name"), rs.getString("message_id"),
+                        rs.getString("content")), since, limit));
+        java.util.Collections.reverse(rows);
+        return rows;
+    }
+
+    public StoredMessage byMessageId(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        return db.one("SELECT * FROM messages WHERE message_id = ? ORDER BY id DESC LIMIT 1", rs -> new StoredMessage(rs.getLong("id"),
+                rs.getLong("time"), rs.getString("direction"), rs.getString("message_type"), rs.getString("group_id"), rs.getString("user_id"),
+                rs.getString("sender_name"), rs.getString("message_id"), rs.getString("content")), messageId);
+    }
+
+    public String recordFile(String fileId) {
+        String content = db.one("SELECT content FROM messages WHERE content LIKE ? ORDER BY id DESC LIMIT 1",
+                rs -> rs.getString(1), "%[CQ:record,%" + fileId + "%");
+        java.util.regex.Matcher m = content == null ? null : RECORD_FILE.matcher(content);
+        return m != null && m.find() ? m.group(1) : "";
     }
 
     public java.util.Set<String> messageIdsSince(long since) {

@@ -453,6 +453,8 @@
             </div>
             <button class="tonal-button label-large state-layer" id="memory-reflect"><svg data-icon="psychology" class="icon-18"></svg><span>现在回顾</span></button>
             <div class="body-small memory-pending" id="memory-pending"></div>
+            <button class="tonal-button label-large state-layer" id="memory-curate-run"><svg data-icon="auto_awesome" class="icon-18"></svg><span>现在整理</span></button>
+            <div class="body-small memory-pending" id="memory-curated"></div>
           </div>
           <ul class="session-list" id="memory-scopes" role="listbox" aria-label="记忆分区"></ul>
           <div class="empty-state" id="memory-none" hidden><svg data-icon="theater_comedy"></svg><p class="body-medium">记忆跟着人格走，先在「人格」里选一个人格</p></div>
@@ -734,6 +736,20 @@
               <div class="list-supporting body-medium" id="subagent-daily-hint">减到 0 就是不限</div>
             </div>
             <div class="stepper" data-field="dailyLimit" data-min="0" data-max="1000" data-step="5" data-unit="个" data-zero="不限"></div>
+          </li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">记忆整理</h2></div>
+        <p class="panel-desc body-medium">每天 0 点把知识、技能、说话方式各过一遍：按有没有用、用到过几次打 1～5 分，重复的合成一条，不重要的丢进回收站（保留 30 天，在「Agent › 记忆 › 回收站」能恢复）。24 小时内新记的、3 天内用到过的不会丢。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="auto_awesome"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">每天 0 点整理</div>
+              <div class="list-supporting body-medium" id="curate-hint">给知识、技能、说话方式打分，合并重复的，丢掉不重要的</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="curate-enabled" aria-checked="true" aria-label="每天 0 点整理"><span class="switch-handle"></span></button>
           </li>
         </ul>
       </div>

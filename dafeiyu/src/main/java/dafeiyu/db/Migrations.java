@@ -222,6 +222,30 @@ public final class Migrations {
                 created_at  INTEGER NOT NULL
             );
             CREATE INDEX idx_images_file ON images (file)
+            """,
+            """
+            ALTER TABLE memories ADD COLUMN importance INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE memories ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE memories ADD COLUMN used_at INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE skills ADD COLUMN importance INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE skills ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE skills ADD COLUMN used_at INTEGER NOT NULL DEFAULT 0;
+            CREATE TABLE memory_trash (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id  TEXT NOT NULL,
+                kind        TEXT NOT NULL,
+                title       TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                content     TEXT NOT NULL,
+                source      TEXT NOT NULL DEFAULT '',
+                created_at  INTEGER NOT NULL,
+                removed_at  INTEGER NOT NULL,
+                reason      TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX idx_memory_trash ON memory_trash (persona_id, removed_at)
+            """,
+            """
+            CREATE INDEX idx_messages_message_id ON messages (message_id)
             """
     );
 

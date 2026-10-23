@@ -36,7 +36,24 @@ public final class MemoryStore {
 
     public record Line(long id, boolean mine, String userId, String name, String text) {}
 
-    private record Voice(long at, int[] lengths) {}
+    public record Usage(int importance, int usedCount, long usedAt) {}
+
+    public record Trashed(long id, String kind, String title, String description, String content, String source, long createdAt,
+                          long removedAt, String reason) {}
+
+    private record Voice(long at, int[] lengths, String habits) {}
+
+    private static final Map<String, java.util.function.Predicate<String>> HABITS = new java.util.LinkedHashMap<>();
+    private static final Pattern BOT_NAME = Pattern.compile("(?i)bot|机器人|智能体|管家|助手|鲸鱼|大肥鱼");
+
+    static {
+        HABITS.put("用「诶」开头", t -> t.startsWith("诶"));
+        HABITS.put("带「呀」", t -> t.contains("呀"));
+        HABITS.put("带「嘛」", t -> t.contains("嘛"));
+        HABITS.put("带「啦」", t -> t.contains("啦"));
+        HABITS.put("带「～」", t -> t.contains("～") || t.contains("~"));
+        HABITS.put("句子里带逗号", t -> t.contains("，") || t.contains(","));
+    }
 
     public static final String SELF = "self";
     public static final String DIARY = "diary";
@@ -103,8 +120,63 @@ public final class MemoryStore {
                 """, rs -> new Scope(rs.getString("scope"), nonNull(rs.getString("label")), rs.getInt("n"), rs.getLong("latest")), personaId);
     }
 
+    Settings settings() {
+        return settings;
+    }
+
+    public Map<Long, Usage> usage(String personaId, String scope) {
+        Map<Long, Usage> out = new java.util.HashMap<>();
+        db.list("SELECT id, importance, used_count, used_at FROM memories WHERE persona_id = ? AND scope = ?",
+                rs -> out.put(rs.getLong(1), new Usage(rs.getInt(2), rs.getInt(3), rs.getLong(4))), personaId, scope);
+        return out;
+    }
+
+    void used(List<Long> ids) {
+        if (!ids.isEmpty()) {
+            db.update("UPDATE memories SET used_count = used_count + 1, used_at = ? WHERE id IN ("
+                    + String.join(",", ids.stream().map(String::valueOf).toList()) + ")", System.currentTimeMillis());
+        }
+    }
+
+    void rate(String personaId, Map<Long, Integer> scores) {
+        scores.forEach((id, score) -> db.update("UPDATE memories SET importance = ? WHERE persona_id = ? AND id = ?", score, personaId, id));
+    }
+
+    boolean rewrite(String personaId, long id, String label, String content) {
+        String text = clean(untail(content));
+        if (text.isEmpty()) {
+            return false;
+        }
+        return db.update("UPDATE memories SET label = ?, content = ?, updated_at = ? WHERE persona_id = ? AND id = ?",
+                abbreviate(QqMessages.unforgeable(nonNull(label)).replaceAll("\\s+", " ").strip(), 60), text, System.currentTimeMillis(), personaId, id) > 0;
+    }
+
+    public void trash(String personaId, String kind, String title, String description, String content, String source, long createdAt, String reason) {
+        db.update("""
+                INSERT INTO memory_trash (persona_id, kind, title, description, content, source, created_at, removed_at, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, personaId, kind, nonNull(title), nonNull(description), nonNull(content), nonNull(source), createdAt, System.currentTimeMillis(),
+                abbreviate(nonNull(reason), 120));
+    }
+
+    public List<Trashed> trashed(String personaId) {
+        return db.list("SELECT id, kind, title, description, content, source, created_at, removed_at, reason FROM memory_trash "
+                        + "WHERE persona_id = ? ORDER BY removed_at DESC, id DESC",
+                rs -> new Trashed(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6),
+                        rs.getLong(7), rs.getLong(8), rs.getString(9)), personaId);
+    }
+
+    public boolean forgetTrashed(String personaId, long id) {
+        return db.update("DELETE FROM memory_trash WHERE persona_id = ? AND id = ?", personaId, id) > 0;
+    }
+
+    int purgeTrash(String personaId, long before) {
+        return db.update("DELETE FROM memory_trash WHERE persona_id = ? AND removed_at < ?", personaId, before);
+    }
+
     public List<Memory> list(String personaId, String scope) {
-        String order = scope.equals(DIARY) ? "label DESC, id DESC" : "updated_at DESC, id DESC";
+        String order = scope.equals(DIARY) ? "label DESC, id DESC"
+                : scope.equals(KNOWLEDGE) || scope.equals(STYLE) ? "importance DESC, updated_at DESC, id DESC" : "updated_at DESC, id DESC";
         return db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? ORDER BY " + order,
                 MemoryStore::map, personaId, scope);
     }
@@ -273,6 +345,7 @@ public final class MemoryStore {
         if (hits.isEmpty()) {
             return "";
         }
+        used(hits.stream().map(Memory::id).toList());
         StringBuilder out = new StringBuilder("<你查过的>\n");
         hits.forEach(m -> out.append("- 「").append(m.label()).append("」：").append(m.content()).append("\n"));
         return out.append("</你查过的>\n\n").toString();
@@ -289,41 +362,68 @@ public final class MemoryStore {
                     .limit(STYLE_SHOWN - shown.size()).forEach(shown::add);
             shown.forEach(m -> out.append("- ").append(m.label().isBlank() ? "" : "【" + m.label() + "】").append(m.content()).append('\n'));
         }
-        int[] voice = session.startsWith("group:") ? voice(session.substring(6)) : null;
-        if (voice != null) {
-            out.append("这个群大家一句话多半在 ").append(voice[0]).append(" 个字左右")
-                    .append(voice[1] > 0 ? "，你最近一句平均 " + voice[1] + " 个字" : "").append("。\n");
+        Voice voice = session.startsWith("group:") ? voice(session.substring(6)) : null;
+        if (voice != null && voice.lengths() != null) {
+            int[] lengths = voice.lengths();
+            out.append("这个群大家一句话多半在 ").append(lengths[0]).append(" 个字左右")
+                    .append(lengths[1] > 0 ? "，你最近一句平均 " + lengths[1] + " 个字" : "").append("。\n");
+            if (!voice.habits().isEmpty()) {
+                out.append("你最近说话的习惯比群友重得多：").append(voice.habits())
+                        .append("。这些一看就不像真人，下一句别带，照群友那样短短地、直接说。\n");
+            }
         }
         return out.isEmpty() ? "" : "<你学到的说话方式>\n" + out + "</你学到的说话方式>\n\n";
     }
 
-    private int[] voice(String groupId) {
+    private Voice voice(String groupId) {
         long now = System.currentTimeMillis();
         Voice cached = voices.get(groupId);
         if (cached != null && now - cached.at() < VOICE_TTL_MS) {
-            return cached.lengths();
+            return cached;
         }
-        List<Integer> human = new ArrayList<>();
-        List<Integer> mine = new ArrayList<>();
-        for (String[] row : db.list("SELECT direction, content FROM messages WHERE message_type = 'group' AND group_id = ? ORDER BY id DESC LIMIT 400",
-                rs -> new String[] {rs.getString(1), rs.getString(2)}, groupId)) {
-            int n = spoken(row[1]);
-            if (n > 0) {
-                ("out".equals(row[0]) ? mine : human).add(n);
+        List<String> human = new ArrayList<>();
+        List<String> mine = new ArrayList<>();
+        for (String[] row : db.list("SELECT direction, content, sender_name FROM messages WHERE message_type = 'group' AND group_id = ? ORDER BY id DESC LIMIT 400",
+                rs -> new String[] {rs.getString(1), rs.getString(2), rs.getString(3)}, groupId)) {
+            String text = said(row[1]);
+            boolean out = "out".equals(row[0]);
+            if (!text.isEmpty() && (out || !BOT_NAME.matcher(nonNull(row[2])).find())) {
+                (out ? mine : human).add(text);
             }
         }
         int[] lengths = human.size() < 30 ? null : new int[] {median(human), mine.size() < 10 ? 0 : median(mine)};
-        voices.put(groupId, new Voice(now, lengths));
-        return lengths;
+        Voice voice = new Voice(now, lengths, lengths == null || mine.size() < 10 ? "" : habits(mine.subList(0, Math.min(60, mine.size())), human));
+        voices.put(groupId, voice);
+        return voice;
+    }
+
+    private static String habits(List<String> mine, List<String> human) {
+        List<String> heavy = new ArrayList<>();
+        for (Map.Entry<String, java.util.function.Predicate<String>> habit : HABITS.entrySet()) {
+            double me = rate(mine, habit.getValue());
+            double them = rate(human, habit.getValue());
+            if (me >= 0.1 && me >= them * 3 + 0.01) {
+                heavy.add(habit.getKey() + " " + Math.round(me * 100) + "%（群友 " + Math.round(them * 100) + "%）");
+            }
+        }
+        return String.join("、", heavy);
+    }
+
+    private static double rate(List<String> texts, java.util.function.Predicate<String> habit) {
+        return texts.isEmpty() ? 0 : (double) texts.stream().filter(habit).count() / texts.size();
+    }
+
+    private static String said(String raw) {
+        return QqMessages.plain(raw).replaceAll("\\[[^\\]]{0,40}]", "").replaceAll("@\\S+\\s?", "").strip();
     }
 
     static int spoken(String raw) {
-        String text = QqMessages.plain(raw).replaceAll("\\[[^\\]]{0,40}]", "").replaceAll("@\\S+\\s?", "").strip();
+        String text = said(raw);
         return text.codePointCount(0, text.length());
     }
 
-    private static int median(List<Integer> values) {
-        List<Integer> sorted = values.stream().sorted().toList();
+    private static int median(List<String> texts) {
+        List<Integer> sorted = texts.stream().map(t -> t.codePointCount(0, t.length())).sorted().toList();
         return sorted.get(sorted.size() / 2);
     }
 

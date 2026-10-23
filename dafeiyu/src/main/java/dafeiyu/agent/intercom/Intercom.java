@@ -6,6 +6,7 @@ import com.google.gson.reflect.TypeToken;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
 import dafeiyu.util.Clock;
+import dafeiyu.util.Texts;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -18,6 +19,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.regex.MatchResult;
+import java.util.regex.Pattern;
 
 import static dafeiyu.util.Texts.abbreviate;
 
@@ -46,6 +49,9 @@ public final class Intercom {
     private static final String INBOX_KEY = "agent.intercom.inbox";
     private static final String REMINDERS_KEY = "agent.intercom.reminders";
     private static final int MAX_REMINDERS = 30;
+    private static final long SAME_REMINDER_MS = 30 * 60_000L;
+    private static final double SAME_REMINDER = 0.4;
+    private static final Pattern QQ_NUMBER = Pattern.compile("\\d{5,12}");
     private static final int MAX_NOTES = 4;
     private static final int MAX_TOLD = 60;
     private static final long TOLD_MS = 30 * 60_000;
@@ -360,7 +366,11 @@ public final class Intercom {
             List<Reminder> set = savedReminders == null || savedReminders.isBlank() ? null
                     : GSON.fromJson(savedReminders, new TypeToken<List<Reminder>>() {}.getType());
             if (set != null) {
-                reminders.addAll(set);
+                for (Reminder r : set) {
+                    if (reminders.stream().noneMatch(kept -> sameReminder(kept, r))) {
+                        reminders.add(r);
+                    }
+                }
             }
         } catch (JsonParseException ignored) {
         }
@@ -368,8 +378,9 @@ public final class Intercom {
 
     public List<Reminder> remind(long at, String what) {
         synchronized (reminders) {
-            reminders.removeIf(r -> r.at() == at && r.what().equals(what));
-            reminders.add(new Reminder(at, what, System.currentTimeMillis()));
+            Reminder fresh = new Reminder(at, what, System.currentTimeMillis());
+            reminders.removeIf(r -> sameReminder(r, fresh));
+            reminders.add(fresh);
             reminders.sort(Comparator.comparingLong(Reminder::at));
             while (reminders.size() > MAX_REMINDERS) {
                 reminders.removeLast();
@@ -377,6 +388,20 @@ public final class Intercom {
             settings.put(REMINDERS_KEY, GSON.toJson(reminders));
             return List.copyOf(reminders);
         }
+    }
+
+    private static boolean sameReminder(Reminder a, Reminder b) {
+        if (Math.abs(a.at() - b.at()) > SAME_REMINDER_MS) {
+            return false;
+        }
+        if (a.what().equals(b.what())) {
+            return true;
+        }
+        Set<String> ids = new HashSet<>(QQ_NUMBER.matcher(a.what()).results().map(MatchResult::group).toList());
+        if (!ids.equals(new HashSet<>(QQ_NUMBER.matcher(b.what()).results().map(MatchResult::group).toList()))) {
+            return false;
+        }
+        return Texts.overlap(Texts.bigrams(a.what()), Texts.bigrams(b.what())) >= SAME_REMINDER;
     }
 
     public long nextReminder() {

@@ -47,6 +47,7 @@ final class MindTools implements ToolSet {
     private static final int MAX_STEPS = 8;
     private static final String WEBFETCH = "webfetch";
     private static final String SUBAGENT = "subagent";
+    private static final Pattern KNOWN_TERM = Pattern.compile("\\s*[「“\"']?[^」”\"'：:\\n]{1,30}[」”\"']?\\s*[：:]\\s*.+", Pattern.DOTALL);
     private static final Pattern AFTER = Pattern.compile("(\\d{1,4})\\s*(分钟|小时|天)后?");
     private static final Pattern AT = Pattern.compile(
             "(?:(?<y>\\d{4})-(?<mo>\\d{1,2})-(?<d>\\d{1,2})\\s*|(?<day>今天|明天|后天)\\s*)?(?<h>\\d{1,2})[:：](?<mi>\\d{2})");
@@ -121,7 +122,8 @@ final class MindTools implements ToolSet {
             spec("remember", "把值得长期记住的事记下来。about 写 self、group:群号、user:QQ号，或者 knowledge（搜到的新词、新知识）。", """
                     {"type": "object", "properties": {
                       "about": {"type": "string", "description": "self、group:群号、user:QQ号 或 knowledge"},
-                      "text": {"type": "string", "description": "要记住的一件事，30 字左右；knowledge 写成「词」：意思"}
+                      "term": {"type": "string", "description": "about 是 knowledge 时写：这个词、这个东西叫什么（比如「弓头鲸」），以后聊天里有人提到它你就会想起来"},
+                      "text": {"type": "string", "description": "要记住的一件事，30 字左右；knowledge 写它的意思、关键知识"}
                     }, "required": ["about", "text"]}"""),
             spec("recall_messages", "撤回群里的消息：不写 user_id 是撤回你自己最近说的（只能撤 2 分钟内的）；写了 user_id 是撤回那个人最近的消息，"
                     + "要你是管理员。" + MANAGE, """
@@ -247,7 +249,7 @@ final class MindTools implements ToolSet {
                         optString(args, "result").strip());
                 case "collect_sticker" -> collect(args.has("id") ? args.get("id").getAsLong() : 0);
                 case "tell_group" -> tellGroup(group(args), optString(args, "intent").strip(), again(args));
-                case "remember" -> remember(optString(args, "about").strip(), optString(args, "text").strip());
+                case "remember" -> remember(optString(args, "about").strip(), optString(args, "text").strip(), optString(args, "term").strip());
                 case "remind" -> remind(optString(args, "at").strip(), optString(args, "what").strip());
                 case "recall_messages" -> act(group(args), bridge.actions().recall(group(args), user(args, false),
                         args.has("count") ? count(args, 1) : 1));
@@ -440,11 +442,17 @@ final class MindTools implements ToolSet {
         return out.toString();
     }
 
-    private String remember(String about, String text) throws ToolFailure {
+    private String remember(String about, String text, String term) throws ToolFailure {
         if (text.isEmpty()) {
             throw new ToolFailure("要记的内容是空的");
         }
         String scope = scope(about, false);
+        if (scope.equals(MemoryStore.KNOWLEDGE) && !term.isEmpty()) {
+            text = "「" + term.replaceAll("^[「“\"']+|[」”\"']+$", "") + "」：" + text;
+        } else if (scope.equals(MemoryStore.KNOWLEDGE) && !KNOWN_TERM.matcher(text).matches()) {
+            throw new ToolFailure("记知识要写 term：这是什么词、什么东西。比如 term 写「" + abbreviate(text.replaceAll("[（(，,：:。].*", ""), 8)
+                    + "」，text 写它的意思。改好再记一次");
+        }
         if (agent.guard().scan(text) != null) {
             throw new ToolFailure("这件事不适合记下来");
         }

@@ -8,6 +8,7 @@ import dafeiyu.agent.tool.Toolbox;
 import dafeiyu.agent.tool.Workspace;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
+import dafeiyu.util.Texts;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -43,7 +44,7 @@ public final class BackgroundTasks {
     static final String SUBAGENT = "subagent";
 
     public record Task(String id, String origin, String requester, String title, String status, long startedAt, long finishedAt,
-                       String result, String kind) {
+                       String result, String kind, String requesterQq, String prompt, int resumes) {
 
         public String session() {
             return "task:" + id;
@@ -63,11 +64,17 @@ public final class BackgroundTasks {
 
         Task with(String next, String outcome) {
             boolean over = !next.equals(QUEUED) && !next.equals(RUNNING) && !next.equals(PAUSED);
-            return new Task(id, origin, requester, title, next, startedAt, over ? System.currentTimeMillis() : 0, outcome, kind);
+            return new Task(id, origin, requester, title, next, startedAt, over ? System.currentTimeMillis() : 0, outcome, kind, requesterQq,
+                    over ? "" : prompt, resumes);
         }
 
-        Task restarted() {
-            return new Task(id, origin, requester, title, QUEUED, System.currentTimeMillis(), 0, "", kind);
+        Task restarted(String nextPrompt) {
+            return new Task(id, origin, requester, title, QUEUED, System.currentTimeMillis(), 0, "", kind, requesterQq, nextPrompt, 0);
+        }
+
+        Task resumed() {
+            return new Task(id, origin, requester, title, PAUSED.equals(status) ? PAUSED : QUEUED, startedAt, 0, "", kind, requesterQq, prompt,
+                    resumes + 1);
         }
     }
 
@@ -113,6 +120,11 @@ public final class BackgroundTasks {
     private static final long QQ_LIMIT_MS = 30 * 60_000;
     private static final long WRAP_UP_MS = 3 * 60_000;
     private static final int MAX_RETURN = 2_000;
+    private static final double SAME_TITLE = 0.6;
+    private static final int MAX_RESUMES = 2;
+    private static final long RESUME_DELAY_MS = 20_000;
+    private static final String RESUMED = "（程序刚才重启了，这件事做到一半被打断。先看看上面已经做到哪一步、工作目录里已经有哪些文件，"
+            + "接着往下做完，别从头重来，也别把已经做好的部分再做一遍。）";
     private static final Pattern FILE = Pattern.compile(
             "[\\w\\u4e00-\\u9fa5./\\\\-]+\\.(html?|zip|png|jpe?g|gif|svg|webp|txt|md|py|js|css|json|bat|cmd|ps1|java|pdf|docx?|xlsx?|csv|mp3|mp4)",
             Pattern.CASE_INSENSITIVE);
@@ -162,25 +174,54 @@ public final class BackgroundTasks {
     }
 
     private synchronized void load() {
+        List<Task> resumable = new ArrayList<>();
         try {
             Task[] saved = GSON.fromJson(settings.get(KEY), Task[].class);
             for (Task task : saved == null ? new Task[0] : saved) {
                 if (task == null || task.id() == null) {
                     continue;
                 }
-                if (task.unfinished() && task.subagent()) {
-                    agent.intercom().report(MIND, "【子 agent 回来了】#" + task.id() + "「" + task.title() + "」程序重启了，没做完；还要的话用 subagent 的 continue 接着做");
+                if (task.unfinished() && task.resumes() < MAX_RESUMES) {
+                    Task next = task.resumed();
+                    resumable.add(next);
+                    tasks.put(next.id(), next);
+                    continue;
                 }
-                tasks.put(task.id(), task.unfinished() ? task.with(INTERRUPTED, "程序重启了，没做完") : task);
+                if (task.unfinished() && task.subagent()) {
+                    agent.intercom().report(MIND, "【子 agent 回来了】#" + task.id() + "「" + task.title() + "」程序重启了好几次，一直没做完；还要的话用 subagent 的 continue 接着做");
+                }
+                tasks.put(task.id(), task.unfinished() ? task.with(INTERRUPTED, "程序重启了好几次，没做完") : task);
             }
         } catch (RuntimeException ignored) {
         }
         save();
         for (Intercom.Commitment c : agent.intercom().open()) {
-            if (c.what().startsWith("后台在做：")) {
+            if (c.what().startsWith("后台在做：") && resumable.stream().noneMatch(t -> belongs(c, t))) {
                 agent.intercom().settle(c.id(), Intercom.DROPPED, "程序重启了，后台没做完；还要的话重新交代一次");
             }
         }
+        if (!resumable.isEmpty()) {
+            timer.schedule(() -> resumable.forEach(this::resume), RESUME_DELAY_MS, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private static boolean belongs(Intercom.Commitment c, Task task) {
+        return !task.subagent() && c.session().equals(task.origin()) && c.what().equals("后台在做：" + task.title());
+    }
+
+    private void resume(Task task) {
+        Intercom.Commitment commitment = task.subagent() ? null
+                : agent.intercom().open().stream().filter(c -> belongs(c, task)).findFirst().orElse(null);
+        boolean started = !agent.session(task.session(), 1).turns().isEmpty();
+        String prompt = started ? RESUMED : task.prompt();
+        if (prompt == null || prompt.isBlank()) {
+            put(task.with(INTERRUPTED, "程序重启了，没留下任务说明，接不上"));
+            if (commitment != null) {
+                agent.intercom().settle(commitment.id(), Intercom.DROPPED, "程序重启了，后台没做完；还要的话重新交代一次");
+            }
+            return;
+        }
+        Thread.ofVirtual().name("task-" + task.id()).start(() -> run(task, task.requesterQq(), prompt, commitment));
     }
 
     public SubagentSettings subagents() {
@@ -226,6 +267,14 @@ public final class BackgroundTasks {
         return (int) tasks.values().stream().filter(Task::subagent).filter(t -> t.startedAt() >= start).count();
     }
 
+    private synchronized Task alreadyDoing(String title) {
+        String wanted = title.strip();
+        Set<String> words = Texts.bigrams(wanted);
+        return tasks.values().stream().filter(Task::unfinished)
+                .filter(t -> t.title().contains(wanted) || wanted.contains(t.title()) || Texts.overlap(words, Texts.bigrams(t.title())) >= SAME_TITLE)
+                .findFirst().orElse(null);
+    }
+
     public synchronized List<Task> subagentsAtWork() {
         return tasks.values().stream().filter(Task::subagent).filter(Task::unfinished).toList();
     }
@@ -240,10 +289,11 @@ public final class BackgroundTasks {
 
     public String start(String origin, String requester, String requesterQq, String title, String instructions) {
         String id = newId();
-        Task task = new Task(id, origin, requester, title, QUEUED, System.currentTimeMillis(), 0, "", QQ);
+        String prompt = prompt(requester, title, instructions);
+        Task task = new Task(id, origin, requester, title, QUEUED, System.currentTimeMillis(), 0, "", QQ, requesterQq, prompt, 0);
         put(task);
         Intercom.Commitment commitment = agent.intercom().commit(origin, requester, "后台在做：" + title);
-        Thread.ofVirtual().name("task-" + id).start(() -> run(task, requesterQq, prompt(requester, title, instructions), commitment));
+        Thread.ofVirtual().name("task-" + id).start(() -> run(task, requesterQq, prompt, commitment));
         return id;
     }
 
@@ -267,10 +317,16 @@ public final class BackgroundTasks {
         if (title.isBlank() || instructions.isBlank()) {
             throw new ToolFailure("title 和 task 都要写");
         }
-        Task task = new Task(newId(), MIND, "内心", abbreviate(title.strip(), 40), QUEUED, System.currentTimeMillis(), 0, "", kind);
-        put(task);
-        String prompt = "你是在后台替她做事的子 agent，她交给你一件事：「" + task.title() + "」。\n要求：" + instructions.strip() + "\n\n"
+        Task same = alreadyDoing(title);
+        if (same != null) {
+            throw new ToolFailure("这件事已经有人在做了：" + (same.subagent() ? "子 agent" : "后台任务（" + same.requester() + "托的）") + " #" + same.id()
+                    + "「" + same.title() + "」，做完会有回音，别再开一个重复做");
+        }
+        String name = abbreviate(title.strip(), 40);
+        String prompt = "你是在后台替她做事的子 agent，她交给你一件事：「" + name + "」。\n要求：" + instructions.strip() + "\n\n"
                 + (kind.equals(RESEARCH) ? RESEARCH_RULES : BUILD_RULES);
+        Task task = new Task(newId(), MIND, "内心", name, QUEUED, System.currentTimeMillis(), 0, "", kind, null, prompt, 0);
+        put(task);
         Thread.ofVirtual().name("subagent-" + task.id()).start(() -> run(task, null, prompt, null));
         return task;
     }
@@ -291,10 +347,10 @@ public final class BackgroundTasks {
         if (!subagents.config().enabled()) {
             throw new ToolFailure("子 agent 没有打开");
         }
-        Task next = task.restarted();
-        put(next);
         String prompt = "接着刚才的事：" + instructions.strip() + "\n\n"
-                + (next.type().equals(RESEARCH) ? "做完照样交回结论和用到的网址。" : "做完照样说明做好了什么，写出文件路径。");
+                + (task.type().equals(RESEARCH) ? "做完照样交回结论和用到的网址。" : "做完照样说明做好了什么，写出文件路径。");
+        Task next = task.restarted(prompt);
+        put(next);
         Thread.ofVirtual().name("subagent-" + next.id()).start(() -> run(next, null, prompt, null));
         return "已经让 #" + next.id() + "「" + next.title() + "」接着做了，做好会告诉你。";
     }
@@ -328,8 +384,15 @@ public final class BackgroundTasks {
         }
         Control control = new Control(limitMs(task));
         controls.put(task.id(), control);
-        put(task.with(RUNNING, ""));
-        control.limit = timer.schedule(() -> expire(task, control), control.remaining, TimeUnit.MILLISECONDS);
+        if (PAUSED.equals(task.status())) {
+            control.paused = true;
+            control.limit = timer.schedule(() -> { }, 1, TimeUnit.DAYS);
+            control.limit.cancel(false);
+            put(task.with(PAUSED, ""));
+        } else {
+            put(task.with(RUNNING, ""));
+            control.limit = timer.schedule(() -> expire(task, control), control.remaining, TimeUnit.MILLISECONDS);
+        }
         try {
             ChatTurn turn = new ChatTurn(session, ChatMessage.user(prompt), requesterQq, null, sub ? SUBAGENT : "task");
             if (task.type().equals(RESEARCH)) {

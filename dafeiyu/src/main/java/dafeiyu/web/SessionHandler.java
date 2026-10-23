@@ -192,6 +192,8 @@ final class SessionHandler {
             return info;
         }
         JsonObject info = gson.toJsonTree(task).getAsJsonObject();
+        info.remove("prompt");
+        info.remove("requesterQq");
         if (busy && !task.status().equals(BackgroundTasks.RUNNING) && !task.status().equals(BackgroundTasks.PAUSED)) {
             info.addProperty("status", BackgroundTasks.RUNNING);
         }

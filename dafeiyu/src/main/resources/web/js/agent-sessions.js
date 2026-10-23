@@ -336,6 +336,8 @@ function renderHeader(s) {
 }
 
 const GROUP_LINE = /^(【主人】)?([^：（\n]{1,40})(（回复 [^\n]*?）)?：(.*)$/;
+const PRIVATE_QUOTE = /^（(回复 [^\n]*)）\n([\s\S]*)$/;
+const IMAGE_REF = /\[图片#(\d+)\]/;
 
 function parseUser(content, kind) {
   if (content.startsWith(CONSOLE_TAG)) {
@@ -343,7 +345,9 @@ function parseUser(content, kind) {
   }
   if (kind !== 'group') {
     const owner = content.startsWith(OWNER_TAG);
-    return [{ tag: owner ? '主人' : null, name: null, text: owner ? content.slice(OWNER_TAG.length) : content }];
+    const body = owner ? content.slice(OWNER_TAG.length) : content;
+    const quoted = PRIVATE_QUOTE.exec(body);
+    return [{ tag: owner ? '主人' : null, name: null, quote: quoted ? quoted[1] : null, text: quoted ? quoted[2] : body }];
   }
   const messages = [];
   for (const line of content.split('\n')) {
@@ -407,9 +411,9 @@ function userEntries(content, time, s, rawAttachments = '') {
     const label = el('div', 'msg-label label-small');
     label.append(el('span', 'msg-name', name));
     if (parsed.tag) label.append(el('span', 'owner-chip label-small', parsed.tag));
-    if (parsed.quote) label.append(el('span', 'msg-quote', parsed.quote.replace(/^回复 你：/, `回复 ${selfName()}：`)));
     label.append(el('span', 'msg-time', time ? formatTime(time) : ''));
     body.append(label);
+    if (parsed.quote) body.append(quoteBlock(parsed.quote, row));
     const own = parsed === carrier ? attachments : [];
     const text = stripPlaceholders(parsed.text, own);
     if (text) body.append(renderSaid(meText(mentionNames(text)), 'bubble bubble-in body-large'));
@@ -417,6 +421,55 @@ function userEntries(content, time, s, rawAttachments = '') {
     row.append(body);
     return row;
   });
+}
+
+function quoteParts(quote) {
+  const body = quote.replace(/^回复 /, '');
+  const colon = body.indexOf('：');
+  if (colon < 0) return { who: null, text: body };
+  const who = body.slice(0, colon).replace(/（.*$/, '');
+  const rest = body.slice(colon + 1);
+  const nested = rest.lastIndexOf('）：');
+  return { who, text: nested >= 0 && rest.startsWith('（') ? rest.slice(nested + 2) : rest };
+}
+
+function quoteBlock(quote, row) {
+  const { who, text } = quoteParts(quote);
+  const block = el('button', 'msg-quote state-layer');
+  block.type = 'button';
+  block.title = '点一下跳到原消息';
+  const shown = who ? `${who === '你' ? selfName() : who}：${text}` : text;
+  block.append(el('span', 'msg-quote-text body-small', shown));
+  const image = IMAGE_REF.exec(text);
+  if (image) {
+    const img = el('img', 'msg-quote-image');
+    img.src = `/api/media/image?id=${image[1]}`;
+    img.alt = '被回复的图片';
+    img.loading = 'lazy';
+    img.addEventListener('error', () => img.remove());
+    block.append(img);
+  }
+  block.addEventListener('click', () => locateQuoted(row, who, text));
+  return block;
+}
+
+function locateQuoted(row, who, text) {
+  const snippet = text.replace(/…$/, '').replace(/\[(图片|表情包)[^\]]*\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
+  const wantsImage = !snippet && IMAGE_REF.test(text);
+  const mine = who === '你';
+  const rows = [...row.parentElement.children];
+  const above = rows.slice(0, rows.indexOf(row)).reverse()
+    .filter(node => node.classList.contains(mine ? 'reply-bot' : 'msg-in'));
+  const matches = node => (snippet ? node.textContent.replace(/\s+/g, ' ').includes(snippet) : wantsImage && node.querySelector('img'));
+  const byName = node => mine || !who || $('.msg-name', node)?.textContent === who;
+  const found = (snippet || wantsImage) && (above.find(node => byName(node) && matches(node)) ?? above.find(matches));
+  if (found) {
+    found.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    found.classList.remove('msg-flash');
+    requestAnimationFrame(() => found.classList.add('msg-flash'));
+    return;
+  }
+  showSnackbar(who ? '原消息不在已经加载的这段记录里，往上翻翻看' : '找不到被回复的那条消息');
 }
 
 function botEntry(turn, cards, s) {

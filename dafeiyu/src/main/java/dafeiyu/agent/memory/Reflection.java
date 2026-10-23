@@ -87,12 +87,18 @@ public final class Reflection {
     });
     private volatile LogBuffer log;
     private final StyleStudy style;
+    private final KnowledgeCurator curator;
 
     public Reflection(ChatAgent agent, MemoryStore memories, SkillStore skills) {
         this.agent = agent;
         this.memories = memories;
         this.skills = skills;
         this.style = new StyleStudy(agent, memories, this::info, this::warn);
+        this.curator = new KnowledgeCurator(agent, memories, skills, writing, scheduler, this::info, this::warn);
+    }
+
+    public KnowledgeCurator curator() {
+        return curator;
     }
 
     public String studyStyle(String groupId) throws AgentException {
@@ -106,6 +112,7 @@ public final class Reflection {
 
     public void start() {
         scheduler.schedule(() -> Thread.ofVirtual().start(this::tidyQuietly), 30, TimeUnit.SECONDS);
+        curator.start();
     }
 
     public Set<String> running() {

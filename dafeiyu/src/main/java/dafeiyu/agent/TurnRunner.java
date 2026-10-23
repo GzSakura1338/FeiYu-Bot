@@ -48,6 +48,9 @@ import java.util.function.Predicate;
 public final class TurnRunner {
 
     static final int MAX_STEPS = 1000;
+    private static final long REVISE_WITHIN_MS = 12_000;
+    public static final String OVERHEARD = "overheard";
+    private static final String ADDRESS_HINT = "在群里回话时，回的是谁就在开头 @ 谁（比如“@不知道呀 …”），几个人一起回就分别 @，这样才不会让人以为你在回别人";
     private static final int DOOM_LOOP = 3;
     private static final String SEARCH = "websearch";
     static final String READ_FORWARD = "read_forward";
@@ -143,6 +146,7 @@ public final class TurnRunner {
     private int views;
     private long heardId;
     private boolean revised;
+    private boolean overheard;
     private boolean userSaved;
     private ChatMessage marker;
     private long startedAt;
@@ -331,7 +335,7 @@ public final class TurnRunner {
                 long latencyMs = (System.nanoTime() - started) / 1_000_000;
                 return new ChatResult(content, result.reasoning(), List.of(), result.model(), latencyMs,
                         result.promptTokens(), completion > 0 ? completion : result.completionTokens(), result.cachedTokens(),
-                        result.finishReason());
+                        overheard ? OVERHEARD : result.finishReason());
             }
             step++;
         }
@@ -378,6 +382,7 @@ public final class TurnRunner {
             prepared = Prompt.prefixLastUser(prepared, mood.note(persona.id(), turn.session(), lastSpoke)
                     + presentPeople()
                     + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners), context)
+                    + (byOwner() ? agent.elsewhere(turn.session(), !turn.session().startsWith("group:")) : "")
                     + memories.style(persona.id(), turn.session(), context)
                     + skills
                     + (catalog.isEmpty() ? "" : "<你的表情包>\n" + catalog + "</你的表情包>\n\n"));
@@ -547,6 +552,10 @@ public final class TurnRunner {
         String id = agent.tasks().subagents().config().profileId();
         ModelProfile chosen = id.isEmpty() ? null : agent.store().get(id);
         return chosen != null ? chosen : agent.store().active();
+    }
+
+    private boolean byOwner() {
+        return "console".equals(turn.source()) || turn.qqUser() != null && owners.contains(turn.qqUser());
     }
 
     private boolean innerVoice() {
@@ -825,7 +834,8 @@ public final class TurnRunner {
     }
 
     private boolean overtaken() {
-        if (revised || !innerVoice() || !interjectable() || turn.session().startsWith("task:")) {
+        if (revised || !innerVoice() || !interjectable() || turn.session().startsWith("task:")
+                || System.currentTimeMillis() - startedAt > REVISE_WITHIN_MS) {
             return false;
         }
         arrive(memory.heardSince(turn.session(), heardId));
@@ -834,11 +844,12 @@ public final class TurnRunner {
 
     private void reconsider(String draft) {
         revised = true;
+        overheard = true;
         StringBuilder text = new StringBuilder("（你刚写好、还没发出去的回复是：「").append(draft.strip())
                 .append("」。可就在你想的时候，又来了新消息：");
         arrived.forEach(h -> text.append('\n').append(h.content()));
         text.append("\n现在一起回一次：原来那句还合适就照发或者改一改，已经不合适了就按现在的情况重新说，或者只写 ").append(SILENCE)
-                .append("。别一条条分开回，也别把同一个意思说两遍。）");
+                .append("。别一条条分开回，也别把同一个意思说两遍。").append(ADDRESS_HINT).append("）");
         live.add(ChatMessage.user(text.toString()));
         agent.interjected(turn.session(), List.copyOf(arrived));
         arrived.clear();
@@ -852,9 +863,11 @@ public final class TurnRunner {
         if (arrived.isEmpty()) {
             return;
         }
+        overheard = true;
         StringBuilder text = new StringBuilder(turn.session().startsWith("task:")
                 ? "（交代这件事的一方发来了新的指示。照新的指示调整正在做的事：改了要求就按新的做，补充了细节就加进去）"
-                : "（你在忙的时候又来了新消息。先看看要不要据此调整正在做的事，有人纠正你、改了要求就照新的来）");
+                : "（你在忙的时候又来了新消息。先看看要不要据此调整正在做的事，有人纠正你、改了要求就照新的来。"
+                        + (turn.session().startsWith("group:") ? ADDRESS_HINT : "") + "）");
         arrived.forEach(h -> text.append('\n').append(h.content()));
         live.add(ChatMessage.user(text.toString()));
         agent.interjected(turn.session(), List.copyOf(arrived));

@@ -201,6 +201,20 @@ public final class ChatAgent {
         return images.load(id);
     }
 
+    private volatile java.util.function.BiFunction<String, Boolean, String> elsewhere = (session, details) -> "";
+
+    public void setElsewhere(java.util.function.BiFunction<String, Boolean, String> elsewhere) {
+        this.elsewhere = elsewhere;
+    }
+
+    String elsewhere(String session, boolean details) {
+        try {
+            return elsewhere.apply(session, details);
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
     private volatile java.util.function.Supplier<ToolSet> requestTools = () -> null;
 
     public void setRequestTools(java.util.function.Supplier<ToolSet> requestTools) {

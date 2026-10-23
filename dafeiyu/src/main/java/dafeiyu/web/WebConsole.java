@@ -48,6 +48,7 @@ public final class WebConsole {
         server.createContext("/api/personas",new PersonaHandler(agent.personas(), log)::handle);
         server.createContext("/api/plugins", new PluginHandler(plugins, installer, bridge, log)::handle);
         server.createContext("/api/mcp", new McpHandler(plugins.mcp(), log)::handle);
+        server.createContext("/api/media", new MediaHandler(bridge)::handle);
         server.createContext("/plugins/", new PluginPageHandler(plugins)::handle);
     }
 

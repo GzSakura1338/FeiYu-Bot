@@ -9,8 +9,6 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Predicate;
 
-import static dafeiyu.util.Texts.abbreviate;
-
 final class GroupState {
 
     record Line(String messageId, String userId, String speaker, String text, long time, boolean addressed, List<String> imageUrls, boolean seen) {
@@ -22,7 +20,6 @@ final class GroupState {
 
     private static final int MAX_LINES = 40;
     private static final long MAX_AGE_MS = 30 * 60 * 1000;
-    private static final int QUOTE_CHARS = 30;
     private static final long STREAK_GAP_MS = 3 * 60_000;
     private static final int STREAK_LIMIT = 4;
     private static final long STREAK_COOLDOWN_MS = 5 * 60_000;
@@ -32,6 +29,7 @@ final class GroupState {
     private final Map<String, String> speakers = lru(200);
     private final Map<String, String> names = lru(200);
     private final Map<String, String> recent = lru(300);
+    private final Map<String, String> lastMessage = lru(300);
     private final Map<String, Boolean> botMessages = lru(100);
     private final Deque<Long> botTimes = new ArrayDeque<>();
     private long lastBotAt;
@@ -70,7 +68,16 @@ final class GroupState {
         names.put(userId, name);
         if (!messageId.isEmpty()) {
             recent.put(messageId, line);
+            lastMessage.put(userId, messageId);
         }
+    }
+
+    synchronized String lastMessageOfAddressee(String reply) {
+        if (reply == null || !reply.startsWith("@")) {
+            return null;
+        }
+        return speakers.keySet().stream().filter(n -> !n.isEmpty() && reply.startsWith("@" + n))
+                .max(java.util.Comparator.comparingInt(String::length)).map(n -> lastMessage.get(speakers.get(n))).orElse(null);
     }
 
     synchronized int spokenWithin(long ms) {
@@ -78,9 +85,8 @@ final class GroupState {
         return (int) botTimes.stream().filter(t -> now - t < ms).count();
     }
 
-    synchronized String quote(String messageId) {
-        String line = recent.get(messageId);
-        return "（回复 " + (line == null ? "一条消息" : abbreviate(line.replace('\n', ' '), QUOTE_CHARS)) + "）";
+    synchronized String quoted(String messageId) {
+        return recent.get(messageId);
     }
 
     synchronized void repliedTo(String userId) {

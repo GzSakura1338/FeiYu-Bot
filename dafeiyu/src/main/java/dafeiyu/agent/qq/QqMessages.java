@@ -3,7 +3,6 @@ package dafeiyu.agent.qq;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -67,6 +66,7 @@ public final class QqMessages {
                     }
                     case "face" -> text.append(QqFaces.describe(optString(data, "id")));
                     case "reply" -> replyTo = optString(data, "id");
+                    case "json" -> text.append(QqCards.render(unescape(optString(data, "data")), attachments, photos));
                     default -> {
                         String label = other(optString(seg, "type"), name -> optString(data, name));
                         text.append(label);
@@ -91,6 +91,7 @@ public final class QqMessages {
                     }
                     case "face" -> text.append(QqFaces.describe(params.getOrDefault("id", "")));
                     case "reply" -> replyTo = params.getOrDefault("id", "");
+                    case "json" -> text.append(QqCards.render(unescape(params.getOrDefault("data", "")), attachments, photos));
                     default -> {
                         String label = other(m.group(1), name -> params.getOrDefault(name, ""));
                         text.append(label);
@@ -108,9 +109,9 @@ public final class QqMessages {
 
     private static String other(String type, Function<String, String> field) {
         return switch (type) {
-            case "json" -> card(field.apply("data"));
+            case "json" -> QqCards.parse(unescape(field.apply("data"))).text(null);
             case "forward", "node" -> field.apply("id").isBlank() ? "[合并转发的聊天记录]" : "[合并转发的聊天记录：" + field.apply("id") + "]";
-            case "record" -> "[语音]";
+            case "record" -> field.apply("text").isBlank() ? "[语音]" : "[语音：" + field.apply("text").strip() + "]";
             case "video" -> "[视频]";
             case "file" -> {
                 String name = field.apply("name").isBlank() ? field.apply("file") : field.apply("name");
@@ -126,23 +127,6 @@ public final class QqMessages {
             case "markdown" -> "[卡片消息]";
             default -> "";
         };
-    }
-
-    private static String card(String json) {
-        if (json == null || json.isBlank()) {
-            return "[卡片消息]";
-        }
-        try {
-            JsonElement parsed = JsonParser.parseString(unescape(json));
-            if (parsed.isJsonObject()) {
-                String prompt = optString(parsed.getAsJsonObject(), "prompt").strip();
-                if (!prompt.isEmpty()) {
-                    return prompt.startsWith("[") ? prompt : "[卡片：" + prompt + "]";
-                }
-            }
-        } catch (RuntimeException ignored) {
-        }
-        return "[卡片消息]";
     }
 
     public static String plain(String raw) {
@@ -307,7 +291,7 @@ public final class QqMessages {
             case "file" -> attachment("file", field.apply("url"), field.apply("name").isBlank() ? field.apply("file") : field.apply("name"),
                     parseSize(field.apply("file_size")));
             case "video" -> attachment("video", field.apply("url"), field.apply("file"), parseSize(field.apply("file_size")));
-            case "record" -> attachment("record", field.apply("url"), "", 0);
+            case "record" -> attachment("record", field.apply("url"), field.apply("file"), 0);
             case "forward", "node" -> {
                 JsonObject f = attachment("forward", "", "", 0);
                 if (!field.apply("id").isBlank()) {
@@ -315,7 +299,7 @@ public final class QqMessages {
                 }
                 yield f;
             }
-            case "json", "markdown" -> attachment("card", "", label.equals("[卡片消息]") ? ""
+            case "markdown" -> attachment("card", "", label.equals("[卡片消息]") ? ""
                     : label.startsWith("[卡片：") && label.endsWith("]") ? label.substring(4, label.length() - 1) : label, 0);
             case "share" -> attachment("link", field.apply("url"), field.apply("title"), 0);
             case "music" -> attachment("music", field.apply("url"), field.apply("title"), 0);

@@ -3,8 +3,10 @@ import { createIcon } from './icons.js';
 import { menuSelect } from './select-menu.js';
 import { onPageChange } from './router.js';
 import { showSnackbar } from './snackbar.js';
+import { curateSummary } from './agent-memory.js';
 
 let state = null;
+let curate = null;
 let modelsBuilt = false;
 let saveTimer = 0;
 const steppers = new Map();
@@ -143,12 +145,55 @@ async function load() {
   }
 }
 
+async function memoryRequest(method, path, body) {
+  const res = await fetch(`/api/agent/memory${path}`, {
+    method,
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json;
+}
+
+function renderCurate() {
+  const toggle = $('#curate-enabled');
+  toggle.disabled = !curate;
+  toggle.setAttribute('aria-checked', String(Boolean(curate?.enabled)));
+  $('#curate-hint').textContent = !curate ? '先在「Agent › 人格」里选一个人格'
+    : `${curate.enabled ? '' : '已关闭，只在「记忆」页手动整理时做。'}${curateSummary(curate)}`;
+}
+
+async function loadCurate() {
+  try {
+    curate = (await memoryRequest('GET', '')).curate ?? null;
+  } catch (err) {
+    showSnackbar(`读取记忆整理设置失败：${err.message}`, 'error');
+  }
+  renderCurate();
+}
+
+async function toggleCurate() {
+  if (!curate) return;
+  try {
+    curate = (await memoryRequest('PUT', '/curate', { enabled: !curate.enabled })).curate ?? null;
+  } catch (err) {
+    showSnackbar(`切换失败：${err.message}`, 'error');
+  }
+  renderCurate();
+}
+
 export function initSettingsAgent() {
+  $('#curate-enabled').addEventListener('click', toggleCurate);
   $('#subagent-enabled').addEventListener('click', () => state && save({ enabled: !state.enabled }));
   $('#subagent-research').addEventListener('click', () => state && save({ research: !state.research }));
   $('#subagent-build').addEventListener('click', () => state && state.workspace && save({ build: !state.build }));
   for (const box of $$('#subagent-limits .stepper')) buildStepper(box);
   onPageChange(page => {
-    if (page === 'settings') load();
+    if (page === 'settings') {
+      load();
+      loadCurate();
+    }
   });
 }

@@ -18,6 +18,7 @@ public record Markup(String thought, String said, List<Note> notes, List<String>
     private static final Pattern PROMISE = Pattern.compile("<承诺>(.*?)(?:</承诺>|$)", Pattern.DOTALL);
     private static final Pattern DONE = Pattern.compile("<完成>(.*?)(?:</完成>|$)", Pattern.DOTALL);
     private static final Pattern POKE = Pattern.compile("<拍一拍\\s*/>|<拍一拍>(.*?)(?:</拍一拍>|$)", Pattern.DOTALL);
+    private static final Pattern STRAY = Pattern.compile("</?(?:记住|去做|承诺|完成|拍一拍)[^>\\n]{0,40}>");
 
     public Markup {
         thought = thought == null ? "" : thought;
@@ -81,7 +82,7 @@ public record Markup(String thought, String said, List<Note> notes, List<String>
             note.appendReplacement(rest, "");
         }
         note.appendTail(rest);
-        text = rest.toString().replace("</记住>", "");
+        text = STRAY.matcher(rest.toString()).replaceAll("");
         int open = text.indexOf(THOUGHT_OPEN);
         if (open < 0) {
             return new Markup("", text.replace(THOUGHT_CLOSE, "").strip(), notes, errands, poke, promises, done);

@@ -45,7 +45,25 @@ public final class SkillStore {
     }
 
     public List<Skill> list(String personaId) {
-        return db.list("SELECT " + COLUMNS + " FROM skills WHERE persona_id = ? ORDER BY updated_at DESC, id DESC", SkillStore::map, personaId);
+        return db.list("SELECT " + COLUMNS + " FROM skills WHERE persona_id = ? ORDER BY importance DESC, updated_at DESC, id DESC", SkillStore::map, personaId);
+    }
+
+    public java.util.Map<Long, MemoryStore.Usage> usage(String personaId) {
+        java.util.Map<Long, MemoryStore.Usage> out = new java.util.HashMap<>();
+        db.list("SELECT id, importance, used_count, used_at FROM skills WHERE persona_id = ?",
+                rs -> out.put(rs.getLong(1), new MemoryStore.Usage(rs.getInt(2), rs.getInt(3), rs.getLong(4))), personaId);
+        return out;
+    }
+
+    void used(List<Long> ids) {
+        if (!ids.isEmpty()) {
+            db.update("UPDATE skills SET used_count = used_count + 1, used_at = ? WHERE id IN ("
+                    + String.join(",", ids.stream().map(String::valueOf).toList()) + ")", System.currentTimeMillis());
+        }
+    }
+
+    void rate(String personaId, java.util.Map<Long, Integer> scores) {
+        scores.forEach((id, score) -> db.update("UPDATE skills SET importance = ? WHERE persona_id = ? AND id = ?", score, personaId, id));
     }
 
     public int count(String personaId) {
@@ -126,7 +144,11 @@ public final class SkillStore {
             hit = all.stream().filter(s -> s.name().contains(n) || n.contains(s.name()) || score(s, words) >= 0.6)
                     .max(Comparator.comparingDouble(s -> score(s, words))).orElse(null);
         }
-        return hit == null ? null : full(hit).strip();
+        if (hit == null) {
+            return null;
+        }
+        used(List.of(hit.id()));
+        return full(hit).strip();
     }
 
     public String relevant(String personaId, String context) {
@@ -142,6 +164,7 @@ public final class SkillStore {
         if (picked.isEmpty()) {
             return "";
         }
+        used(picked.stream().map(Skill::id).toList());
         StringBuilder out = new StringBuilder("<用得上的技能>\n");
         picked.forEach(s -> out.append(full(s).strip()).append("\n\n"));
         return out.toString().strip() + "\n</用得上的技能>\n\n";

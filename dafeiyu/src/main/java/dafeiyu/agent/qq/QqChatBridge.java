@@ -1,6 +1,7 @@
 package dafeiyu.agent.qq;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.ChatAgent;
@@ -25,6 +26,7 @@ import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
+import dafeiyu.message.StoredMessage;
 import dafeiyu.onebot.NapCatService;
 import dafeiyu.util.Clock;
 
@@ -32,6 +34,7 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -70,6 +73,10 @@ public final class QqChatBridge {
     private static final long ACTIVE_MEMBERS_MS = 3 * 86_400_000L;
     private static final int ACTIVE_MEMBERS = 12;
     private static final String SEEN_MARK = "（以上是你刚才看过的）";
+    private static final int QUOTE_CHARS = 120;
+    private static final long ELSEWHERE_MS = 20 * 60_000L;
+    private static final int ELSEWHERE_CHATS = 6;
+    private static final java.util.regex.Pattern RECORD_FILE_ID = java.util.regex.Pattern.compile("fileid=([A-Za-z0-9_-]{10,})");
     private static final long FAVORITES_EVERY_MS = 6 * 3_600_000L;
 
     private enum Mode { ADDRESSED, AMBIENT, NOTE }
@@ -100,6 +107,12 @@ public final class QqChatBridge {
     private final Map<String, Inbox> inboxes = new ConcurrentHashMap<>();
     private final Set<String> resumedGroups = ConcurrentHashMap.newKeySet();
     private final Map<String, String> latestInGroup = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> ingested = new LinkedHashMap<>(16, 0.75f, false) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+            return size() > 2_000;
+        }
+    };
     private final Set<String> ownerNames = ConcurrentHashMap.newKeySet();
     private final Map<String, Long> pokedAt = new ConcurrentHashMap<>();
     private final Deque<Long> proactive = new ArrayDeque<>();
@@ -108,6 +121,7 @@ public final class QqChatBridge {
     private final QqBackfill backfill;
     private final QqActions actions;
     private final QqImages images;
+    private final QqVoice voice;
     private final QqRequests requests;
     private volatile Observer observer;
     private volatile MessageGate gate = MessageGate.NONE;
@@ -129,6 +143,7 @@ public final class QqChatBridge {
         this.contacts = new QqContacts(agent, napcat, archive, outbox, log);
         this.backfill = new QqBackfill(agent, archive, outbox, log);
         this.images = new QqImages(db, outbox);
+        this.voice = new QqVoice(outbox, db.file().toAbsolutePath().getParent().resolve("voice"));
         this.actions = new QqActions(agent, archive, outbox, contacts, images, log);
         agent.setImageSource(images::load);
         this.requests = new QqRequests(agent, db, outbox, contacts, actions, log);
@@ -139,6 +154,7 @@ public final class QqChatBridge {
             }
         });
         agent.setRequestTools(requests::forOwner);
+        agent.setElsewhere(this::elsewhere);
         agent.setForwardReader(actions::describeForward);
         agent.setPoker((session, userId) -> {
             try {
@@ -400,7 +416,94 @@ public final class QqChatBridge {
         }
     }
 
+    public QqVoice voice() {
+        return voice;
+    }
+
+    public byte[] image(long id) throws ToolFailure {
+        return images.load(id);
+    }
+
+    public String recordFile(String url) {
+        java.util.regex.Matcher id = RECORD_FILE_ID.matcher(url == null ? "" : url);
+        return id.find() ? archive.recordFile(id.group(1)) : "";
+    }
+
     private void ingest(JsonObject event, boolean react) {
+        String messageId = optString(event, "message_id");
+        synchronized (ingested) {
+            if (!messageId.isEmpty() && ingested.put(messageId, true) != null) {
+                return;
+            }
+        }
+        JsonObject record = recordData(event);
+        if (record == null || messageId.isEmpty()) {
+            ingestNow(event, react);
+            return;
+        }
+        Thread.ofVirtual().name("voice-" + messageId).start(() -> {
+            try {
+                String text = voice.transcribe(messageId);
+                if (!text.isEmpty()) {
+                    record.addProperty("text", text);
+                    log.info("voice: message " + messageId + " transcribed (" + text.length() + " chars)");
+                }
+            } catch (ToolFailure e) {
+                log.warn("voice: message " + messageId + " could not be transcribed: " + e.getMessage());
+            }
+            try {
+                ingestNow(event, react);
+            } catch (RuntimeException e) {
+                log.error("voice: handling message " + messageId + " failed: " + e);
+            }
+        });
+    }
+
+    private String quote(GroupState state, String session, String selfId, String messageId) {
+        String line = state == null ? null : state.quoted(messageId);
+        if (line == null) {
+            line = archivedLine(session, selfId, messageId);
+        }
+        return "（回复 " + (line == null ? "一条消息" : abbreviate(line.replaceAll("\\s*\\R+\\s*", " "), QUOTE_CHARS)) + "）";
+    }
+
+    private String archivedLine(String session, String selfId, String messageId) {
+        StoredMessage stored = archive.byMessageId(messageId);
+        if (stored == null || stored.content() == null) {
+            return null;
+        }
+        JsonObject event = new JsonObject();
+        event.addProperty("raw_message", stored.content());
+        Incoming quoted = QqMessages.parse(event, selfId, (qq, hint) -> hint, this::stickerLabel, (file, url) -> images.number(file, url, session));
+        String text = quoted.text().isBlank() ? "[一条消息]" : unforgeable(quoted.text());
+        return ("out".equals(stored.direction()) ? "你" : unforgeable(stored.senderName() == null ? "" : stored.senderName())) + "：" + text;
+    }
+
+    private boolean mine(GroupState state, String messageId) {
+        if (messageId == null || messageId.isEmpty()) {
+            return false;
+        }
+        if (state != null && state.isBotMessage(messageId)) {
+            return true;
+        }
+        StoredMessage stored = archive.byMessageId(messageId);
+        return stored != null && "out".equals(stored.direction());
+    }
+
+    private static JsonObject recordData(JsonObject event) {
+        JsonElement message = event.get("message");
+        if (message == null || !message.isJsonArray()) {
+            return null;
+        }
+        for (JsonElement element : message.getAsJsonArray()) {
+            if (element.isJsonObject() && "record".equals(optString(element.getAsJsonObject(), "type"))) {
+                return optObject(element.getAsJsonObject(), "data");
+            }
+        }
+        return null;
+    }
+
+    private void ingestNow(JsonObject event, boolean react) {
         String messageType = optString(event, "message_type");
         if (messageType.equals("group")) {
             latestInGroup.put(optString(event, "group_id"), optString(event, "message_id"));
@@ -454,7 +557,8 @@ public final class QqChatBridge {
             if (react) {
                 observeHeard("private:" + userId, owner ? "主人" : unforgeable(senderName(event)), text, true);
             }
-            onPrivate(Target.direct(userId, selfId, optString(event, "message_id")), (owner ? OWNER_TAG : "") + text,
+            String quote = incoming.replyTo().isEmpty() ? "" : quote(null, "private:" + userId, selfId, incoming.replyTo()) + "\n";
+            onPrivate(Target.direct(userId, selfId, optString(event, "message_id")), (owner ? OWNER_TAG : "") + quote + text,
                     incoming.imageUrls(), incoming.attachments(), react);
         }
     }
@@ -525,7 +629,7 @@ public final class QqChatBridge {
             sender = contacts.memberName(groupId, userId);
         }
         String name = state.label(unforgeable(sender), userId, owner, this::reservedName);
-        String quote = incoming.replyTo().isEmpty() ? "" : state.quote(incoming.replyTo());
+        String quote = incoming.replyTo().isEmpty() ? "" : quote(state, "group:" + state.groupId, selfId, incoming.replyTo());
         String flat = text.strip().replaceAll("\\s*\\R+\\s*", " / ");
         String line = (owner ? OWNER_TAG : "") + name + quote + "：" + flat;
         state.heard(messageId, userId, name, line);
@@ -533,16 +637,16 @@ public final class QqChatBridge {
             hear(state, line, userId, incoming.attachments());
             return;
         }
-        boolean toOthers = incoming.mentionedOthers() || (!incoming.replyTo().isEmpty() && !state.isBotMessage(incoming.replyTo()));
+        boolean toOthers = incoming.mentionedOthers() || (!incoming.replyTo().isEmpty() && !mine(state, incoming.replyTo()));
         boolean continuing = !toOthers && (state.talkingWith(userId, CONVERSATION_MS)
                 || (owner && System.currentTimeMillis() - state.lastSpoke() < CONVERSATION_MS));
         boolean addressed = agent.store().groupMode()
-                ? (incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()) || (!incoming.mentionedOthers() && calledByName(incoming.text()))
+                ? (incoming.mentionedMe() || mine(state, incoming.replyTo()) || (!incoming.mentionedOthers() && calledByName(incoming.text()))
                         || continuing)
                         && !looksLikeMe(name) && (owner || !(botLike(name) && state.cooling(userId)))
                 : incoming.mentionedMe();
         observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, flat,
-                addressed || incoming.mentionedMe() || state.isBotMessage(incoming.replyTo()));
+                addressed || incoming.mentionedMe() || mine(state, incoming.replyTo()));
         state.add(new Line(messageId, userId, name, line, System.currentTimeMillis(), addressed, incoming.imageUrls(), false));
         hear(state, line, userId, incoming.attachments());
         if (agent.store().groupMode() || addressed) {
@@ -888,8 +992,13 @@ public final class QqChatBridge {
         try {
             String words = StickerStore.withoutTags(text);
             Thread.sleep(QqText.typingPause(words.isEmpty() ? "表情" : words, result.latencyMs()));
-            boolean quote = target.group() && !target.messageId().isEmpty() && !target.messageId().equals(latestInGroup.get(target.groupId()));
-            outbox.deliver(target, text, quote ? target.messageId() : null);
+            String quoteId = target.messageId();
+            if (TurnRunner.OVERHEARD.equals(result.finishReason()) && target.group()) {
+                GroupState state = groups.get(target.groupId());
+                quoteId = state == null ? null : state.lastMessageOfAddressee(text.strip());
+            }
+            boolean quote = target.group() && quoteId != null && !quoteId.isEmpty() && !quoteId.equals(latestInGroup.get(target.groupId()));
+            outbox.deliver(target, text, quote ? quoteId : null);
             lastActivity = System.currentTimeMillis();
             observeSaid(target.session(), text);
         } catch (ToolFailure e) {
@@ -1123,6 +1232,57 @@ public final class QqChatBridge {
 
     public String groupName(String groupId) {
         return contacts.groupName(groupId);
+    }
+
+    String elsewhere(String session, boolean details) {
+        long now = System.currentTimeMillis();
+        Map<String, List<StoredMessage>> chats = new LinkedHashMap<>();
+        for (StoredMessage m : archive.since(now - ELSEWHERE_MS, 400)) {
+            boolean group = "group".equals(m.messageType());
+            String peer = group || "out".equals(m.direction()) ? m.groupId() : m.userId();
+            if (peer == null || peer.isBlank() || !(group || "private".equals(m.messageType()))) {
+                continue;
+            }
+            String key = (group ? "group:" : "private:") + peer;
+            if (!key.equals(session)) {
+                chats.computeIfAbsent(key, k -> new ArrayList<>()).add(m);
+            }
+        }
+        List<String> lines = new ArrayList<>();
+        chats.entrySet().stream()
+                .filter(e -> e.getKey().startsWith("private:") || e.getValue().stream().anyMatch(m -> "out".equals(m.direction())))
+                .sorted((a, b) -> Long.compare(b.getValue().getLast().time(), a.getValue().getLast().time()))
+                .limit(ELSEWHERE_CHATS)
+                .forEach(e -> lines.add(describeChat(e.getKey(), e.getValue(), now, details)));
+        if (lines.isEmpty()) {
+            return "";
+        }
+        return "<你这会儿在别处聊的>（最近 20 分钟，新的在前）\n" + String.join("\n", lines) + "\n</你这会儿在别处聊的>\n\n";
+    }
+
+    private String describeChat(String key, List<StoredMessage> messages, long now, boolean details) {
+        StoredMessage last = messages.getLast();
+        String ago = Clock.ago(last.time());
+        if (key.startsWith("group:")) {
+            String groupId = key.substring(6);
+            List<String> speakers = messages.reversed().stream().filter(m -> "in".equals(m.direction()))
+                    .map(m -> unforgeable(m.senderName() == null ? "" : m.senderName()).strip()).filter(n -> !n.isEmpty())
+                    .distinct().limit(5).toList();
+            return "- 在「" + groupName(groupId) + "」（群号 " + groupId + "）聊着，最后一条在" + ago
+                    + (speakers.isEmpty() ? "" : "，最近在说话的：" + String.join("、", speakers));
+        }
+        String userId = key.substring(8);
+        String name = messages.reversed().stream().filter(m -> "in".equals(m.direction()) && m.senderName() != null && !m.senderName().isBlank())
+                .map(m -> unforgeable(m.senderName()).strip()).findFirst().orElse(archive.lastKnownName(userId));
+        String who = (name == null || name.isBlank() ? "QQ " + userId : name + "（QQ " + userId + "）")
+                + (agent.personas().isOwner(userId) ? "，你的主人" : "");
+        StringBuilder out = new StringBuilder("- 在和 " + who + " 私聊，最后一条在" + ago);
+        if (details) {
+            List<String> said = messages.subList(Math.max(0, messages.size() - 2), messages.size()).stream()
+                    .map(m -> ("out".equals(m.direction()) ? "你" : "对方") + "：" + abbreviate(QqMessages.plain(m.content()), 60)).toList();
+            out.append("（").append(String.join(" / ", said)).append("）");
+        }
+        return out.toString();
     }
 
     public String findPerson(String query) {

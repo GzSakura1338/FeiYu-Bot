@@ -374,6 +374,7 @@ public final class Mind implements QqChatBridge.Observer {
             for (Intercom.Commitment c : open.subList(Math.max(0, open.size() - 8), open.size())) {
                 hung.append("- #").append(c.id()).append(" ").append(c.who()).append("在").append(where(c.session())).append("托的：")
                         .append(c.what()).append("（").append(Clock.ago(c.createdAt()))
+                        .append(c.what().startsWith("后台在做：") ? "；后台任务正在做，做完会有回音，你别再做一遍、也别开子 agent" : "")
                         .append(c.session().startsWith("private:") ? "；要说进展用 tell_private（user_id " + c.session().substring(8) + "），别在群里提" : "")
                         .append("）\n");
             }

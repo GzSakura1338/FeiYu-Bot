@@ -3,9 +3,11 @@ package dafeiyu.web;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.ChatAgent;
+import dafeiyu.agent.memory.KnowledgeCurator;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.MemoryStore.Memory;
 import dafeiyu.agent.memory.MemoryStore.Scope;
@@ -49,6 +51,15 @@ final class MemoryHandler {
         this.memories = agent.memories();
         this.directory = directory;
         this.log = log;
+    }
+
+    static String curated(KnowledgeCurator.Report report) {
+        if (report.sections().isEmpty()) {
+            return report.error() == null ? "整理完了，东西还不多，没什么要动的" : "没整理成：" + report.error();
+        }
+        return "整理完了：" + String.join("，", report.sections().stream().map(s -> s.label() + " " + s.before() + " → " + s.after()
+                + (s.merged() + s.dropped() > 0 ? "（合并 " + s.merged() + "，丢掉 " + s.dropped() + "）" : "")).toList())
+                + (report.error() == null ? "" : "；" + report.error());
     }
 
     static String describe(Reflection.Outcome outcome) {
@@ -111,6 +122,34 @@ final class MemoryHandler {
                 HttpResponses.json(ex, skills());
             } else if (rest.equals("/reflect") && method.equals("POST")) {
                 reflect(ex, Requests.readJson(ex, ReflectRequest.class).session());
+            } else if (rest.equals("/curate") && method.equals("POST")) {
+                KnowledgeCurator.Report report;
+                try {
+                    report = agent.reflection().curator().run(true);
+                } catch (AgentException e) {
+                    HttpResponses.json(ex, 502, error("整理失败：" + e.getMessage()));
+                    return;
+                }
+                log.info("agent: knowledge tidied up by hand");
+                JsonObject body = JsonParser.parseString(state()).getAsJsonObject();
+                body.addProperty("message", curated(report));
+                HttpResponses.json(ex, body.toString());
+            } else if (rest.equals("/curate") && method.equals("PUT")) {
+                Boolean enabled = Requests.readJson(ex, AutoRequest.class).enabled();
+                if (enabled == null) {
+                    throw new IllegalArgumentException("缺少 enabled");
+                }
+                agent.reflection().curator().setEnabled(enabled);
+                log.info("agent: nightly knowledge tidy-up " + (enabled ? "ON" : "OFF"));
+                HttpResponses.json(ex, state());
+            } else if (rest.matches("/trash/\\d+/restore") && method.equals("POST")) {
+                long id = Long.parseLong(rest.substring(7, rest.lastIndexOf('/')));
+                String kind = agent.reflection().curator().restore(persona().id(), id);
+                log.info("agent: restored a " + kind + " from the trash");
+                HttpResponses.json(ex, trash());
+            } else if (rest.matches("/trash/\\d+") && method.equals("DELETE")) {
+                memories.forgetTrashed(persona().id(), Long.parseLong(rest.substring(7)));
+                HttpResponses.json(ex, trash());
             } else if (rest.equals("/auto") && method.equals("PUT")) {
                 Boolean enabled = Requests.readJson(ex, AutoRequest.class).enabled();
                 if (enabled == null) {
@@ -177,7 +216,24 @@ final class MemoryHandler {
         skill.addProperty("count", agent.skills().count(persona.id()));
         skill.addProperty("updatedAt", agent.skills().latest(persona.id()));
         list.add(skill);
+        List<MemoryStore.Trashed> trash = memories.trashed(persona.id());
+        JsonObject bin = new JsonObject();
+        bin.addProperty("scope", "trash");
+        bin.addProperty("kind", "trash");
+        bin.addProperty("target", "");
+        bin.addProperty("owner", false);
+        bin.addProperty("name", "回收站");
+        bin.addProperty("label", "");
+        bin.addProperty("count", trash.size());
+        bin.addProperty("updatedAt", trash.isEmpty() ? 0 : trash.getFirst().removedAt());
+        list.add(bin);
         body.add("scopes", list);
+        KnowledgeCurator curator = agent.reflection().curator();
+        JsonObject curate = new JsonObject();
+        curate.addProperty("enabled", curator.enabled());
+        curate.addProperty("running", curator.running());
+        curate.add("last", gson.toJsonTree(curator.last()));
+        body.add("curate", curate);
         JsonArray pending = new JsonArray();
         Set<String> running = agent.reflection().running();
         for (String session : memories.pendingSessions()) {
@@ -193,12 +249,17 @@ final class MemoryHandler {
     }
 
     private String items(String scope) {
+        if (scope.equals("trash")) {
+            return trash();
+        }
         if (!MemoryStore.validScope(scope)) {
             throw new IllegalArgumentException("记忆分区不对");
         }
         QqDirectory.Names names = directory.names();
         JsonArray list = new JsonArray();
         String personaId = persona().id();
+        Map<Long, MemoryStore.Usage> usage = scope.equals(MemoryStore.KNOWLEDGE) || scope.equals(MemoryStore.STYLE)
+                ? memories.usage(personaId, scope) : Map.of();
         List<Memory> all = new ArrayList<>(scope.equals(MemoryStore.SELF) ? memories.selfTopics(personaId) : memories.list(personaId, scope));
         if (scope.equals(MemoryStore.SELF)) {
             all.addAll(memories.looseSelf(personaId));
@@ -209,6 +270,11 @@ final class MemoryHandler {
             item.addProperty("title", m.scope().equals(MemoryStore.DIARY) ? MemoryStore.fullDay(m.label())
                     : m.scope().equals(MemoryStore.KNOWLEDGE) || m.scope().equals(MemoryStore.STYLE) ? m.label()
                     : m.scope().equals(MemoryStore.SELF) && MemoryStore.SELF_TOPICS.contains(m.label()) ? m.label() : "");
+            MemoryStore.Usage used = usage.get(m.id());
+            if (used != null) {
+                item.addProperty("importance", used.importance());
+                item.addProperty("usedCount", used.usedCount());
+            }
             list.add(item);
         }
         JsonObject body = new JsonObject();
@@ -221,11 +287,30 @@ final class MemoryHandler {
         return skillList().toString();
     }
 
+    private String trash() {
+        JsonArray list = new JsonArray();
+        for (MemoryStore.Trashed t : memories.trashed(persona().id())) {
+            JsonObject item = gson.toJsonTree(t).getAsJsonObject();
+            item.addProperty("kindName", KnowledgeCurator.label(t.kind()));
+            list.add(item);
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("scope", "trash");
+        body.add("items", list);
+        return body.toString();
+    }
+
     private JsonObject skillList() {
         QqDirectory.Names names = directory.names();
         JsonArray list = new JsonArray();
+        Map<Long, MemoryStore.Usage> usage = agent.skills().usage(persona().id());
         for (SkillStore.Skill s : agent.skills().list(persona().id())) {
             JsonObject item = gson.toJsonTree(s).getAsJsonObject();
+            MemoryStore.Usage used = usage.get(s.id());
+            if (used != null) {
+                item.addProperty("importance", used.importance());
+                item.addProperty("usedCount", used.usedCount());
+            }
             item.addProperty("sourceName", switch (s.source()) {
                 case "manual" -> "手动添加";
                 case "import" -> "导入";
