@@ -4,7 +4,7 @@ import { showSnackbar } from './snackbar.js';
 import { confirmDialog } from './dialog.js';
 import { createAvatar, createGroupAvatar } from './avatar.js';
 import { ago, formatTime } from './format.js';
-import { createReply, noteChips, reasoningBlock, renderContext, renderSaid, toolCard, settleToolCard, splitInner } from './chat-render.js';
+import { createReply, noteCard, noteChips, reasoningBlock, renderContext, renderSaid, toolCard, settleToolCard, splitInner } from './chat-render.js';
 import { onAgentViewChange, renderMood } from './agent-page.js';
 import { navigate } from './router.js';
 import { COMMANDS, attachCommandHints, commandNote, helpText, parseCommand, runCommand } from './commands.js';
@@ -495,14 +495,10 @@ function currentSession() {
 }
 
 function summaryCard(s) {
-  const card = el('details', 'checkpoint-card');
-  const summary = el('summary', 'tool-summary label-large');
-  summary.append(createIcon('history', 'icon-18'), el('span', 'tool-title', s.kind === 'mind'
+  return noteCard('history', s.kind === 'mind'
     ? `更早的念头已整理成一段回忆（${detail.compactions} 次）`
-    : `更早的对话已压缩成摘要（${detail.compactions} 次）`));
-  const body = el('pre', 'tool-output body-small', detail.summary + (detail.recent ? `\n\n—— 保留的最近原文 ——\n${detail.recent}` : ''));
-  card.append(summary, body);
-  return card;
+    : `更早的对话已压缩成摘要（${detail.compactions} 次）`,
+  detail.summary + (detail.recent ? `\n\n—— 保留的最近原文 ——\n${detail.recent}` : ''));
 }
 
 function olderButton() {

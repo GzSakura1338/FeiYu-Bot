@@ -44,11 +44,15 @@ function row(action) {
   const headline = el('div', 'list-headline body-medium', action.summary);
   headline.append(' ', el('code', '', action.name));
   text.append(headline);
-  const tip = [action.description, action.lockReason && `锁着的原因：${action.lockReason}`].filter(Boolean).join('；');
+  const tip = [action.description, action.lockReason && `高危：${action.lockReason}`].filter(Boolean).join('；');
   if (tip) text.append(el('div', 'list-supporting body-small', tip));
   const item = el('div', 'qqapi-row');
   item.append(text);
-  if (action.locked) item.append(el('span', 'kind-chip label-small qqapi-locked', '默认锁着'));
+  if (action.locked) {
+    const danger = el('span', 'kind-chip label-small qqapi-danger', '高危');
+    danger.dataset.tooltip = `高危接口，默认关着：${action.lockReason}`;
+    item.append(danger);
+  }
   const access = el('button', 'chip-button qqapi-access label-large state-layer');
   access.type = 'button';
   access.addEventListener('click', () => {

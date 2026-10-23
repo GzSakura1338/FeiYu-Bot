@@ -63,6 +63,12 @@ public final class RpcChannel {
     private final Runnable onClosed;
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<String, CompletableFuture<JsonElement>> pending = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> late = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(16, 0.75f, false) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+            return size() > 100;
+        }
+    });
     private final AtomicLong ids = new AtomicLong();
     private volatile boolean closed;
 
@@ -87,6 +93,10 @@ public final class RpcChannel {
     }
 
     public CompletableFuture<JsonElement> call(String method, JsonObject params, long timeoutMs) {
+        return call(method, params, timeoutMs, id -> { });
+    }
+
+    public CompletableFuture<JsonElement> call(String method, JsonObject params, long timeoutMs, java.util.function.LongConsumer onTimeout) {
         CompletableFuture<JsonElement> future = new CompletableFuture<>();
         if (closed) {
             future.completeExceptionally(new IOException("plugin is not running"));
@@ -103,6 +113,8 @@ public final class RpcChannel {
             CompletableFuture<JsonElement> f = pending.remove(id);
             if (f != null) {
                 f.completeExceptionally(new TimeoutException(method + " timed out after " + timeoutMs + " ms"));
+                late.put(id, Boolean.TRUE);
+                onTimeout.accept(Long.parseLong(id));
             }
         }, timeoutMs, TimeUnit.MILLISECONDS);
         try {
@@ -221,7 +233,9 @@ public final class RpcChannel {
             String key = id != null && id.isJsonPrimitive() ? id.getAsString() : "";
             CompletableFuture<JsonElement> f = pending.remove(key);
             if (f == null) {
-                problems.accept("ignored a response with an unknown id " + key);
+                if (late.remove(key) == null) {
+                    problems.accept("ignored a response with an unknown id " + key);
+                }
                 return;
             }
             if (message.has("error") && message.get("error").isJsonObject()) {

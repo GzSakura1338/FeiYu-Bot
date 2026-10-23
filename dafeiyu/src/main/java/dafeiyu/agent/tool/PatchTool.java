@@ -19,7 +19,7 @@ final class PatchTool extends TextTool {
               "patchText": {"type": "string", "description": "The full patch text describing add, update, and delete operations"}
             }, "required": ["patchText"]}""");
 
-    private record Change(String type, Path target, Path moveTo, String content, Charset charset, boolean bom) {}
+    private record Change(String type, Path target, Path moveTo, String content, Charset charset, boolean bom, LineDiff.Stats stats) {}
 
     @Override
     public String name() {
@@ -86,13 +86,16 @@ final class PatchTool extends TextTool {
                         throw new ToolFailure("patch verification failed: " + display + " is a directory");
                     }
                     String content = add.contents().isEmpty() || add.contents().endsWith("\n") ? add.contents() : add.contents() + "\n";
-                    changes.add(new Change("A", target, null, content, StandardCharsets.UTF_8, false));
+                    changes.add(new Change("A", target, null, content, StandardCharsets.UTF_8, false, LineDiff.added(content)));
                 }
                 case Patch.Delete ignored -> {
                     if (!Files.isRegularFile(target)) {
                         throw new ToolFailure("patch verification failed: Failed to delete " + display + ": file does not exist");
                     }
-                    changes.add(new Change("D", target, null, null, null, false));
+                    byte[] bytes = TextFile.readBytes(target, display);
+                    LineDiff.Stats stats = TextFile.isBinary(bytes) ? LineDiff.Stats.NONE
+                            : LineDiff.removed(updated.getOrDefault(target, TextFile.decode(bytes).text()));
+                    changes.add(new Change("D", target, null, null, null, false, stats));
                 }
                 case Patch.Update update -> {
                     if (!Files.isRegularFile(target)) {
@@ -106,7 +109,7 @@ final class PatchTool extends TextTool {
                     String original = updated.getOrDefault(target, decoded.text());
                     String content = Patch.derive(display, update.chunks(), original);
                     Path moveTo = update.movePath() == null ? null : ws.resolve(update.movePath());
-                    changes.add(new Change("M", target, moveTo, content, decoded.charset(), decoded.bom()));
+                    changes.add(new Change("M", target, moveTo, content, decoded.charset(), decoded.bom(), LineDiff.of(original, content)));
                     if (moveTo == null) {
                         updated.put(target, content);
                     }
@@ -121,11 +124,11 @@ final class PatchTool extends TextTool {
                 switch (change.type()) {
                     case "D" -> {
                         ws.trash(change.target());
-                        applied.add("D " + ws.relative(change.target()));
+                        applied.add("D " + ws.relative(change.target()) + " (" + change.stats().label() + ")");
                     }
                     case "A" -> {
                         ws.write(change.target(), TextFile.encode(change.content(), change.charset(), false));
-                        applied.add("A " + ws.relative(change.target()));
+                        applied.add("A " + ws.relative(change.target()) + " (" + change.stats().label() + ")");
                     }
                     default -> {
                         Path destination = change.moveTo() == null ? change.target() : change.moveTo();
@@ -133,7 +136,7 @@ final class PatchTool extends TextTool {
                         if (change.moveTo() != null && !change.moveTo().equals(change.target())) {
                             Files.deleteIfExists(change.target());
                         }
-                        applied.add("M " + ws.relative(destination));
+                        applied.add("M " + ws.relative(destination) + " (" + change.stats().label() + ")");
                     }
                 }
             } catch (java.io.IOException e) {

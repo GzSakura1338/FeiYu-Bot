@@ -71,6 +71,8 @@ final class McpHandler {
                 tools.add(item);
             }
             o.add("tools", tools);
+            o.add("resources", entries(v.resources()));
+            o.add("prompts", entries(v.prompts()));
             JsonArray stderr = new JsonArray();
             v.stderr().forEach(stderr::add);
             o.add("stderr", stderr);
@@ -79,6 +81,18 @@ final class McpHandler {
         JsonObject body = new JsonObject();
         body.add("servers", servers);
         return body.toString();
+    }
+
+    private static JsonArray entries(java.util.List<McpManager.EntryView> list) {
+        JsonArray out = new JsonArray();
+        for (McpManager.EntryView e : list) {
+            JsonObject item = new JsonObject();
+            item.addProperty("name", e.name());
+            item.addProperty("target", e.target());
+            item.addProperty("description", e.description());
+            out.add(item);
+        }
+        return out;
     }
 
     private static String error(String message) {

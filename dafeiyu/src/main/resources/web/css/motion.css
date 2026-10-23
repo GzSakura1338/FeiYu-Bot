@@ -115,9 +115,22 @@
               width var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized),
               height var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized);
 }
-.menu:popover-open { animation: menu-in var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate); }
+.menu {
+  opacity: 0; transform: scaleY(.6);
+  transition: opacity var(--md-sys-motion-duration-short3) linear,
+    transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-accelerate),
+    display var(--md-sys-motion-duration-short4) allow-discrete, overlay var(--md-sys-motion-duration-short4) allow-discrete;
+}
+.menu:not(:popover-open) { pointer-events: none; }
+.menu:popover-open {
+  opacity: 1; transform: none;
+  transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate),
+    transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+@starting-style {
+  .menu:popover-open { opacity: 0; transform: scaleY(.6); }
+}
 .menu:popover-open > * { animation: menu-item-in var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate) both; }
-@keyframes menu-in { from { opacity: 0; transform: scaleY(.6); } }
 @keyframes menu-item-in { from { opacity: 0; } }
 .bubble.new { animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both; }
 .bubble-typing span { animation: typing 1.2s ease-in-out infinite; }

@@ -115,7 +115,7 @@
   - `qq_api_call` 填接口名和参数对象调用；先查接口在不在、开没开，再查必填参数，返回的数据数组只列前 40 项、长字符串截断
   - 谁能用：内心，以及主人的会话（主人私聊、群里主人叫她、控制台、网页测试对话）；别人的会话里没有，别人托的事照旧用 `<去做>` 交给内心判断
   - 接口清单 `src/main/resources/napcat-api.json` 由 `node scripts/napcat-api.mjs` 从 `../napcat/napcat.mjs` 的接口注册表抽出来（名字、NapCat 自带的中文说明、参数 Schema，按功能分 14 类）；NapCat 升级后重跑一次即可
-  - 分级：查询类（`get_`、`fetch_` 等）默认只读，其余默认「会改动」，设置里点标签就能在两者之间切换；凭证（cookies、csrf、clientkey、rkey）、退出登录 / 重启 / 改资料和头像、退群、原始数据包和调试接口、流式接口共 25 个默认锁着。每个接口都能单独开关，只存和默认不同的（settings 表 `agent.qqapi.enabled`、`agent.qqapi.overrides` 开关，`agent.qqapi.access` 只读 / 会改动）
+  - 分级：查询类（`get_`、`fetch_` 等）默认只读，其余默认「会改动」，设置里点标签就能在两者之间切换；凭证（cookies、csrf、clientkey、rkey）、退出登录 / 重启 / 改资料和头像、退群、原始数据包和调试接口、流式接口共 25 个标为「高危」，默认关着。每个接口都能单独开关，只存和默认不同的（settings 表 `agent.qqapi.enabled`、`agent.qqapi.overrides` 开关，`agent.qqapi.access` 只读 / 会改动）
   - 保护：发纯文字消息（`send_group_msg` 等）改走原来的发送管线（格式化、内容审核、记进聊天记录），禁言 / 踢人 / 删好友 / 拍一拍走 `QqActions` 和 `QqChatBridge` 原来的检查（要管理员、动不了主人和群主）；批量踢人、撤销管理员、撤回主人的消息直接拒绝；其余会改动的先把参数里的文字过内容审核，群里的操作在会话里留一行「（你用 QQ 接口……）」；文件参数只认公网网址、`base64://` 和工作目录里的文件，网址必须是公网，参数里不许写 CQ 码；会改动的调用每分钟最多 30 次
 - 工具结构（`agent.tool`）：所有工具都实现同一个 `Tool` 接口（名字、说明、参数 Schema、`run(Args, ToolContext)` 返回 `ToolResult`）。纯文字结果的类继承 `TextTool`，小工具用 `Tool.text(名字, 说明, Schema, 处理函数)` 当场定义。一轮能用哪些工具由 `ToolSet` 决定：`TurnRunner` 按会话和权限拼默认的一套，内心（`MindTools.toolSet()`）、子 agent 查资料（`ResearchTools.create`）各拼自己的；`ToolSet.run` 统一负责找工具、解析参数、把 `ToolFailure` 和意外异常变成错误结果、截断 5 万字以上的输出。加新工具只要写一个 `Tool`，放进对应的 `ToolSet`。插件和 MCP 的工具也是 `Tool`（`Extensions.tools` 直接返回）
 - 失败重试（移植自 opencode 的错误分类和重试策略）：限流、5xx、断流、超时会自动重试（间隔 2、4、8、10…秒，最多 10 次，超时最多 3 次，遵守 `retry-after`）；Key 无效、余额不足、内容审核、请求错误不重试
@@ -137,6 +137,10 @@
 - 稳定性：崩溃自动重启（1 秒起翻倍，10 分钟崩 5 次自动停用）；命令 5 秒、拦截和出站过滤 2 秒、提示词补充 0.5 秒超时，拦截 / 过滤连续 3 次超时就暂停 5 分钟；日志每秒最多 50 行；插件出什么问题都不影响她正常聊天
 - 安装：上传 zip、Git 地址或 zip 网址，先看清单和权限再确认；升级保留设置和数据，版本变小会提示；卸载时可选是否删数据。开发模式下改了插件文件自动重新加载
 - MCP 服务：本地（stdio，默认沙盒 + 断网）和远程（Streamable HTTP），工具名 `mcp__<服务>__<工具>`
+  - 握手时记下服务声明的能力（工具 / 资源 / 提示词），只调它支持的；工具、资源、提示词列表都支持分页，收到任意 `list_changed` 通知就一起刷新；MCP 页的服务卡片上能看到资源和提示词
+  - 资源和提示词包装成三个全局工具：`mcp_list_resources`（列资源和资源模板）、`mcp_read_resource`（按 URI 读，图片直接给她看）、`mcp_get_prompt`（列出或取用提示词模板）；只在有服务声明了对应能力时出现，在「工作目录」页能单独开关，也遵守每个服务的「QQ 里可用 / 内心可用」
+  - 工具结果（插件工具也一样，`ToolResults`）：文字照给；图片直接附给模型看（每次最多 4 张）；音频说明听不了；资源链接写明 URI 并提示可以读；内嵌资源给出文字；只有 `structuredContent` 时给 JSON
+  - 调用超时后给服务发 `notifications/cancelled`，晚到的回复安静丢掉；服务发来的日志通知（`notifications/message`）记进服务卡片的输出里
 ## 后端结构 `src/main/java/dafeiyu`
 
 | 包 | 类 | 作用 |
@@ -189,7 +193,7 @@
 | `css/theme.css` | MD3 颜色角色（亮/暗），以 M3 基准紫 `#6750A4` 生成 |
 | `css/tokens.css`、`components.css`、`layout.css`、`motion.css` | 令牌、组件、布局、动效 |
 | `js/agent-models.js`、`js/agent-personas.js`、`js/agent-workspace.js`、`js/workspace-files.js`、`js/agent-sessions.js`、`js/agent-mind.js`、`js/agent-memory.js`、`js/agent-stickers.js` | 模型列表、页头开关与弹窗，人格与主人，工作目录与工具设置，工作目录文件浏览，会话（QQ 会话监控与控制台 + 网页测试对话），内心，记忆分区，表情包 |
-| `js/web-chat.js`、`js/chat-render.js`、`js/commands.js`、`js/sse.js` | 测试对话的图片附件与流式请求、流式回复渲染（内心、工具卡片、重试、文件）、/ 命令与提示菜单、SSE 解析 |
+| `js/web-chat.js`、`js/chat-render.js`、`js/commands.js`、`js/sse.js` | 测试对话的图片附件与流式请求、流式回复渲染（内心、工具卡片、重试、文件）、/ 命令与提示菜单、SSE 解析。工具卡片一行是图标、中文名、参数摘要、状态和耗时，点开分「参数」（逐个键值）和「结果」（JSON 自动排版）两块，出错时自动展开；展开动画和其他折叠组件一致；MCP 和插件工具显示成「MCP · 服务」「插件 · 插件名」 |
 | `js/ws-profiles.js`、`js/messages.js`、`js/status.js`、`js/logs.js` | 反向 WebSocket 列表、最近消息、连接状态、事件日志 |
 | `js/menu.js`、`js/dialog.js`、`js/snackbar.js` | M3 下拉菜单、对话框（防误触关闭）、顶部提示 |
 | 其他 `js/*.js` | 路由、主题、图标、形状、头像、CQ 码渲染等 |

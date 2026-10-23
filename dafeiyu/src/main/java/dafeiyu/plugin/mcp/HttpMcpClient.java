@@ -5,15 +5,18 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dafeiyu.plugin.rpc.RpcChannel.RpcError;
+import dafeiyu.util.Jsons;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -26,17 +29,17 @@ final class HttpMcpClient extends McpClient {
 
     private final URI url;
     private final Map<String, String> headers;
-    private final Runnable toolsChanged;
+    private final Runnable listChanged;
     private final Consumer<String> problems;
     private final AtomicLong ids = new AtomicLong();
     private volatile String session;
     private volatile boolean closed;
     private volatile Thread listener;
 
-    HttpMcpClient(McpServerConfig config, Runnable toolsChanged, Consumer<String> problems) {
+    HttpMcpClient(McpServerConfig config, Runnable listChanged, Consumer<String> problems) {
         this.url = URI.create(config.url());
         this.headers = config.headers().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().value()));
-        this.toolsChanged = toolsChanged;
+        this.listChanged = listChanged;
         this.problems = problems;
     }
 
@@ -67,7 +70,13 @@ final class HttpMcpClient extends McpClient {
         message.add("params", params);
         HttpRequest request = base(timeoutMs).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(message.toString())).build();
-        HttpResponse<Stream<String>> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofLines());
+        HttpResponse<Stream<String>> response;
+        try {
+            response = CLIENT.send(request, HttpResponse.BodyHandlers.ofLines());
+        } catch (HttpTimeoutException e) {
+            cancelled(id);
+            throw new TimeoutException(method + " timed out after " + timeoutMs + " ms");
+        }
         response.headers().firstValue("Mcp-Session-Id").ifPresent(s -> session = s);
         if (response.statusCode() == 404 && session != null) {
             closed = true;
@@ -125,8 +134,11 @@ final class HttpMcpClient extends McpClient {
         }
         JsonObject m = parsed.getAsJsonObject();
         if (m.has("method") && !m.has("id")) {
-            if (m.get("method").getAsString().equals("notifications/tools/list_changed")) {
-                toolsChanged.run();
+            String method = m.get("method").getAsString();
+            if (method.endsWith("/list_changed")) {
+                listChanged.run();
+            } else if (method.equals("notifications/message")) {
+                problems.accept(logLine(Jsons.optObject(m, "params")));
             }
             return null;
         }

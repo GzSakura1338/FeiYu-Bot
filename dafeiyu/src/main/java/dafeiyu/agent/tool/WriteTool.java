@@ -53,18 +53,20 @@ final class WriteTool extends TextTool {
             boolean existed = Files.isRegularFile(target);
             Charset charset = StandardCharsets.UTF_8;
             boolean bom = false;
+            String before = "";
             if (existed) {
                 byte[] current = TextFile.readBytes(target, display);
                 if (!TextFile.isBinary(current)) {
                     TextFile.Decoded decoded = TextFile.decode(current);
                     charset = decoded.charset();
                     bom = decoded.bom();
+                    before = decoded.text();
                 }
             }
             bom |= content.startsWith(TextFile.BOM);
             content = TextFile.stripBom(content);
             ws.write(target, TextFile.encode(content, charset, bom));
-            return (existed ? "Wrote" : "Created") + " file successfully: " + display;
+            return (existed ? "Wrote" : "Created") + " file successfully: " + display + " (" + LineDiff.of(TextFile.stripBom(before), content).label() + ")";
         } finally {
             lock.unlock();
         }

@@ -32,7 +32,7 @@ final class StdioMcpClient extends McpClient {
         this.channel = channel;
     }
 
-    static StdioMcpClient start(McpServerConfig config, Path data, Runnable toolsChanged, Consumer<String> stderr) throws ToolFailure {
+    static StdioMcpClient start(McpServerConfig config, Path data, Runnable listChanged, Consumer<String> stderr) throws ToolFailure {
         try {
             Files.createDirectories(data);
         } catch (IOException e) {
@@ -79,8 +79,12 @@ final class StdioMcpClient extends McpClient {
                 r.add("roots", new JsonArray());
                 yield r;
             }
-            case "notifications/tools/list_changed" -> {
-                toolsChanged.run();
+            case "notifications/tools/list_changed", "notifications/resources/list_changed", "notifications/prompts/list_changed" -> {
+                listChanged.run();
+                yield null;
+            }
+            case "notifications/message" -> {
+                stderr.accept(logLine(params));
                 yield null;
             }
             default -> {
@@ -150,7 +154,7 @@ final class StdioMcpClient extends McpClient {
 
     @Override
     JsonElement request(String method, JsonObject params, long timeoutMs) throws Exception {
-        return channel.call(method, params, timeoutMs).get(timeoutMs + 500, TimeUnit.MILLISECONDS);
+        return channel.call(method, params, timeoutMs, this::cancelled).get(timeoutMs + 500, TimeUnit.MILLISECONDS);
     }
 
     @Override

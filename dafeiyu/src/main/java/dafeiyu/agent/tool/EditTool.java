@@ -102,7 +102,8 @@ final class EditTool extends TextTool {
             }
             boolean bom = original.bom() || result.startsWith(TextFile.BOM);
             ws.write(target, TextFile.encode(TextFile.stripBom(result), original.charset(), bom));
-            return "Edited " + display + " (" + replacements + " replacement" + (replacements == 1 ? "" : "s") + ")";
+            return "Edited " + display + " (" + applied.size() + " replacement" + (applied.size() == 1 ? "" : "s") + ", "
+                    + LineDiff.of(source, result).label() + ")";
         } finally {
             lock.unlock();
         }

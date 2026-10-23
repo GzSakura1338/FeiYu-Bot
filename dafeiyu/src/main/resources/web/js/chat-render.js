@@ -58,60 +58,226 @@ export function parseArgs(text) {
   }
 }
 
-const toolMeta = name => TOOLS[name] ?? MIND_TOOLS[name];
+const MAX_ARG = 4000;
+const STEER = { tell: '转达', pause: '暂停', resume: '继续', stop: '叫停' };
 
-export function toolTitle(name, args) {
-  const label = toolMeta(name)?.label ?? name;
-  if (name === 'say_in_group') return `${label}（${args.group_id ?? ''}）：${args.text ?? ''}`;
-  if (name === 'say_private') return `${label}（QQ ${args.user_id ?? ''}）：${args.text ?? ''}`;
-  if (name === 'tell_group') return `${label}（${args.group_id ?? ''}）：${args.intent ?? ''}`;
-  if (name === 'tell_private') return `${label}（QQ ${args.user_id ?? ''}）：${args.intent ?? ''}`;
-  if (name === 'settle') return `${label} #${args.id ?? ''}${args.result ? `：${args.result}` : ''}`;
-  if (name === 'remind') return `${label}（${args.at ?? ''}）：${args.what ?? ''}`;
-  if (name === 'find_person') return `${label}「${args.name ?? ''}」`;
-  if (name === 'answer_friend') return `${label}：${args.approve ? '同意' : '拒绝'} QQ ${args.user_id ?? ''}`;
-  if (name === 'answer_group') return `${label}：${args.approve ? '同意' : '拒绝'} 群 ${args.group_id ?? ''}${args.user_id ? ` · QQ ${args.user_id}` : ''}`;
-  if (name === 'read_group') return `${label} ${args.group_id ?? ''}`;
-  if (name === 'recall' || name === 'remember') return `${label} ${args.about ?? ''}${args.text ? `：${args.text}` : ''}`;
-  if (name === 'webfetch') return `${label} ${args.url ?? ''}${args.find ? ` 找「${args.find}」` : ''}${args.offset ? ` 从第 ${args.offset} 字` : ''}`;
-  if (name === 'subagent') return args.continue ? `${label}：接着 #${String(args.continue).replace('#', '')}` : `${label}：${args.title ?? ''}${args.kind === 'build' ? '（动手）' : args.kind === 'research' ? '（查资料）' : ''}`;
-  if (name === 'steer_task') return `${label} ${args.task ? `#${String(args.task).replace('#', '')} ` : ''}${({ tell: '转达', pause: '暂停', resume: '继续', stop: '叫停' })[args.action] ?? ''}`;
-  if (name === 'view_image') return `${label} ${args.image ?? ''}${args.area ? ` · 放大 ${args.area}` : ''}`;
-  if (name === 'qq_api_search') return args.query ? `${label}「${args.query}」` : args.category ? `${label} · ${args.category}` : label;
-  if (name === 'qq_api_call') return `${label} ${args.action ?? ''}`;
-  if (name === 'websearch' || name === 'search') return `${label}「${args.query ?? ''}」`;
-  if (name === 'shell') return `${label} ${args.description || args.command || ''}`;
-  if (name === 'todowrite') {
-    const todos = Array.isArray(args.todos) ? args.todos : [];
-    return `${label}（${todos.filter(t => t.status === 'completed').length}/${todos.length}）`;
-  }
-  if (name === 'patch') {
-    const files = [...(args.patchText ?? '').matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map(m => m[1].trim());
-    return `${label} ${files.slice(0, 3).join('、')}${files.length > 3 ? ` 等 ${files.length} 个` : ''}`;
-  }
-  const target = args.path ?? args.pattern ?? '';
-  if (name === 'grep') return `${label}「${args.pattern ?? ''}」${args.path ? ` · ${args.path}` : ''}`;
-  if (name === 'glob') return `${label} ${args.pattern ?? ''}${args.path ? ` · ${args.path}` : ''}`;
-  return target ? `${label} ${target}` : label;
+function dynamicMeta(name) {
+  const [kind, owner, ...rest] = name.split('__');
+  if (kind === 'mcp' && owner) return { icon: 'lan', label: `MCP · ${owner}`, tool: rest.join('__') };
+  if (kind === 'plugin' && owner) return { icon: 'extension', label: `插件 · ${owner}`, tool: rest.join('__') };
+  return null;
 }
 
-export function toolCard(call) {
-  const card = el('details', 'tool-card');
-  card.dataset.state = 'running';
-  const summary = el('summary', 'tool-summary label-large');
-  const status = el('span', 'tool-status');
-  status.append(createIcon('progress_activity', 'icon-18'));
-  summary.append(createIcon(toolMeta(call.name)?.icon ?? 'build', 'icon-18'),
-    el('span', 'tool-title', toolTitle(call.name, parseArgs(call.arguments))), status);
-  card.append(summary, el('pre', 'tool-output body-small', ''));
+const toolMeta = name => TOOLS[name] ?? MIND_TOOLS[name] ?? dynamicMeta(name) ?? { icon: 'build', label: name };
+
+const join = (...parts) => parts.filter(part => part !== undefined && part !== null && part !== '').join(' · ');
+
+function firstValues(args) {
+  return Object.values(args).filter(v => ['string', 'number', 'boolean'].includes(typeof v)).slice(0, 2).map(String).join(' · ');
+}
+
+function toolDetail(name, args, meta) {
+  const group = args.group_id ? `群 ${args.group_id}` : '';
+  const user = args.user_id ? `QQ ${args.user_id}` : '';
+  switch (name) {
+    case 'say_in_group': case 'tell_group': return join(group, args.text ?? args.intent);
+    case 'say_private': case 'tell_private': return join(user, args.text ?? args.intent);
+    case 'settle': return join(`#${args.id ?? ''}`, args.result);
+    case 'remind': return join(args.at, args.what);
+    case 'find_person': return args.name ? `「${args.name}」` : '';
+    case 'answer_friend': return join(args.approve ? '同意' : '拒绝', user);
+    case 'answer_group': return join(args.approve ? '同意' : '拒绝', group, user);
+    case 'read_group': return join(group, args.count && `${args.count} 条`);
+    case 'recall': case 'remember': return join(args.about, args.term, args.text ?? args.query);
+    case 'webfetch': return join(args.url, args.find && `找「${args.find}」`, args.offset && `从第 ${args.offset} 字`);
+    case 'subagent': return args.continue ? `接着 #${String(args.continue).replace('#', '')}` : join(args.title, args.kind === 'build' ? '动手' : args.kind === 'research' ? '查资料' : '');
+    case 'start_task': return args.title ?? '';
+    case 'steer_task': return join(args.task && `#${String(args.task).replace('#', '')}`, STEER[args.action], args.message);
+    case 'view_image': return join(args.image, args.area && `放大 ${args.area}`);
+    case 'qq_api_search': return args.query ? `「${args.query}」` : args.category ?? '全部分类';
+    case 'qq_api_call': return args.action ?? '';
+    case 'websearch': case 'search': return args.query ? `「${args.query}」` : '';
+    case 'shell': return args.description || args.command || '';
+    case 'mute': return join(group, user, args.minutes && `${args.minutes} 分钟`);
+    case 'unmute': case 'kick': case 'poke': return join(group, user);
+    case 'recall_messages': return join(group, user || '自己', `${args.count ?? 1} 条`);
+    case 'delete_friend': return user;
+    case 'message_stranger': return join(user, args.text);
+    case 'collect_sticker': return args.id ? `#${args.id}` : '';
+    case 'read_forward': return args.id ?? '';
+    case 'skill': return args.name ?? '';
+    case 'mcp_read_resource': return join(args.server, args.uri);
+    case 'mcp_list_resources': return args.server ?? '全部服务';
+    case 'mcp_get_prompt': return join(args.server, args.name ?? '列出全部');
+    case 'grep': return join(args.pattern && `「${args.pattern}」`, args.path);
+    case 'glob': return join(args.pattern, args.path);
+    case 'todowrite': {
+      const todos = Array.isArray(args.todos) ? args.todos : [];
+      return `${todos.filter(t => t.status === 'completed').length}/${todos.length} 完成`;
+    }
+    case 'patch': {
+      const files = [...(args.patchText ?? '').matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map(m => m[1].trim());
+      return `${files.slice(0, 3).join('、')}${files.length > 3 ? ` 等 ${files.length} 个` : ''}`;
+    }
+    default:
+      if (meta.tool) return join(meta.tool, firstValues(args));
+      return args.path ?? args.pattern ?? firstValues(args);
+  }
+}
+
+function clip(text) {
+  return text.length > MAX_ARG ? `${text.slice(0, MAX_ARG)}…（共 ${text.length} 字）` : text;
+}
+
+function pretty(text) {
+  const value = text ?? '';
+  const start = value.search(/(^|\n)\s*[[{]/);
+  if (start < 0) return value;
+  const head = value.slice(0, start);
+  try {
+    return `${head}${head ? '\n' : ''}${JSON.stringify(JSON.parse(value.slice(start)), null, 2)}`;
+  } catch {
+    return value;
+  }
+}
+
+function argsView(raw) {
+  const args = parseArgs(raw);
+  const entries = Object.entries(args);
+  if (!entries.length) {
+    const text = (raw ?? '').trim();
+    return text && text !== '{}' ? el('pre', 'tool-output body-small', clip(text)) : null;
+  }
+  const box = el('div', 'tool-args');
+  for (const [key, value] of entries) {
+    box.append(el('span', 'tool-arg-key label-medium', key),
+      el('span', 'tool-arg-value body-small', clip(typeof value === 'string' ? value : JSON.stringify(value, null, 2))));
+  }
+  return box;
+}
+
+function section(label, body, className = '') {
+  const node = el('div', `tool-section ${className}`.trim());
+  node.append(el('span', 'tool-section-label label-medium', label), body);
+  return node;
+}
+
+function setOpen(card, open) {
+  card.dataset.open = String(open);
+  $('.tool-head', card).setAttribute('aria-expanded', String(open));
+  const fold = $('.tool-fold', card);
+  fold.classList.toggle('open', open);
+  fold.inert = !open;
+}
+
+function foldCard(className, icon, label, detail) {
+  const card = el('div', className);
+  const head = el('div', 'tool-head state-layer');
+  head.setAttribute('role', 'button');
+  head.setAttribute('aria-expanded', 'false');
+  head.tabIndex = 0;
+  const badge = el('span', 'tool-icon');
+  badge.append(createIcon(icon, 'icon-18'));
+  const text = el('span', 'tool-text');
+  text.append(el('span', 'tool-label label-large', label));
+  if (detail) text.append(el('span', 'tool-detail body-small', detail));
+  head.append(badge, text);
+  const fold = el('div', 'tool-fold');
+  fold.inert = true;
+  const inner = el('div', 'tool-fold-inner');
+  fold.append(inner);
+  card.append(head, fold);
+  const toggle = () => setOpen(card, card.dataset.open !== 'true');
+  head.addEventListener('click', toggle);
+  head.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  });
+  return { card, head, inner };
+}
+
+export function noteCard(icon, label, text) {
+  const { card, head, inner } = foldCard('tool-card checkpoint-card', icon, label, '');
+  head.append(createIcon('chevron_right', 'icon-18 tool-chevron'));
+  inner.append(el('pre', 'tool-output body-small', text));
   return card;
+}
+
+const calls = new WeakMap();
+const EDITS = new Set(['edit', 'write', 'patch']);
+const DIFF = /\+(\d+) -(\d+)\)/g;
+
+function lineCount(text) {
+  if (!text) return 0;
+  const lines = text.split(/\r?\n/);
+  return lines[lines.length - 1] === '' ? lines.length - 1 : lines.length;
+}
+
+function diffStats(name, args, output) {
+  const counted = [...(output ?? '').matchAll(DIFF)];
+  if (counted.length) {
+    return counted.reduce((sum, m) => ({ added: sum.added + Number(m[1]), removed: sum.removed + Number(m[2]) }), { added: 0, removed: 0 });
+  }
+  if (name === 'write') return { added: lineCount(args.content), removed: null };
+  if (name === 'edit') {
+    const times = Number(/\((\d+) replacement/.exec(output ?? '')?.[1] ?? 1);
+    const a = (args.oldString ?? '').split(/\r?\n/);
+    const b = (args.newString ?? '').split(/\r?\n/);
+    let start = 0;
+    while (start < a.length && start < b.length && a[start] === b[start]) start++;
+    let endA = a.length;
+    let endB = b.length;
+    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+      endA--;
+      endB--;
+    }
+    return { added: (endB - start) * times, removed: (endA - start) * times };
+  }
+  const lines = (args.patchText ?? '').split(/\r?\n/).filter(line => !line.startsWith('***'));
+  return { added: lines.filter(line => line.startsWith('+')).length, removed: lines.filter(line => line.startsWith('-')).length };
+}
+
+function diffBadge({ added, removed }) {
+  const box = el('span', 'tool-diff label-large');
+  box.append(el('span', 'tool-diff-add', `+${added}`));
+  if (removed !== null) box.append(el('span', 'tool-diff-del', `-${removed}`));
+  return box;
+}
+
+export function toolCard(call, live = false) {
+  const meta = toolMeta(call.name);
+  const { card, head, inner } = foldCard(`tool-card${live ? ' new' : ''}`, meta.icon ?? 'build', meta.label,
+    toolDetail(call.name, parseArgs(call.arguments), meta));
+  card.dataset.state = 'running';
+  if (live) card.dataset.start = String(performance.now());
+  const status = el('span', 'tool-status label-medium');
+  status.append(createIcon('progress_activity', 'icon-18'));
+  head.append(status, createIcon('chevron_right', 'icon-18 tool-chevron'));
+  const args = argsView(call.arguments);
+  if (args) inner.append(section('参数', args));
+  inner.append(section('结果', el('pre', 'tool-output body-small'), 'tool-result'));
+  calls.set(card, call);
+  return card;
+}
+
+function duration(ms) {
+  return ms < 1000 ? `${Math.max(1, Math.round(ms))} 毫秒` : ms < 60_000 ? `${(ms / 1000).toFixed(1)} 秒` : `${Math.floor(ms / 60_000)} 分 ${Math.round(ms % 60_000 / 1000)} 秒`;
 }
 
 export function settleToolCard(card, output, error) {
   card.dataset.state = error ? 'error' : 'done';
-  $('.tool-status', card).replaceChildren(createIcon(error ? 'error' : 'check_circle', 'icon-18'));
-  $('.tool-output', card).textContent = output;
-  if (error) card.open = true;
+  const status = $('.tool-status', card);
+  status.replaceChildren(createIcon(error ? 'error' : 'check_circle', 'icon-18'));
+  const start = Number(card.dataset.start);
+  if (start) status.append(el('span', null, duration(performance.now() - start)));
+  const call = calls.get(card);
+  $('.tool-diff', card)?.remove();
+  if (!error && call && EDITS.has(call.name)) status.before(diffBadge(diffStats(call.name, parseArgs(call.arguments), output)));
+  $('.tool-result .tool-section-label', card).textContent = error ? '出错了' : '结果';
+  $('.tool-output', $('.tool-result', card)).textContent = pretty(output) || '（没有输出）';
+  if (error) setOpen(card, true);
 }
 
 const INNER_OPEN = '<内心>';
@@ -351,7 +517,7 @@ export function createReply(list, attach) {
     toolCall(call) {
       endStep();
       hideTyping();
-      const card = toolCard(call);
+      const card = toolCard(call, true);
       tools.set(call.id, card);
       wrap.append(card);
       scrollDown();

@@ -22,6 +22,8 @@ export function mcpCard(s, reload) {
   const meta = [];
   if (s.serverName) meta.push(s.serverName);
   meta.push(`${s.tools.length} 个工具`);
+  if (s.resources?.length) meta.push(`${s.resources.length} 个资源`);
+  if (s.prompts?.length) meta.push(`${s.prompts.length} 个提示词`);
   if (s.status === 'connected' && s.connectedAt) meta.push(`${ago(s.connectedAt)}连上`);
   if (s.type === 'stdio' && !s.sandbox) meta.push('没开沙盒');
   if (s.qq) meta.push('QQ 里可用');
@@ -58,17 +60,25 @@ export function mcpCard(s, reload) {
   foot.append(actions);
   node.append(icon, text, foot);
   if (s.error) node.append(el('div', 'body-small plugin-problem', s.error));
-  if (s.tools.length) {
-    const tools = el('details', 'plugin-tools');
-    tools.append(el('summary', 'label-medium', `查看 ${s.tools.length} 个工具`));
-    s.tools.forEach(t => {
-      const row = el('div', 'plugin-row');
-      row.append(el('code', 'plugin-code', t.original), el('span', 'body-small', t.description));
-      tools.append(row);
-    });
-    node.append(tools);
-  }
+  const lists = [
+    listing(`${s.tools.length} 个工具`, s.tools.map(t => [t.original, t.description])),
+    listing(`${s.resources?.length ?? 0} 个资源`, (s.resources ?? []).map(r => [r.target, [r.name, r.description].filter(Boolean).join('：')])),
+    listing(`${s.prompts?.length ?? 0} 个提示词`, (s.prompts ?? []).map(p => [p.name, [p.description, p.target && `参数：${p.target}`].filter(Boolean).join('；')])),
+  ].filter(Boolean);
+  node.append(...lists);
   return node;
+}
+
+function listing(label, rows) {
+  if (!rows.length) return null;
+  const box = el('details', 'plugin-tools');
+  box.append(el('summary', 'label-medium', `查看 ${label}`));
+  for (const [code, text] of rows) {
+    const row = el('div', 'plugin-row');
+    row.append(el('code', 'plugin-code', code), el('span', 'body-small', text));
+    box.append(row);
+  }
+  return box;
 }
 
 function button(icon, label, onClick) {

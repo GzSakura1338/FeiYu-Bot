@@ -44,6 +44,18 @@ export const MIND_TOOLS = {
   steer_task: { icon: 'build', label: '管后台任务' },
   qq_api_search: { icon: 'manage_search', label: '查 QQ 接口' },
   qq_api_call: { icon: 'extension', label: 'QQ 接口' },
+  read_forward: { icon: 'forum', label: '读合并转发' },
+  skill: { icon: 'auto_stories', label: '看技能' },
+  start_task: { icon: 'build', label: '交给后台' },
+  recall_messages: { icon: 'history', label: '撤回消息' },
+  mute: { icon: 'person_off', label: '禁言' },
+  unmute: { icon: 'person', label: '解除禁言' },
+  kick: { icon: 'person_off', label: '踢出群' },
+  delete_friend: { icon: 'person_off', label: '删好友' },
+  message_stranger: { icon: 'send', label: '发临时会话' },
+  mcp_list_resources: { icon: 'lan', label: 'MCP 资源列表' },
+  mcp_read_resource: { icon: 'lan', label: '读 MCP 资源' },
+  mcp_get_prompt: { icon: 'lan', label: 'MCP 提示词' },
 };
 
 const ACCESS_HINT = {

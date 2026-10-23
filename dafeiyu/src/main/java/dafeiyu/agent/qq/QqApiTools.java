@@ -165,7 +165,7 @@ public final class QqApiTools {
 
     private String why(Action a) {
         String reason = QqApiPolicy.lockReason(a.name());
-        return reason.isEmpty() ? "主人在设置里关掉了" : reason + "，默认锁着，要用得请主人在网页「设置 › Agent › QQ 接口」里打开";
+        return reason.isEmpty() ? "主人在设置里关掉了" : "高危接口（" + reason + "），默认关着，要用得请主人在网页「设置 › Agent › QQ 接口」里打开";
     }
 
     private String call(Args args, ToolContext context) throws ToolFailure {

@@ -207,7 +207,7 @@ body {
   border-color: transparent; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
 }
 .qqapi-access[data-access="WRITE"] .icon { color: inherit; }
-.kind-chip.qqapi-locked { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+.kind-chip.qqapi-danger { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
 @media (prefers-reduced-motion: reduce) { .qqapi-groups, .qqapi-fold, .qqapi-row, .qqapi-chevron, .qqapi-access { transition: none; } }
 
 .palette-grid { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px 52px; }
@@ -538,27 +538,67 @@ body {
 .composer .icon-button { width: 48px; height: 48px; }
 
 .tool-card {
-  max-width: 100%; min-width: min(360px, 100%); border-radius: var(--md-sys-shape-corner-large);
+  width: min(560px, 100%); max-width: 100%; overflow: hidden; border-radius: var(--md-sys-shape-corner-large);
   background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface-variant);
   border: 1px solid var(--md-sys-color-outline-variant);
+  transition: border-color var(--md-sys-motion-duration-short4) linear;
 }
-.tool-summary {
-  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px; cursor: pointer; list-style: none; user-select: none;
+.tool-card.new { animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both; }
+.tool-head {
+  display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px 8px 10px; cursor: pointer; outline: none; user-select: none;
 }
-.tool-summary::-webkit-details-marker { display: none; }
-.tool-summary > .icon { color: var(--md-sys-color-primary); flex: none; }
-.tool-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--md-sys-color-on-surface); }
-.tool-status { display: grid; flex: none; }
+.tool-head:focus-visible { outline: 3px solid var(--md-sys-color-secondary); outline-offset: -3px; border-radius: inherit; }
+.tool-icon {
+  display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+  transition: background-color var(--md-sys-motion-duration-short4) linear, color var(--md-sys-motion-duration-short4) linear;
+}
+.tool-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.tool-label, .tool-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-label { color: var(--md-sys-color-on-surface); }
+.tool-detail { color: var(--md-sys-color-on-surface-variant); }
+.tool-status { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--md-sys-color-on-surface-variant); font-variant-numeric: tabular-nums; }
+.tool-diff { display: inline-flex; gap: 8px; flex: none; font-variant-numeric: tabular-nums; }
+.tool-diff-add { color: var(--md-custom-color-success); }
+.tool-diff-del { color: var(--md-sys-color-error); }
+.tool-card[data-start] .tool-diff { animation: badge-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate); }
 .tool-card[data-state="running"] .tool-status .icon { animation: spin 1s linear infinite; color: var(--md-sys-color-primary); }
 .tool-card[data-state="done"] .tool-status .icon { color: var(--md-custom-color-success); }
+.tool-card[data-start]:not([data-state="running"]) .tool-status .icon {
+  animation: badge-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate);
+}
 .tool-card[data-state="error"] { border-color: color-mix(in srgb, var(--md-sys-color-error) 40%, transparent); }
-.tool-card[data-state="error"] .tool-status .icon { color: var(--md-sys-color-error); }
+.tool-card[data-state="error"] .tool-icon { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+.tool-card[data-state="error"] .tool-status .icon, .tool-card[data-state="error"] .tool-result .tool-section-label { color: var(--md-sys-color-error); }
+.tool-chevron { flex: none; color: var(--md-sys-color-on-surface-variant); transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized); }
+.tool-head[aria-expanded="true"] .tool-chevron { transform: rotate(90deg); }
+.tool-fold {
+  display: grid; grid-template-rows: 0fr; opacity: 0;
+  transition: grid-template-rows var(--md-sys-motion-duration-medium1) var(--md-sys-motion-easing-emphasized-accelerate),
+    opacity var(--md-sys-motion-duration-short3) linear;
+}
+.tool-fold.open {
+  grid-template-rows: 1fr; opacity: 1;
+  transition: grid-template-rows var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate),
+    opacity var(--md-sys-motion-duration-medium1) linear;
+}
+.tool-fold-inner { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: hidden; padding: 0 12px; }
+.tool-fold.open .tool-fold-inner { padding-bottom: 12px; }
+.tool-section { display: flex; flex-direction: column; gap: 4px; }
+.tool-section-label { color: var(--md-sys-color-on-surface-variant); }
+.tool-card[data-state="running"] .tool-result { display: none; }
+.tool-args {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; padding: 8px 10px;
+  border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-surface-container-highest);
+}
+.tool-arg-key { color: var(--md-sys-color-primary); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.tool-arg-value { max-height: 160px; overflow: auto; color: var(--md-sys-color-on-surface); white-space: pre-wrap; overflow-wrap: anywhere; }
 .tool-output {
-  max-height: 240px; overflow: auto; margin: 0 12px 10px; padding: 8px 10px; border-radius: var(--md-sys-shape-corner-small);
+  max-height: 280px; overflow: auto; margin: 0; padding: 8px 10px; border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-on-surface-variant);
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.tool-output:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .tool-fold, .tool-chevron, .tool-icon, .tool-card { transition: none; } }
 .retry-note {
   display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-custom-color-warning-container); color: var(--md-custom-color-on-warning-container);
