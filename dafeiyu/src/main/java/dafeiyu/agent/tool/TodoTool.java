@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-final class TodoTool implements Tool {
+final class TodoTool extends TextTool {
 
     private static final Set<String> STATUSES = Set.of("pending", "in_progress", "completed", "cancelled");
     private static final int MAX_ITEMS = 50;
@@ -28,7 +28,7 @@ final class TodoTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return """
                 Create and update a todo list for the current task. The user sees it as your working plan.
 
@@ -46,7 +46,7 @@ final class TodoTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         JsonElement raw = args.get("todos");
         if (raw == null || !raw.isJsonArray()) {
             throw new ToolFailure("Missing required parameter: todos (an array of {content, status})");
@@ -62,8 +62,9 @@ final class TodoTool implements Tool {
             if (!item.isJsonObject()) {
                 throw new ToolFailure("Each todo must be an object with content and status");
             }
-            String content = Args.string(item.getAsJsonObject(), "content").strip();
-            String status = Args.string(item.getAsJsonObject(), "status").strip();
+            Args todo = new Args(item.getAsJsonObject());
+            String content = todo.string("content").strip();
+            String status = todo.string("status").strip();
             if (!STATUSES.contains(status)) {
                 throw new ToolFailure("Invalid status '" + status + "': use pending, in_progress, completed or cancelled");
             }

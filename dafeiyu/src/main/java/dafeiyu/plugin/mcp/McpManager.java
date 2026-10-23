@@ -5,9 +5,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dafeiyu.agent.Extensions;
-import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.protocol.ToolSpec;
-import dafeiyu.agent.tool.Toolbox;
+import dafeiyu.agent.tool.Args;
+import dafeiyu.agent.tool.Tool;
+import dafeiyu.agent.tool.ToolResult;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.plugin.manifest.ArgsCheck;
 import dafeiyu.plugin.rpc.ToolResults;
@@ -347,54 +348,51 @@ public final class McpManager {
         return out;
     }
 
-    public List<ToolSpec> tools(boolean qq, boolean mind, Set<String> enabled) {
-        List<ToolSpec> out = new ArrayList<>();
+    public List<Tool> tools(boolean qq, boolean mind, Set<String> enabled) {
+        List<Tool> out = new ArrayList<>();
         for (Server s : sortedServers()) {
             if (!"connected".equals(s.status) || (qq && !s.config.qq()) || (mind && !s.config.mind())) {
                 continue;
             }
             for (ToolView t : s.tools) {
                 if (enabled.contains(t.name())) {
-                    out.add(new ToolSpec(t.name(), "[MCP " + s.config.name() + "] " + t.description(), t.schema().deepCopy()));
+                    out.add(Tool.of(new ToolSpec(t.name(), "[MCP " + s.config.name() + "] " + t.description(), t.schema().deepCopy()),
+                            (args, context) -> call(t.name(), args)));
                 }
             }
         }
         return out;
     }
 
-    public Toolbox.Outcome run(ToolCall call) {
+    private ToolResult call(String name, Args args) {
         for (Server s : servers.values()) {
             for (ToolView t : s.tools) {
-                if (!t.name().equals(call.name())) {
+                if (!t.name().equals(name)) {
                     continue;
                 }
                 McpClient c = s.client;
                 if (c == null || !"connected".equals(s.status)) {
-                    return new Toolbox.Outcome("MCP 服务「" + s.config.name() + "」现在没连上，这个工具用不了", true);
+                    return ToolResult.error("MCP 服务「" + s.config.name() + "」现在没连上，这个工具用不了");
                 }
-                JsonObject args = Jsons.parseObject(call.arguments());
-                if (args == null) {
-                    return new Toolbox.Outcome("Invalid arguments for " + call.name() + ": expected a JSON object", true);
-                }
-                String problem = ArgsCheck.check(t.schema(), args);
+                String problem = ArgsCheck.check(t.schema(), args.json());
                 if (problem != null) {
-                    return new Toolbox.Outcome("Invalid arguments for " + call.name() + ": " + problem, true);
+                    return ToolResult.error("Invalid arguments for " + name + ": " + problem);
                 }
                 long timeout = s.config.timeout() * 1000L;
                 try {
-                    return ToolResults.outcome(c.callTool(t.original(), args, timeout));
+                    return ToolResults.outcome(c.callTool(t.original(), args.json(), timeout));
                 } catch (TimeoutException e) {
-                    return new Toolbox.Outcome("MCP tool " + call.name() + " timed out after " + s.config.timeout() + " s", true);
+                    return ToolResult.error("MCP tool " + name + " timed out after " + s.config.timeout() + " s");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return new Toolbox.Outcome("interrupted", true);
+                    return ToolResult.error("interrupted");
                 } catch (Exception e) {
                     Throwable cause = e.getCause() != null ? e.getCause() : e;
-                    return new Toolbox.Outcome("MCP tool " + call.name() + " failed: " + cause.getMessage(), true);
+                    return ToolResult.error("MCP tool " + name + " failed: " + cause.getMessage());
                 }
             }
         }
-        return new Toolbox.Outcome("Unknown MCP tool: " + call.name(), true);
+        return ToolResult.error("Unknown MCP tool: " + name);
     }
 
     private List<Server> sortedServers() {

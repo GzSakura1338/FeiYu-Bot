@@ -77,6 +77,8 @@ export function toolTitle(name, args) {
   if (name === 'subagent') return args.continue ? `${label}：接着 #${String(args.continue).replace('#', '')}` : `${label}：${args.title ?? ''}${args.kind === 'build' ? '（动手）' : args.kind === 'research' ? '（查资料）' : ''}`;
   if (name === 'steer_task') return `${label} ${args.task ? `#${String(args.task).replace('#', '')} ` : ''}${({ tell: '转达', pause: '暂停', resume: '继续', stop: '叫停' })[args.action] ?? ''}`;
   if (name === 'view_image') return `${label} ${args.image ?? ''}${args.area ? ` · 放大 ${args.area}` : ''}`;
+  if (name === 'qq_api_search') return args.query ? `${label}「${args.query}」` : args.category ? `${label} · ${args.category}` : label;
+  if (name === 'qq_api_call') return `${label} ${args.action ?? ''}`;
   if (name === 'websearch' || name === 'search') return `${label}「${args.query ?? ''}」`;
   if (name === 'shell') return `${label} ${args.description || args.command || ''}`;
   if (name === 'todowrite') {

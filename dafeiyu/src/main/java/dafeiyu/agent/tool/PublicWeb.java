@@ -155,6 +155,10 @@ public final class PublicWeb {
         }
     }
 
+    public static void requirePublic(String url) throws ToolFailure {
+        checkPublic(parse(url));
+    }
+
     static URI parse(String raw) throws ToolFailure {
         URI uri;
         try {

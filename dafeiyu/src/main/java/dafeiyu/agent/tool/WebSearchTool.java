@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 
 import java.time.LocalDate;
 
-final class WebSearchTool implements Tool {
+final class WebSearchTool extends TextTool {
 
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
@@ -18,7 +18,7 @@ final class WebSearchTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Search the web and return the top results with title, URL and a snippet of each page.\n\n"
                 + "Use this for anything you are not sure about or that may have changed: news, recent events, prices, versions, "
                 + "release dates, documentation, how-tos, unfamiliar names and slang. The current date is " + LocalDate.now()
@@ -33,9 +33,9 @@ final class WebSearchTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
-        String query = Args.string(args, "query");
-        Integer count = Args.optInt(args, "numResults");
+    protected String text(Args args, ToolContext context) throws ToolFailure {
+        String query = args.string("query");
+        Integer count = args.optInt("numResults");
         WebSearch.Results results = WebSearch.search(query, count == null || count <= 0 ? WebSearch.DEFAULT_RESULTS : count);
         return WebSearch.render(query.strip(), results);
     }

@@ -22,6 +22,7 @@ import dafeiyu.agent.qq.QqMessages.Incoming;
 import dafeiyu.agent.qq.QqOutbox.Target;
 import dafeiyu.agent.reply.Markup;
 import dafeiyu.agent.sticker.StickerStore;
+import dafeiyu.agent.tool.Tool;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
@@ -123,6 +124,7 @@ public final class QqChatBridge {
     private final QqImages images;
     private final QqVoice voice;
     private final QqRequests requests;
+    private final QqApiTools qqApi;
     private volatile Observer observer;
     private volatile MessageGate gate = MessageGate.NONE;
     private volatile long lastActivity = System.currentTimeMillis();
@@ -153,7 +155,12 @@ public final class QqChatBridge {
                 o.requested(requests.line(r));
             }
         });
-        agent.setRequestTools(requests::forOwner);
+        this.qqApi = new QqApiTools(agent, QqApi.load(), new QqApiPolicy(db), this, outbox, actions, contacts, log);
+        agent.setOwnerTools(() -> {
+            List<Tool> tools = new ArrayList<>(requests.ownerTools());
+            tools.addAll(qqApi.tools());
+            return tools;
+        });
         agent.setElsewhere(this::elsewhere);
         agent.setForwardReader(actions::describeForward);
         agent.setPoker((session, userId) -> {
@@ -329,6 +336,10 @@ public final class QqChatBridge {
 
     public QqActions actions() {
         return actions;
+    }
+
+    public QqApiTools qqApi() {
+        return qqApi;
     }
 
     public QqRequests requests() {

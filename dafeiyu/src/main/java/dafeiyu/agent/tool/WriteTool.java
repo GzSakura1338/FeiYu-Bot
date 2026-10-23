@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.locks.ReentrantLock;
 
-final class WriteTool implements Tool {
+final class WriteTool extends TextTool {
 
     private static final int MAX_CHARS = 10 * 1024 * 1024;
 
@@ -24,7 +24,7 @@ final class WriteTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Writes a file to the local filesystem, overwriting if one exists.\n\n"
                 + "Missing parent directories are created automatically.\n\n"
                 + "Use this tool to create new files or overwrite existing files. For partial changes, use the edit tool instead.";
@@ -36,10 +36,10 @@ final class WriteTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        Path target = ws.resolve(Args.string(args, "path"));
-        String content = Args.string(args, "content");
+        Path target = ws.resolve(args.string("path"));
+        String content = args.string("content");
         if (content.length() > MAX_CHARS) {
             throw new ToolFailure("Content is too large to write (over " + MAX_CHARS / 1024 / 1024 + " MB of text)");
         }

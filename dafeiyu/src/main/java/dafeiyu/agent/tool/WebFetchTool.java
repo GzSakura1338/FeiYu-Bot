@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class WebFetchTool implements Tool {
+final class WebFetchTool extends TextTool {
 
     private record Page(String url, String title, String text, List<HtmlText.Link> links, List<HtmlText.Img> images, String note, long at) {}
 
@@ -49,7 +49,7 @@ final class WebFetchTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return """
                 打开一个公开网页，读里面的内容（只能访问公网，本机和局域网地址会被拒绝）。返回标题、正文，第一次打开时还会列出页面上的链接和图片。
                 - 长网页一次只给一段（约 8000 字），结果里会写还剩多少、用 offset 填几接着读。
@@ -65,15 +65,15 @@ final class WebFetchTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
-        String url = Args.string(args, "url").strip();
-        String format = Args.optString(args, "format");
+    protected String text(Args args, ToolContext context) throws ToolFailure {
+        String url = args.string("url").strip();
+        String format = args.optString("format");
         format = format == null || format.isBlank() ? "markdown" : format.strip().toLowerCase(Locale.ROOT);
         if (!format.equals("markdown") && !format.equals("text") && !format.equals("html")) {
             throw new ToolFailure("format 只能是 markdown、text 或 html");
         }
-        Integer offset = Args.optInt(args, "offset");
-        String find = Args.optString(args, "find");
+        Integer offset = args.optInt("offset");
+        String find = args.optString("find");
         Page page = page(url, format);
         if (find != null && !find.isBlank()) {
             return found(page, find.strip());

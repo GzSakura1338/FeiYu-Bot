@@ -1,7 +1,6 @@
 package dafeiyu.agent;
 
-import dafeiyu.agent.protocol.ToolSpec;
-import dafeiyu.agent.tool.Toolbox;
+import dafeiyu.agent.tool.Tool;
 
 import java.util.List;
 import java.util.Set;
@@ -12,18 +11,8 @@ public interface Extensions {
 
     Extensions NONE = new Extensions() {
         @Override
-        public List<ToolSpec> tools(boolean qq, boolean mind, Set<String> enabled) {
+        public List<Tool> tools(boolean qq, boolean mind, Set<String> enabled) {
             return List.of();
-        }
-
-        @Override
-        public boolean owns(String toolName) {
-            return false;
-        }
-
-        @Override
-        public Toolbox.Outcome run(ToolCall call, String session) {
-            return new Toolbox.Outcome("Unknown tool: " + call.name(), true);
         }
 
         @Override
@@ -41,11 +30,7 @@ public interface Extensions {
         }
     };
 
-    List<ToolSpec> tools(boolean qq, boolean mind, Set<String> enabled);
-
-    boolean owns(String toolName);
-
-    Toolbox.Outcome run(ToolCall call, String session);
+    List<Tool> tools(boolean qq, boolean mind, Set<String> enabled);
 
     String contribute(String session, List<String> people);
 

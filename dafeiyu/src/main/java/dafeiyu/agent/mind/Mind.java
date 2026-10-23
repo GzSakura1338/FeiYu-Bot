@@ -11,6 +11,7 @@ import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.agent.qq.QqChatBridge;
+import dafeiyu.agent.tool.ToolSet;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.util.Clock;
 
@@ -250,10 +251,11 @@ public final class Mind implements QqChatBridge.Observer {
             String now = "【" + LocalTime.now().format(CLOCK) + "】";
             agent.hear(SESSION, now + (perceived.isEmpty() ? "四周安静。" : "\n" + perceived) + (cue == null ? "" : "\n" + cue));
             MindTools tools = new MindTools(agent, bridge, persona.id());
-            ChatTurn turn = new ChatTurn(SESSION, ChatMessage.user(context(persona, perceived)), null, null, "mind", List.of(), Map.of(), true).withTools(tools);
+            ToolSet set = tools.toolSet();
+            ChatTurn turn = new ChatTurn(SESSION, ChatMessage.user(context(persona, perceived)), null, null, "mind", List.of(), Map.of(), true).withTools(set);
             ChatResult result = agent.chat(turn, StreamListener.NONE);
             String flat = result.content().replaceAll("\\s+", " ").strip();
-            notice(flat, !perceived.isEmpty() || tools.used());
+            notice(flat, !perceived.isEmpty() || set.used());
             String thought = abbreviate(flat, 160);
             if (!thought.isEmpty() && agent.guard().scan(thought) == null) {
                 agent.mood().remember(persona.id(), thought, SESSION);
@@ -263,7 +265,7 @@ public final class Mind implements QqChatBridge.Observer {
             if (!tools.spoke().isEmpty()) {
                 log.info("mind: decided to talk in " + tools.spoke().size() + " group(s)");
             }
-            return pace(tools.used(), pending());
+            return pace(set.used(), pending());
         } catch (AgentException e) {
             log.warn("mind: a thought failed: " + e.getMessage());
             return FAILED_MS;

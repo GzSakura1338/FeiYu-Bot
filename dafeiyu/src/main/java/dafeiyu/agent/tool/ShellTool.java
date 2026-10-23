@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-final class ShellTool implements Tool {
+final class ShellTool extends TextTool {
 
     private static final int DEFAULT_TIMEOUT = 60;
     private static final int MAX_TIMEOUT = 600;
@@ -88,13 +88,8 @@ final class ShellTool implements Tool {
             + "npm install works in the working directory. Downloads can be slow; raise timeout for big ones";
 
     @Override
-    public String description() {
-        return description(false, false);
-    }
-
-    @Override
-    public String description(boolean network, boolean direct) {
-        return direct ? DIRECT : DESCRIPTION.formatted(network ? ONLINE : OFFLINE);
+    public String description(ToolContext context) {
+        return context.direct() ? DIRECT : DESCRIPTION.formatted(context.network() ? ONLINE : OFFLINE);
     }
 
     @Override
@@ -103,21 +98,21 @@ final class ShellTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("windows")) {
             throw new ToolFailure("The sandboxed shell is only available on Windows");
         }
         Workspace ws = context.workspace();
-        String command = Args.string(args, "command").strip();
+        String command = args.string("command").strip();
         if (command.isEmpty()) {
             throw new ToolFailure("command is empty");
         }
         if (command.length() > MAX_COMMAND) {
             throw new ToolFailure("Command is too long (over " + MAX_COMMAND + " characters); write a script file and run that instead");
         }
-        Integer timeout = Args.optInt(args, "timeout");
+        Integer timeout = args.optInt("timeout");
         int seconds = timeout == null || timeout == 0 ? DEFAULT_TIMEOUT : Math.min(timeout, MAX_TIMEOUT);
-        String workdir = Args.optString(args, "workdir");
+        String workdir = args.optString("workdir");
         Path dir = workdir == null || workdir.isBlank() ? ws.root() : ws.existingDirectory(workdir);
         if (!SLOTS.tryAcquire()) {
             throw new ToolFailure("Two commands are already running; wait for them to finish");
@@ -235,7 +230,7 @@ final class ShellTool implements Tool {
             args.addProperty("command", command);
             args.addProperty("timeout", 20);
             out.append(out.isEmpty() ? "" : "\n\n").append("> ").append(command).append('\n')
-                    .append(new ShellTool().run(args, new ToolContext(ws, null, network, direct)));
+                    .append(new ShellTool().text(new Args(args), new ToolContext("", "", ws, null, network, direct)));
         }
         return out.toString();
     }

@@ -14,6 +14,8 @@
 
 **注释**：项目不写注释，改完运行 `python scripts/strip-comments.py`（`--check` 只检查）。
 
+**NapCat 升级后**：在本目录运行 `node scripts/napcat-api.mjs`，从 `../napcat/napcat.mjs` 重新生成 QQ 接口清单 `src/main/resources/napcat-api.json`，再重启。
+
 ## Agent
 
 - 网页「Agent」分六个子页：模型 / 人格 / 工作目录 / 会话 / 记忆 / 表情包（地址 `#agent/models`、`#agent/personas`、`#agent/workspace`、`#agent/sessions`、`#agent/memory`、`#agent/stickers`）；内心是会话列表里置顶的一项，旧的 `#agent/chat`、`#agent/mind` 跳到会话
@@ -108,6 +110,14 @@
   - 编辑保留文件原来的编码（UTF-8 / GBK / BOM）和换行（CRLF / LF）
   - QQ 权限：默认不允许；可改为指定 QQ 号或所有人（群里按发消息的人判断）。网页测试对话始终可用
   - 模型拒绝工具参数时自动标记「不支持工具调用」并改回普通对话，历史里的工具记录转成文字
+- QQ 接口（`QqApi`、`QqApiPolicy`、`QqApiTools`，「设置 › Agent › QQ 接口」）：NapCat 的全部 180 个接口（OneBot 11 标准 36 个、go-cqhttp 扩展 32 个、NapCat 扩展 112 个）包装成两个工具，不把 180 个工具定义全塞进请求：
+  - `qq_api_search` 按关键词或分类查接口，返回接口名、中文作用、每个参数是否必填、类型和说明；不带参数时列出 14 个分类
+  - `qq_api_call` 填接口名和参数对象调用；先查接口在不在、开没开，再查必填参数，返回的数据数组只列前 40 项、长字符串截断
+  - 谁能用：内心，以及主人的会话（主人私聊、群里主人叫她、控制台、网页测试对话）；别人的会话里没有，别人托的事照旧用 `<去做>` 交给内心判断
+  - 接口清单 `src/main/resources/napcat-api.json` 由 `node scripts/napcat-api.mjs` 从 `../napcat/napcat.mjs` 的接口注册表抽出来（名字、NapCat 自带的中文说明、参数 Schema，按功能分 14 类）；NapCat 升级后重跑一次即可
+  - 分级：查询类（`get_`、`fetch_` 等）默认只读，其余默认「会改动」，设置里点标签就能在两者之间切换；凭证（cookies、csrf、clientkey、rkey）、退出登录 / 重启 / 改资料和头像、退群、原始数据包和调试接口、流式接口共 25 个默认锁着。每个接口都能单独开关，只存和默认不同的（settings 表 `agent.qqapi.enabled`、`agent.qqapi.overrides` 开关，`agent.qqapi.access` 只读 / 会改动）
+  - 保护：发纯文字消息（`send_group_msg` 等）改走原来的发送管线（格式化、内容审核、记进聊天记录），禁言 / 踢人 / 删好友 / 拍一拍走 `QqActions` 和 `QqChatBridge` 原来的检查（要管理员、动不了主人和群主）；批量踢人、撤销管理员、撤回主人的消息直接拒绝；其余会改动的先把参数里的文字过内容审核，群里的操作在会话里留一行「（你用 QQ 接口……）」；文件参数只认公网网址、`base64://` 和工作目录里的文件，网址必须是公网，参数里不许写 CQ 码；会改动的调用每分钟最多 30 次
+- 工具结构（`agent.tool`）：所有工具都实现同一个 `Tool` 接口（名字、说明、参数 Schema、`run(Args, ToolContext)` 返回 `ToolResult`）。纯文字结果的类继承 `TextTool`，小工具用 `Tool.text(名字, 说明, Schema, 处理函数)` 当场定义。一轮能用哪些工具由 `ToolSet` 决定：`TurnRunner` 按会话和权限拼默认的一套，内心（`MindTools.toolSet()`）、子 agent 查资料（`ResearchTools.create`）各拼自己的；`ToolSet.run` 统一负责找工具、解析参数、把 `ToolFailure` 和意外异常变成错误结果、截断 5 万字以上的输出。加新工具只要写一个 `Tool`，放进对应的 `ToolSet`。插件和 MCP 的工具也是 `Tool`（`Extensions.tools` 直接返回）
 - 失败重试（移植自 opencode 的错误分类和重试策略）：限流、5xx、断流、超时会自动重试（间隔 2、4、8、10…秒，最多 10 次，超时最多 3 次，遵守 `retry-after`）；Key 无效、余额不足、内容审核、请求错误不重试
 - 流式输出：三种协议都用 SSE 流式请求，网页测试对话边生成边显示，思考过程、工具调用卡片、重试提示、发送的文件分别展示；流式数据 15 分钟没动静判定为卡住
 - 缓存：Anthropic 在系统提示词和最后一条消息上打 `cache_control` 断点；OpenAI 隐式前缀缓存，Responses 带 `prompt_cache_key`
@@ -139,9 +149,10 @@
 | `onebot` | `NapCatServer`、`NapCatService`、`PendingActions`、`EventFormatter`、`NapCatStatus` | OneBot v11 反向 WebSocket、运行中切换监听、事件订阅 |
 | `agent` | `ChatAgent` | 对外入口：按会话加锁后交给 `TurnRunner`；收消息、清空会话、看图检测、模型列表 |
 | | `TurnRunner`、`Prompt` | 一轮对话：组装请求 → 调模型 → 执行工具 → 逐步落库，处理超长压缩、看图/工具不支持时的回退、内容审核；系统提示词 |
-| | `BackgroundTasks`、`SubagentSettings`、`ResearchTools` | 后台任务（QQ 里托的事）和内心的子 agent：两个独立的并发名额、时限和到点收尾、结果送回内心；子 agent 设置；查资料用的只读工具 |
+| | `BackgroundTasks`、`SubagentSettings`、`ResearchTools` | 后台任务（QQ 里托的事）和内心的子 agent：两个独立的并发名额、时限和到点收尾、结果送回内心、管后台任务的 `steer_task` 工具；子 agent 设置；查资料用的只读工具集 |
+| | `ChatTools` | 聊天会话的工具：`read_forward`、`recall`、`skill`、`start_task`（前两样内心也用） |
 | | `ImageViewer` | 看图放大工具：取图（图片编号、表情包、网址、工作目录）、画格子、按格子或方位从原图裁剪放大 |
-| | `ChatTurn`、`ChatMessage`、`ChatResult`、`ToolCall`、`ToolSet`、`StreamListener`、`AgentException` 等 | 一轮的输入（可带自己的一套工具）、消息与结果、流式事件、错误分类 |
+| | `ChatTurn`、`ChatMessage`、`ChatResult`、`ToolCall`、`StreamListener`、`AgentException` 等 | 一轮的输入（可带自己的一套工具）、消息与结果、流式事件、错误分类 |
 | | `SessionMonitor`、`SessionSummary`、`SessionDetail` | 正在进行的回复（实时事件、停止）、会话列表与明细 |
 | `agent.model` | `AgentStore`、`ModelProfile`、`ModelLimits`、`ModelRetry`、`Capabilities`、`VisionProbe`、`SystemRoleProbe`、`ImageLoader` | 模型配置与各个开关、上下文窗口、重试策略、能力探测、图片下载 |
 | `agent.persona` | `Persona`、`PersonaStore` | 人格与主人 |
@@ -150,9 +161,11 @@
 | `agent.memory` | `Mood`、`MemoryStore`、`SkillStore`、`SkillPack`、`Reflection`、`StyleStudy`、`KnowledgeCurator` | 心情、长期记忆分区与回忆（按来源控制隐私，私聊来源只在本私聊可见、最近在别处）、一天一篇的日记和按主题的自我认识、学会的技能、自我总结与整理 |
 | `agent.mind` | `Mind`、`MindTools` | 内心：一直在想的意识流、接别处托付的事、想事情用的工具（看群、翻记录、回想、找人、去群里说、私聊、拍一拍、记下）；私聊只感知「谁来找过」，不看内容 |
 | `agent.qq` | `QqChatBridge`、`QqOutbox`、`QqContacts`、`QqBackfill`、`QqActions`、`QqRequests`、`QqImages`、`QqVoice`、`QqCards`、`GroupState`、`QqMessages`、`QqText`、`QqFaces` | 收消息与调度（群聊和私聊都即收即存、忙时排队）、主动开口；NapCat 每次连上后补拉断线期间漏掉的消息（只拉最近一周有动静的群和私聊，10 分钟内的照常回复）；统一的发送管线（格式化、审核、表情包、文件、拍一拍）；群列表、好友与找人；群管理；好友申请、进群邀请和进群申请（存在 settings 表 `agent.qq.requests`，连上后用 `get_group_system_msg` 和 `get_doubt_friends_add_request` 补拉，3 天过期）；每个群的状态；消息解析与 @ 转换；回复格式；QQ 表情 |
+| | `QqApi`、`QqApiPolicy`、`QqApiTools` | QQ 接口：NapCat 接口清单（读 `napcat-api.json`、按关键词搜）、每个接口的分级和开关、`qq_api_search` / `qq_api_call` 两个工具和调用前的检查 |
 | `agent.safety` | `ContentGuard` | 内容红线：关键词表 + 模型审核 |
 | `agent.sticker` | `StickerStore`、`StickerKeeper` | 表情包库、后台下载和认图、收藏导入 |
-| `agent.tool` | `Workspace`、`WorkspaceStore`、`Toolbox`、`ReadTool`、`ListTool`、`MoveTool`、`DeleteTool` 等 | 工作目录沙箱、设置与 QQ 权限、工具注册与执行 |
+| `agent.tool` | `Tool`、`TextTool`、`ToolSet`、`ToolResult`、`ToolContext`、`Args`、`ToolFailure` | 统一的工具结构：工具接口和快捷定义、一轮的工具集与统一执行、结果、每轮的上下文（会话、QQ 号、工作目录、发文件、沙盒选项）、参数读取（QQ 号、群号、整数、布尔） |
+| | `Workspace`、`WorkspaceStore`、`Toolbox`、`ReadTool`、`ListTool`、`MoveTool`、`DeleteTool` 等 | 工作目录沙箱、设置与 QQ 权限、内置的文件和网页工具 |
 | `agent.protocol` | `OpenAiChatProtocol`、`OpenAiResponsesProtocol`、`AnthropicProtocol`、`StreamCollector`、`HttpJson`、`ProviderErrors` | 三种协议（含工具调用）、流式结果收集、SSE 与空闲超时、错误分类 |
 | `agent`、`agent.qq` | `Extensions`、`MessageGate` | 插件挂进来的两个接口：工具 / 提示词补充 / 内心念头，收发消息的拦截和过滤（不依赖 `plugin` 包） |
 | `plugin` | `PluginHost`、`PluginDispatcher`、`PluginScheduler`、`PluginProcess`、`PluginSlot`、`PluginView` | 插件生命周期（扫描、启停、崩溃重启、开发模式）、把消息 / 命令 / 工具 / 提示词 / 过滤分发给插件、定时任务、子进程 |
@@ -162,7 +175,7 @@
 | `plugin.store` | `PluginStore`、`Dpapi` | 启用状态、授权、设置（密钥用 DPAPI 加密）、kv、插件日志 |
 | `plugin.install` | `PluginInstaller` | zip / Git / 网址安装、升级、卸载 |
 | `plugin.mcp` | `McpManager`、`McpClient`、`StdioMcpClient`、`HttpMcpClient`、`McpServerConfig` | MCP 客户端 |
-| `web` | `WebConsole`、`ApiHandler`、`MediaHandler`、`WsProfileHandler`、`AgentHandler`、`SessionHandler`、`MindHandler`、`MemoryHandler`、`StickersHandler`、`FilesHandler`、`PluginHandler`、`McpHandler`、`PluginPageHandler`、`QqDirectory`、`SseWriter`、`StaticFileHandler`、`Requests`、`HttpResponses` | HTTP 服务和接口（会话列表 / 实时事件 / 命令、内心状态与「想一想」、记忆与回顾、表情包、工作目录文件、插件和 MCP 管理、插件自定义页面、群名和好友昵称） |
+| `web` | `WebConsole`、`ApiHandler`、`MediaHandler`、`WsProfileHandler`、`AgentHandler`、`SessionHandler`、`MindHandler`、`MemoryHandler`、`StickersHandler`、`FilesHandler`、`QqApiHandler`、`PluginHandler`、`McpHandler`、`PluginPageHandler`、`QqDirectory`、`SseWriter`、`StaticFileHandler`、`Requests`、`HttpResponses` | HTTP 服务和接口（会话列表 / 实时事件 / 命令、内心状态与「想一想」、记忆与回顾、表情包、工作目录文件、QQ 接口清单和开关 `/api/agent/qqapi`、插件和 MCP 管理、插件自定义页面、群名和好友昵称） |
 | `util` | `Jsons`、`Texts` | JSON 取值、文本截断 |
 
 依赖：Java-WebSocket、gson、sqlite-jdbc。
@@ -171,7 +184,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `index.html` | 页面骨架：概览 / 事件日志 / Agent / 插件 / Token 用量 / 设置（连接、Agent、外观、归档、关于五个分类，`js/settings-page.js`；Agent 分类是内心子 agent 的开关和限制、每天 0 点记忆整理的开关，`js/settings-agent.js`）+ 对话框 |
+| `index.html` | 页面骨架：概览 / 事件日志 / Agent / 插件 / Token 用量 / 设置（连接、Agent、外观、归档、关于五个分类，`js/settings-page.js`；Agent 分类是内心子 agent 的开关和限制、每天 0 点记忆整理的开关，`js/settings-agent.js`；QQ 接口的总开关和按分类折叠的每个接口开关，`js/settings-qqapi.js`）+ 对话框 |
 | `js/plugins.js`、`js/plugin-detail.js`、`js/plugin-settings.js`、`js/plugin-install.js`、`js/plugin-mcp.js`、`css/plugins.css` | 插件列表与开关、插件详情（权限、允许的群、日志、定时任务、卸载）、按 Schema 生成的设置表单、安装流程、MCP 服务 |
 | `css/theme.css` | MD3 颜色角色（亮/暗），以 M3 基准紫 `#6750A4` 生成 |
 | `css/tokens.css`、`components.css`、`layout.css`、`motion.css` | 令牌、组件、布局、动效 |

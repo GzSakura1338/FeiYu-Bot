@@ -42,6 +42,8 @@ export const MIND_TOOLS = {
   view_image: { icon: 'visibility', label: '看图' },
   subagent: { icon: 'build', label: '交给子 agent' },
   steer_task: { icon: 'build', label: '管后台任务' },
+  qq_api_search: { icon: 'manage_search', label: '查 QQ 接口' },
+  qq_api_call: { icon: 'extension', label: 'QQ 接口' },
 };
 
 const ACCESS_HINT = {

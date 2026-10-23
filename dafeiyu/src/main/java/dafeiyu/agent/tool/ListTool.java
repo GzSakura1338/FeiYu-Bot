@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-final class ListTool implements Tool {
+final class ListTool extends TextTool {
 
     private static final int LIMIT = 200;
     private static final int MAX_DEPTH = 3;
@@ -22,7 +22,7 @@ final class ListTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "List files and folders in a directory as a tree (up to 3 levels deep), with file sizes. Use it to see how the working directory is organized before reading, moving or tidying files.";
     }
 
@@ -32,10 +32,10 @@ final class ListTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        Path dir = ws.existingDirectory(Args.optString(args, "path"));
-        boolean hidden = Args.optBool(args, "hidden", false);
+        Path dir = ws.existingDirectory(args.optString("path"));
+        boolean hidden = args.bool("hidden", false);
         List<String> lines = new ArrayList<>();
         lines.add(ws.relative(dir) + "/");
         int[] count = {0};

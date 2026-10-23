@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.locks.ReentrantLock;
 
-final class MoveTool implements Tool {
+final class MoveTool extends TextTool {
 
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
@@ -21,7 +21,7 @@ final class MoveTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Move or rename a file or folder inside the working directory. Use it to organize files into folders.";
     }
 
@@ -31,17 +31,17 @@ final class MoveTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        Path from = ws.resolve(Args.string(args, "from"));
+        Path from = ws.resolve(args.string("from"));
         if (!Files.exists(from)) {
-            throw new ToolFailure("File not found: " + Args.string(args, "from"));
+            throw new ToolFailure("File not found: " + args.string("from"));
         }
-        Path to = ws.resolve(Args.string(args, "to"));
+        Path to = ws.resolve(args.string("to"));
         ReentrantLock lock = Workspace.lock(from);
         lock.lock();
         try {
-            ws.move(from, to, Args.optBool(args, "overwrite", false));
+            ws.move(from, to, args.bool("overwrite", false));
         } finally {
             lock.unlock();
         }

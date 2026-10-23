@@ -1,15 +1,15 @@
 package dafeiyu.agent;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import dafeiyu.agent.model.ImageLoader;
-import dafeiyu.agent.protocol.ToolSpec;
 import dafeiyu.agent.sticker.StickerStore;
+import dafeiyu.agent.tool.Args;
 import dafeiyu.agent.tool.PublicWeb;
+import dafeiyu.agent.tool.Tool;
+import dafeiyu.agent.tool.ToolContext;
 import dafeiyu.agent.tool.ToolFailure;
-import dafeiyu.agent.tool.Toolbox;
+import dafeiyu.agent.tool.ToolResult;
 import dafeiyu.agent.tool.Workspace;
-import dafeiyu.util.Jsons;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -35,21 +35,21 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class ImageViewer {
+public final class ImageViewer implements Tool {
 
     public static final String NAME = "view_image";
-    public static final ToolSpec SPEC = new ToolSpec(NAME, """
+    private static final String DESCRIPTION = """
             看一张图，看不清的地方可以放大。图可以是：聊天里的 [图片#12]（填 12）、[表情包#5]（填 表情包#5）、网页上的图片网址，或者工作目录里的图片文件。
             - 不写 area 就看整张图，图上会画好 4×4 的格子：列 A–D 从左到右，行 1–4 从上到下。
             - 哪块字太小、细节看不清，就用 area 填格子放大，比如 B2，或者 B2:C3 这样一大块；也可以写 左上、右下、上半、下半、中间 这样的方位，\
             或者用百分比框 30,40,60,55（左、上、右、下，占整张图的百分比）。
-            - 放大是从原图裁出来的，比聊天里直接看到的清楚得多。截图、长图、表格、小字，先看整张，再放大要读的那块。""",
-            JsonParser.parseString("""
-                    {"type": "object", "properties": {
-                      "image": {"type": "string", "description": "哪张图：图片编号（[图片#12] 填 12）、表情包#编号、图片网址，或工作目录里的图片路径"},
-                      "area": {"type": "string", "description": "要放大的地方：格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55）；不写就看整张"},
-                      "grid": {"type": "boolean", "description": "看整张图时要不要画格子，默认画"}
-                    }, "required": ["image"]}""").getAsJsonObject());
+            - 放大是从原图裁出来的，比聊天里直接看到的清楚得多。截图、长图、表格、小字，先看整张，再放大要读的那块。""";
+    private static final JsonObject PARAMETERS = Args.schema("""
+            {"type": "object", "properties": {
+              "image": {"type": "string", "description": "哪张图：图片编号（[图片#12] 填 12）、表情包#编号、图片网址，或工作目录里的图片路径"},
+              "area": {"type": "string", "description": "要放大的地方：格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55）；不写就看整张"},
+              "grid": {"type": "boolean", "description": "看整张图时要不要画格子，默认画"}
+            }, "required": ["image"]}""");
 
     private static final int MAX_BYTES = 15 * 1024 * 1024;
     private static final int MAX_SIDE = 1568;
@@ -69,13 +69,35 @@ public final class ImageViewer {
             Map.entry("中间", new double[] {.25, .25, .75, .75}), Map.entry("顶部", new double[] {0, 0, 1, .34}),
             Map.entry("底部", new double[] {0, .66, 1, 1}), Map.entry("中部", new double[] {0, .33, 1, .67}));
 
-    private ImageViewer() {}
+    private final ChatAgent agent;
+    private final boolean workspaceFiles;
 
-    public static Toolbox.Outcome run(ChatAgent agent, String arguments, Workspace workspace) {
-        JsonObject args = Jsons.parseObject(arguments);
-        String ref = args == null ? "" : Jsons.optString(args, "image").strip();
-        String area = args == null ? "" : Jsons.optString(args, "area").strip();
-        boolean grid = args == null || !args.has("grid") || !args.get("grid").isJsonPrimitive() || args.get("grid").getAsBoolean();
+    public ImageViewer(ChatAgent agent, boolean workspaceFiles) {
+        this.agent = agent;
+        this.workspaceFiles = workspaceFiles;
+    }
+
+    @Override
+    public String name() {
+        return NAME;
+    }
+
+    @Override
+    public String description(ToolContext context) {
+        return DESCRIPTION;
+    }
+
+    @Override
+    public JsonObject parameters() {
+        return PARAMETERS;
+    }
+
+    @Override
+    public ToolResult run(Args args, ToolContext context) throws ToolFailure {
+        String ref = args.text("image");
+        String area = args.text("area");
+        boolean grid = args.bool("grid", true);
+        Workspace workspace = workspaceFiles ? context.workspace() : null;
         try {
             if (ref.isEmpty()) {
                 throw new ToolFailure("要看哪张图？聊天里的图填编号（[图片#12] 就填 12），网页上的图填网址");
@@ -87,7 +109,7 @@ public final class ImageViewer {
                 if (!area.isEmpty()) {
                     throw new ToolFailure(name[0] + " 是这台电脑解不开的格式，没法放大，只能不写 area 看整张");
                 }
-                return new Toolbox.Outcome(name[0] + "（这种格式没法画格子和放大，下面是整张图）", false, List.of(ImageLoader.fromBytes(bytes)));
+                return ToolResult.withImages(name[0] + "（这种格式没法画格子和放大，下面是整张图）", List.of(ImageLoader.fromBytes(bytes)));
             }
             int w = image.getWidth();
             int h = image.getHeight();
@@ -97,9 +119,9 @@ public final class ImageViewer {
                 if (grid) {
                     drawGrid(view);
                 }
-                return new Toolbox.Outcome(name[0] + "（原图 " + w + "×" + h + "）" + (grid
+                return ToolResult.withImages(name[0] + "（原图 " + w + "×" + h + "）" + (grid
                         ? "。图上画了 4×4 的格子：列 A–D 从左到右，行 1–4 从上到下；哪块看不清，就用 area 填格子放大（比如 B2 或 B2:C3）。" : "。"),
-                        false, List.of(encode(view)));
+                        List.of(encode(view)));
             }
             double[] r = region(area);
             int x1 = clamp((int) Math.floor((r[0] - MARGIN) * w), w);
@@ -112,14 +134,10 @@ public final class ImageViewer {
             BufferedImage crop = image.getSubimage(x1, y1, x2 - x1, y2 - y1);
             double zoom = Math.min(MAX_ZOOM, (double) MAX_SIDE / Math.max(crop.getWidth(), crop.getHeight()));
             BufferedImage view = scale(crop, zoom);
-            return new Toolbox.Outcome("放大了" + name[0] + " 的「" + area + "」（原图 " + w + "×" + h + "，这块 " + crop.getWidth() + "×" + crop.getHeight()
-                    + (zoom > 1.05 ? "，放大了 " + String.format(Locale.ROOT, "%.1f", zoom) + " 倍" : "") + "）。", false, List.of(encode(view)));
-        } catch (ToolFailure e) {
-            return new Toolbox.Outcome(e.getMessage(), true);
+            return ToolResult.withImages("放大了" + name[0] + " 的「" + area + "」（原图 " + w + "×" + h + "，这块 " + crop.getWidth() + "×" + crop.getHeight()
+                    + (zoom > 1.05 ? "，放大了 " + String.format(Locale.ROOT, "%.1f", zoom) + " 倍" : "") + "）。", List.of(encode(view)));
         } catch (AgentException e) {
-            return new Toolbox.Outcome("这张图打不开：" + e.getMessage(), true);
-        } catch (RuntimeException e) {
-            return new Toolbox.Outcome("看图出错了：" + e, true);
+            throw new ToolFailure("这张图打不开：" + e.getMessage());
         }
     }
 

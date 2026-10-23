@@ -2,16 +2,14 @@ package dafeiyu.plugin.rpc;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import dafeiyu.agent.tool.Toolbox;
+import dafeiyu.agent.tool.ToolResult;
 import dafeiyu.util.Jsons;
 
 public final class ToolResults {
 
-    public static final int MAX_OUTPUT = 50_000;
-
     private ToolResults() {}
 
-    public static Toolbox.Outcome outcome(JsonElement r) {
+    public static ToolResult outcome(JsonElement r) {
         String text;
         boolean error = false;
         if (r == null || r.isJsonNull()) {
@@ -25,10 +23,7 @@ public final class ToolResults {
         } else {
             text = r.toString();
         }
-        if (text.length() > MAX_OUTPUT) {
-            text = text.substring(0, MAX_OUTPUT) + "\n[Output truncated]";
-        }
-        return new Toolbox.Outcome(text.isEmpty() ? "(no output)" : text, error);
+        return new ToolResult(text.isEmpty() ? "(no output)" : text, error);
     }
 
     private static String content(JsonElement content, JsonObject whole) {

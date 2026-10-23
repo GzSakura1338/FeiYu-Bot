@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-final class GrepTool implements Tool {
+final class GrepTool extends TextTool {
 
     private static final long MAX_FILE_BYTES = 5L * 1024 * 1024;
     private static final int MAX_PREVIEW = 500;
@@ -73,7 +73,7 @@ final class GrepTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Search file contents using regular expression syntax or literal text matching. Use it to locate specific code, symbols, "
                 + "or text patterns, and narrow searches with `path` or `include`. Returns matching file paths, line numbers, and line previews.";
     }
@@ -84,26 +84,26 @@ final class GrepTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        String text = Args.string(args, "pattern");
+        String text = args.string("pattern");
         if (text.isEmpty()) {
             throw new ToolFailure("Pattern must not be empty");
         }
-        int flags = Args.optBool(args, "caseSensitive", true) ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+        int flags = args.bool("caseSensitive", true) ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
         Pattern pattern;
         try {
-            pattern = Pattern.compile(Args.optBool(args, "literal", false) ? Pattern.quote(text) : text, flags);
+            pattern = Pattern.compile(args.bool("literal", false) ? Pattern.quote(text) : text, flags);
         } catch (PatternSyntaxException e) {
             throw new ToolFailure("Invalid regex pattern: " + e.getDescription());
         }
-        String include = Args.optString(args, "include");
+        String include = args.optString("include");
         Pattern filter = include == null || include.isBlank() ? null : FileWalker.glob(include.strip());
-        Integer limitArg = Args.optInt(args, "limit");
+        Integer limitArg = args.optInt("limit");
         int limit = limitArg == null || limitArg < 1 ? FileWalker.DEFAULT_LIMIT : limitArg;
-        Path target = ws.resolve(Args.optString(args, "path"));
+        Path target = ws.resolve(args.optString("path"));
         if (!Files.exists(target)) {
-            throw new ToolFailure("Search path does not exist: " + Args.optString(args, "path"));
+            throw new ToolFailure("Search path does not exist: " + args.optString("path"));
         }
         List<Hit> hits = new ArrayList<>();
         long deadline = System.nanoTime() + FileWalker.TIMEOUT_MS * 1_000_000;

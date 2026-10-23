@@ -2,9 +2,9 @@ package dafeiyu.agent;
 
 import com.google.gson.Gson;
 import dafeiyu.agent.intercom.Intercom;
-import dafeiyu.agent.protocol.ToolSpec;
+import dafeiyu.agent.tool.Tool;
 import dafeiyu.agent.tool.ToolFailure;
-import dafeiyu.agent.tool.Toolbox;
+import dafeiyu.agent.tool.ToolSet;
 import dafeiyu.agent.tool.Workspace;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
@@ -135,22 +135,13 @@ public final class BackgroundTasks {
     private static final String BUILD_RULES = "在工作目录里把它完整做完（写文件、改文件、查资料、运行检查都可以），按最合理的理解直接做，不要停下来提问。"
             + "做完后用两三句话说明做好了什么、怎么用，并写出做好的文件路径（相对工作目录）。";
     private static final String WRAP_UP = "时间到了，停下来，不要再用工具。把目前查到、做到的整理成结论交回：做到哪一步、已经确定的、还没弄完的。";
-    private static final ToolSet NO_TOOLS = new ToolSet() {
-        @Override
-        public List<ToolSpec> specs() {
-            return List.of();
-        }
-
-        @Override
-        public Toolbox.Outcome run(ToolCall call) {
-            return new Toolbox.Outcome("现在不能再用工具了", true);
-        }
-
-        @Override
-        public int maxSteps() {
-            return 1;
-        }
-    };
+    public static final String STEER_TASK = "steer_task";
+    private static final String STEER_SCHEMA = """
+            {"type": "object", "properties": {
+              "task": {"type": "string", "description": "任务编号（#后面那串）或任务名里的词；只有一个在做时可以不写"},
+              "action": {"type": "string", "enum": ["tell", "pause", "resume", "stop"], "description": "tell 转达新的要求、方向或补充；pause 暂停；resume 继续；stop 叫停不做了"},
+              "message": {"type": "string", "description": "tell 时要转达的话，写清楚要改成什么、补充什么"}
+            }, "required": ["action"]}""";
 
     private final ChatAgent agent;
     private final Settings settings;
@@ -396,7 +387,7 @@ public final class BackgroundTasks {
         try {
             ChatTurn turn = new ChatTurn(session, ChatMessage.user(prompt), requesterQq, null, sub ? SUBAGENT : "task");
             if (task.type().equals(RESEARCH)) {
-                turn = turn.withTools(new ResearchTools(agent));
+                turn = turn.withTools(ResearchTools.create(agent, session));
             }
             String summary = agent.chat(turn, StreamListener.NONE).content().strip();
             put(task.with(DONE, abbreviate(summary, 300)));
@@ -463,7 +454,7 @@ public final class BackgroundTasks {
     private String wrapUp(Task task) {
         ScheduledFuture<?> cap = timer.schedule(() -> agent.stop(task.session()), WRAP_UP_MS, TimeUnit.MILLISECONDS);
         try {
-            ChatTurn turn = new ChatTurn(task.session(), ChatMessage.user(WRAP_UP), null, null, SUBAGENT).withTools(NO_TOOLS);
+            ChatTurn turn = new ChatTurn(task.session(), ChatMessage.user(WRAP_UP), null, null, SUBAGENT).withTools(ToolSet.none(1));
             return agent.chat(turn, StreamListener.NONE).content().strip();
         } catch (AgentException | RuntimeException e) {
             return "";
@@ -498,6 +489,16 @@ public final class BackgroundTasks {
                     .append(PAUSED.equals(t.status()) ? "暂停着" : QUEUED.equals(t.status()) ? "在排队" : "在做");
         }
         return out.toString();
+    }
+
+    public Tool steerTool(String origin, String from) {
+        List<Task> running = unfinished(origin);
+        if (running.isEmpty()) {
+            return null;
+        }
+        return Tool.text(STEER_TASK, "管后台正在做的活：转达新的要求或方向、暂停、继续、叫停。对方中途改主意、补充细节、说先别做了，"
+                        + "就用它告诉后台，不要再开一个新任务。现在后台的：" + describe(running), STEER_SCHEMA,
+                (args, context) -> steer(args.text("task"), args.text("action"), args.text("message"), from, origin));
     }
 
     public String steer(String key, String action, String message, String from, String origin) throws ToolFailure {

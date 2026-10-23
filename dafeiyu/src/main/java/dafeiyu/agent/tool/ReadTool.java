@@ -13,7 +13,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-final class ReadTool implements Tool {
+final class ReadTool extends TextTool {
 
     static final int MAX_LINES = 2_000;
     static final int MAX_BYTES = 50 * 1024;
@@ -32,7 +32,7 @@ final class ReadTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Read the contents of a file or directory. Each text line is prefixed by its 1-based line number as <line>: <content>. "
                 + "The prefix is for reference and is not part of the file content. Directory entries are returned one per line. "
                 + "Use offset and limit to read large files or directories in sections. Prefer one larger read over many small slices, "
@@ -45,11 +45,11 @@ final class ReadTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        String input = Args.string(args, "path");
-        Integer offset = Args.optInt(args, "offset");
-        Integer limit = Args.optInt(args, "limit");
+        String input = args.string("path");
+        Integer offset = args.optInt("offset");
+        Integer limit = args.optInt("limit");
         Path path = ws.resolve(input);
         if (!Files.exists(path)) {
             throw missing(ws, input, path);

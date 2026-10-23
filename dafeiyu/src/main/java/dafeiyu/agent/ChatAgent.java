@@ -18,6 +18,7 @@ import dafeiyu.agent.protocol.Protocols;
 import dafeiyu.agent.safety.ContentGuard;
 import dafeiyu.agent.sticker.StickerKeeper;
 import dafeiyu.agent.sticker.StickerStore;
+import dafeiyu.agent.tool.Tool;
 import dafeiyu.agent.tool.WorkspaceStore;
 import dafeiyu.db.Database;
 import dafeiyu.util.Clock;
@@ -215,17 +216,17 @@ public final class ChatAgent {
         }
     }
 
-    private volatile java.util.function.Supplier<ToolSet> requestTools = () -> null;
+    private volatile java.util.function.Supplier<List<Tool>> ownerTools = List::of;
 
-    public void setRequestTools(java.util.function.Supplier<ToolSet> requestTools) {
-        this.requestTools = requestTools;
+    public void setOwnerTools(java.util.function.Supplier<List<Tool>> ownerTools) {
+        this.ownerTools = ownerTools;
     }
 
-    ToolSet requestTools() {
+    List<Tool> ownerTools() {
         try {
-            return requestTools.get();
+            return ownerTools.get();
         } catch (RuntimeException e) {
-            return null;
+            return List.of();
         }
     }
 

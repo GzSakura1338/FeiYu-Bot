@@ -2,7 +2,6 @@ package dafeiyu.agent;
 
 import com.google.gson.JsonObject;
 import dafeiyu.agent.AgentException.Kind;
-import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.util.Jsons;
 import dafeiyu.agent.context.Compaction;
 import dafeiyu.agent.context.Compactor;
@@ -20,6 +19,7 @@ import dafeiyu.agent.model.ModelProfile;
 import dafeiyu.agent.model.ModelRetry;
 import dafeiyu.agent.model.VisionProbe;
 import dafeiyu.agent.persona.Persona;
+import dafeiyu.agent.qq.QqApiTools;
 import dafeiyu.agent.qq.QqFaces;
 import dafeiyu.agent.qq.QqText;
 import dafeiyu.agent.safety.ContentGuard;
@@ -30,6 +30,8 @@ import dafeiyu.agent.protocol.ModelProtocol;
 import dafeiyu.agent.protocol.Protocols;
 import dafeiyu.agent.protocol.ToolSpec;
 import dafeiyu.agent.tool.ToolContext;
+import dafeiyu.agent.tool.ToolResult;
+import dafeiyu.agent.tool.ToolSet;
 import dafeiyu.agent.tool.Toolbox;
 import dafeiyu.agent.tool.Workspace;
 import dafeiyu.agent.tool.WorkspaceStore;
@@ -53,46 +55,6 @@ public final class TurnRunner {
     private static final String ADDRESS_HINT = "在群里回话时，回的是谁就在开头 @ 谁（比如“@不知道呀 …”），几个人一起回就分别 @，这样才不会让人以为你在回别人";
     private static final int DOOM_LOOP = 3;
     private static final String SEARCH = "websearch";
-    static final String READ_FORWARD = "read_forward";
-    static final ToolSpec READ_FORWARD_SPEC = new ToolSpec(READ_FORWARD,
-            "读别人分享的合并转发聊天记录。消息里的“[合并转发的聊天记录：编号]”就是，把冒号后面的编号原样填进来，会返回里面每条消息是谁说的、说了什么。"
-                    + "别人发来让你看的、问你“你看看这个”的，先读了再回。",
-            com.google.gson.JsonParser.parseString("""
-                    {"type": "object", "properties": {
-                      "id": {"type": "string", "description": "合并转发的编号"}
-                    }, "required": ["id"]}""").getAsJsonObject());
-    static final String RECALL = "recall";
-    static final ToolSpec RECALL_SPEC = new ToolSpec(RECALL,
-            "想想你记得的事。“<你记得>”里只放了跟现在相关的一部分；想起更多关于某个人、这个群、你自己的事，翻日记或查过的词，就用它，要多少查多少。",
-            com.google.gson.JsonParser.parseString("""
-                    {"type": "object", "properties": {
-                      "about": {"type": "string", "description": "想谁或想什么：名字、QQ 号、self（你自己）、group（这个群）、knowledge（查过的词）、diary（日记）"},
-                      "query": {"type": "string", "description": "只想找跟某件事有关的就写关键词，不写就是全部"},
-                      "offset": {"type": "integer", "description": "接着上次往后看时填，结果里会告诉你填几"}
-                    }, "required": ["about"]}""").getAsJsonObject());
-    static final String SKILL = "skill";
-    static final ToolSpec SKILL_SPEC = new ToolSpec(SKILL,
-            "查看你学会的某个技能的完整做法。“【你学会的技能】”里只写了用途的技能，碰到对应的事先用它看清楚怎么做。",
-            com.google.gson.JsonParser.parseString("""
-                    {"type": "object", "properties": {
-                      "name": {"type": "string", "description": "技能的名字"}
-                    }, "required": ["name"]}""").getAsJsonObject());
-    static final String START_TASK = "start_task";
-    static final ToolSpec START_TASK_SPEC = new ToolSpec(START_TASK,
-            "把要动手的活交给后台去做：写网页、做小游戏、做或改文件、改代码、跑命令、查一堆资料整理成文档这类要好几步的事。"
-                    + "交出去以后聊天这边马上就能接着聊，后台做好了会让你把结果告诉对方、把文件发出去。这类活不要在聊天里自己一步步做。",
-            com.google.gson.JsonParser.parseString("""
-                    {"type": "object", "properties": {
-                      "title": {"type": "string", "description": "一句话的任务名，比如“网页版狼人杀”"},
-                      "instructions": {"type": "string", "description": "完整的要求：要做成什么样、给谁用、有什么细节，改已有文件就写清楚文件路径和要改什么"}
-                    }, "required": ["title", "instructions"]}""").getAsJsonObject());
-    static final String STEER_TASK = "steer_task";
-    private static final String STEER_SCHEMA = """
-            {"type": "object", "properties": {
-              "task": {"type": "string", "description": "任务编号（#后面那串）或任务名里的词；只有一个在做时可以不写"},
-              "action": {"type": "string", "enum": ["tell", "pause", "resume", "stop"], "description": "tell 转达新的要求、方向或补充；pause 暂停；resume 继续；stop 叫停不做了"},
-              "message": {"type": "string", "description": "tell 时要转达的话，写清楚要改成什么、补充什么"}
-            }, "required": ["action"]}""";
     private static final Set<String> HANDS_ON = Set.of("write", "edit", "patch", "move", "delete", "shell");
     private static final java.util.regex.Pattern SENT_FILE = java.util.regex.Pattern.compile("文件：([^。；\\n]+)");
     private static final int CONTEXT_LINES = 16;
@@ -104,6 +66,7 @@ public final class TurnRunner {
     private static final int MAX_VIEWS = 6;
     private static final String VIEWED = "（这是你刚才用 view_image 要看的图）";
     public static final String SILENCE = "[沉默]";
+    private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
     public static final String AMBIENT = "【旁听】";
 
     private final ChatAgent agent;
@@ -128,7 +91,7 @@ public final class TurnRunner {
     private final Workspace workspace;
     private final boolean network;
     private final boolean direct;
-    private final ToolSet requestTools;
+    private ToolSet toolSet;
     private List<String> enabled;
     private List<ToolSpec> tools;
     private final int maxSteps;
@@ -181,51 +144,47 @@ public final class TurnRunner {
         this.workspace = workspaces.workspace();
         this.network = workspaces.config().shellNetwork();
         this.direct = !subagent() && workspaces.directShell(turn.qqUser(), owners);
-        this.requestTools = turn.tools() == null && qqSession() && capabilities.toolCall(profile)
-                && ("console".equals(turn.source()) || turn.qqUser() != null && owners.contains(turn.qqUser())) ? agent.requestTools() : null;
-        if (turn.tools() != null) {
-            this.tools = capabilities.toolCall(profile) ? turn.tools().specs() : List.of();
-            this.enabled = tools.stream().map(ToolSpec::name).toList();
-        } else {
-            boolean allowed = (workspaces.allows(turn.qqUser()) || "note".equals(turn.source())) && capabilities.toolCall(profile);
-            Set<String> chosen = allowed ? Set.copyOf(workspaces.config().enabled()) : Set.of();
-            List<String> builtin = workspace == null ? List.of()
-                    : chosen.stream().filter(Toolbox::exists).filter(n -> turn.files() != null || !n.equals("send_file"))
-                    .filter(n -> !qqSession() || !HANDS_ON.contains(n)).toList();
-            List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin), network, direct));
-            if (qqSession() && allowed && workspace != null && chosen.stream().anyMatch(HANDS_ON::contains)) {
-                all.add(START_TASK_SPEC);
-            }
-            List<BackgroundTasks.Task> running = qqSession() ? agent.tasks().unfinished(turn.session()) : List.of();
-            if (!running.isEmpty() && capabilities.toolCall(profile)) {
-                all.add(steerSpec(running));
-            }
-            if (allowed) {
-                all.addAll(agent.extensions().tools(qqSession(), false, chosen));
-            }
-            if (qqSession() && capabilities.toolCall(profile) && all.stream().noneMatch(t -> t.name().equals(SEARCH))) {
-                all.addAll(Toolbox.specs(Set.of(SEARCH)));
-            }
-            if (qqSession() && capabilities.toolCall(profile)) {
-                all.add(READ_FORWARD_SPEC);
-                if (persona != null) {
-                    all.add(RECALL_SPEC);
-                    if (agent.skills().count(persona.id()) > 0) {
-                        all.add(SKILL_SPEC);
-                    }
-                }
-            }
-            if (requestTools != null) {
-                all.addAll(requestTools.specs());
-            }
-            if (capabilities.toolCall(profile) && capabilities.vision(profile, protocol)) {
-                all.add(ImageViewer.SPEC);
-            }
-            this.tools = List.copyOf(all);
-            this.enabled = tools.stream().map(ToolSpec::name).toList();
-        }
+        this.toolSet = !capabilities.toolCall(profile) ? ToolSet.none() : turn.tools() != null ? turn.tools() : defaultTools(workspaces);
+        this.tools = toolSet.specs();
+        this.enabled = toolSet.names();
         this.maxSteps = turn.tools() == null ? MAX_STEPS : Math.min(MAX_STEPS, turn.tools().maxSteps());
         buildSystem();
+    }
+
+    private ToolSet defaultTools(WorkspaceStore workspaces) {
+        ToolSet.Builder set = ToolSet.builder(new ToolContext(turn.session(), turn.qqUser(), workspace, turn.files(), network, direct));
+        boolean allowed = workspaces.allows(turn.qqUser()) || "note".equals(turn.source());
+        Set<String> chosen = allowed ? Set.copyOf(workspaces.config().enabled()) : Set.of();
+        if (workspace != null) {
+            set.addAll(Toolbox.select(chosen.stream().filter(n -> turn.files() != null || !n.equals("send_file"))
+                    .filter(n -> !qqSession() || !HANDS_ON.contains(n)).toList()));
+            if (qqSession() && chosen.stream().anyMatch(HANDS_ON::contains)) {
+                set.add(ChatTools.startTask(agent, requester()));
+            }
+        }
+        if (qqSession()) {
+            set.add(agent.tasks().steerTool(turn.session(), "聊天那边的" + requester()));
+        }
+        if (allowed) {
+            set.addAll(agent.extensions().tools(qqSession(), false, chosen));
+        }
+        if (qqSession()) {
+            set.add(Toolbox.get(SEARCH));
+            set.add(ChatTools.readForward(agent));
+            if (persona != null) {
+                set.add(ChatTools.recall(agent, persona.id(), Set.copyOf(owners), this::noteScope));
+                if (agent.skills().count(persona.id()) > 0) {
+                    set.add(ChatTools.skill(agent, persona.id()));
+                }
+            }
+        }
+        if (byOwner() || "web".equals(turn.source())) {
+            set.addAll(agent.ownerTools());
+        }
+        if (capabilities.vision(profile, protocol)) {
+            set.add(new ImageViewer(agent, set.has("read")));
+        }
+        return set.build();
     }
 
     ChatResult run() throws AgentException {
@@ -268,6 +227,7 @@ public final class TurnRunner {
                     continue;
                 }
                 if (!tools.isEmpty() && capabilities.rejectsTools(profile, e)) {
+                    toolSet = ToolSet.none();
                     enabled = List.of();
                     tools = List.of();
                     buildSystem();
@@ -285,7 +245,11 @@ public final class TurnRunner {
             String content = outgoing(markup.said());
             List<String> tasks = markup.errands().stream().filter(t -> guard.scan(t) == null).limit(MAX_ERRANDS).toList();
             boolean acts = markup.poke() != null || !tasks.isEmpty() || !markup.promises().isEmpty() || !markup.done().isEmpty();
-            if (calls.isEmpty() && (ambient() || innerVoice()) && silent(content) && !acts) {
+            boolean quiet = (ambient() || innerVoice()) && (silent(markup.said()) || silent(content));
+            if (quiet) {
+                content = "";
+            }
+            if (calls.isEmpty() && quiet && !acts) {
                 return silence(result, started);
             }
             if (calls.isEmpty() && !lastStep && overtaken()) {
@@ -535,9 +499,9 @@ public final class TurnRunner {
                 result.promptTokens(), result.completionTokens(), result.cachedTokens(), "silent");
     }
 
-    private static boolean silent(String content) {
+    static boolean silent(String content) {
         String text = content.strip();
-        return text.isEmpty() || text.contains(SILENCE) || text.equals("沉默");
+        return text.isEmpty() || text.equals("沉默") || SILENT.matcher(text).find();
     }
 
     private boolean qqSession() {
@@ -646,18 +610,7 @@ public final class TurnRunner {
             return ChatMessage.tool(call, "Tool call cancelled: the turn was stopped from the console.", true);
         }
         listener.onToolCall(call);
-        Toolbox.Outcome outcome = turn.tools() != null ? turn.tools().run(call)
-                : call.name().equals(READ_FORWARD) && enabled.contains(READ_FORWARD) ? readForward(call)
-                : call.name().equals(RECALL) && enabled.contains(RECALL) ? recallTool(call)
-                : call.name().equals(SKILL) && enabled.contains(SKILL) ? skillTool(call)
-                : call.name().equals(START_TASK) && enabled.contains(START_TASK) ? startTask(call)
-                : call.name().equals(STEER_TASK) && enabled.contains(STEER_TASK) ? steerTask(call)
-                : requestTools != null && enabled.contains(call.name()) && requestTools.specs().stream().anyMatch(s -> s.name().equals(call.name()))
-                ? requestTools.run(call)
-                : call.name().equals(ImageViewer.NAME) && enabled.contains(ImageViewer.NAME)
-                ? ImageViewer.run(agent, call.arguments(), enabled.contains("read") ? workspace : null)
-                : agent.extensions().owns(call.name()) && enabled.contains(call.name()) ? agent.extensions().run(call, turn.session())
-                : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files(), network, direct));
+        ToolResult outcome = toolSet.run(call);
         listener.onToolResult(call, outcome.output(), outcome.error());
         if (call.name().equals("send_file") && !outcome.error()) {
             JsonObject sent = Jsons.parseObject(call.arguments());
@@ -679,51 +632,6 @@ public final class TurnRunner {
                     + " times in a row. Repeating it will not change the result: try a different approach, or stop and tell the user where you are stuck.]";
         }
         return ChatMessage.tool(call, output, outcome.error());
-    }
-
-    private Toolbox.Outcome readForward(ToolCall call) {
-        JsonObject args = Jsons.parseObject(call.arguments());
-        String id = args == null ? "" : Jsons.optString(args, "id").replace("合并转发的聊天记录：", "").replace("[", "").replace("]", "").strip();
-        try {
-            return new Toolbox.Outcome(agent.readForward(id), false);
-        } catch (ToolFailure e) {
-            return new Toolbox.Outcome(e.getMessage(), true);
-        }
-    }
-
-    private Toolbox.Outcome recallTool(ToolCall call) {
-        JsonObject args = Jsons.parseObject(call.arguments());
-        String about = args == null ? "" : Jsons.optString(args, "about").strip();
-        String query = args == null ? "" : Jsons.optString(args, "query");
-        int offset = args != null && args.has("offset") && args.get("offset").isJsonPrimitive() ? Math.max(0, args.get("offset").getAsInt()) : 0;
-        List<String> scopes = recallScopes(about);
-        if (scopes.isEmpty()) {
-            return new Toolbox.Outcome("不知道「" + about + "」是谁或什么。about 写名字、QQ 号、self、group、knowledge 或 diary。", true);
-        }
-        String text = memories.lookup(persona.id(), scopes.getFirst(), turn.session(), Set.copyOf(owners), query, offset);
-        return new Toolbox.Outcome(scopes.size() > 1 ? text + "\n（叫这个名字的不止一个人，这是 " + scopes.getFirst()
-                + "；其他的：" + String.join("、", scopes.subList(1, scopes.size())) + "，可以填 QQ 号查）" : text, false);
-    }
-
-    private List<String> recallScopes(String about) {
-        String lower = about.toLowerCase(Locale.ROOT);
-        if (about.isEmpty()) {
-            return List.of();
-        }
-        if (lower.equals(MemoryStore.DIARY) || about.equals("日记")) {
-            return List.of(MemoryStore.DIARY);
-        }
-        if (lower.startsWith("user:") || about.matches("\\d{5,12}")) {
-            return List.of("user:" + about.replaceFirst("(?i)^user:", "").strip());
-        }
-        if (lower.startsWith("group:") && about.substring(6).strip().matches("\\d{5,12}")) {
-            return List.of("group:" + about.substring(6).strip());
-        }
-        String scope = noteScope(about);
-        if (scope != null) {
-            return List.of(scope);
-        }
-        return memories.scopesNamed(persona.id(), about);
     }
 
     private List<ToolCall> unsentFiles(List<String> finished) {
@@ -750,44 +658,6 @@ public final class TurnRunner {
             }
         }
         return out;
-    }
-
-    private Toolbox.Outcome startTask(ToolCall call) {
-        JsonObject args = Jsons.parseObject(call.arguments());
-        String title = args == null ? "" : Jsons.optString(args, "title").strip();
-        String instructions = args == null ? "" : Jsons.optString(args, "instructions").strip();
-        if (title.isEmpty() || instructions.isEmpty()) {
-            return new Toolbox.Outcome("title 和 instructions 都要写", true);
-        }
-        agent.tasks().start(turn.session(), requester(), turn.qqUser() == null ? "" : turn.qqUser(), title, instructions);
-        return new Toolbox.Outcome("「" + title + "」已经交给后台在做了。现在先回对方一句在做了（别说已经做好）；做好后会让你把结果告诉对方、把文件发出去。"
-                + "别在这里自己再动手做一遍。", false);
-    }
-
-    public static ToolSpec steerSpec(List<BackgroundTasks.Task> running) {
-        return new ToolSpec(STEER_TASK, "管后台正在做的活：转达新的要求或方向、暂停、继续、叫停。对方中途改主意、补充细节、说先别做了，"
-                + "就用它告诉后台，不要再开一个新任务。现在后台的：" + BackgroundTasks.describe(running),
-                com.google.gson.JsonParser.parseString(STEER_SCHEMA).getAsJsonObject());
-    }
-
-    private Toolbox.Outcome steerTask(ToolCall call) {
-        JsonObject args = Jsons.parseObject(call.arguments());
-        if (args == null) {
-            return new Toolbox.Outcome("参数不对", true);
-        }
-        try {
-            return new Toolbox.Outcome(agent.tasks().steer(Jsons.optString(args, "task"), Jsons.optString(args, "action"),
-                    Jsons.optString(args, "message"), "聊天那边的" + requester(), turn.session()), false);
-        } catch (ToolFailure e) {
-            return new Toolbox.Outcome(e.getMessage(), true);
-        }
-    }
-
-    private Toolbox.Outcome skillTool(ToolCall call) {
-        JsonObject args = Jsons.parseObject(call.arguments());
-        String name = args == null ? "" : Jsons.optString(args, "name");
-        String detail = agent.skills().detail(persona.id(), name);
-        return detail == null ? new Toolbox.Outcome("没有叫「" + name + "」的技能，看看【你学会的技能】里的名字", true) : new Toolbox.Outcome(detail, false);
     }
 
     private boolean repeating(ToolCall call) {
@@ -917,7 +787,8 @@ public final class TurnRunner {
     }
 
     private void buildSystem() {
-        system = turn.mind() ? Prompt.mind(persona, agent.tasks().subagents().config().enabled()) : Prompt.system(persona, workspace, enabled, qqSession());
+        system = turn.mind() ? Prompt.mind(persona, agent.tasks().subagents().config().enabled(), enabled.contains(QqApiTools.CALL))
+                : Prompt.system(persona, workspace, enabled, qqSession());
         String learned = persona == null ? "" : agent.skills().prompt(persona.id());
         if (!learned.isEmpty()) {
             system = system.isEmpty() ? learned : system + "\n\n" + learned;

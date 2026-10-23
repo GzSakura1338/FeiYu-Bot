@@ -10,7 +10,7 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class EditTool implements Tool {
+final class EditTool extends TextTool {
 
     private static final String CRLF = "\r\n";
     private static final Pattern NEWLINE = Pattern.compile("\r?\n");
@@ -35,7 +35,7 @@ final class EditTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Edit the contents of a file by finding and replacing exact text. When editing text from Read output, preserve the exact "
                 + "indentation (tabs or spaces) and omit the line-number prefix, such as `1: `. Never include the prefix in oldString or newString. "
                 + "Write line breaks as \\n; the file's existing CRLF or LF line endings are matched and preserved. To change line endings "
@@ -52,12 +52,12 @@ final class EditTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        String input = Args.string(args, "path");
-        String oldString = Args.string(args, "oldString");
-        String newString = Args.string(args, "newString");
-        boolean replaceAll = Args.optBool(args, "replaceAll", false);
+        String input = args.string("path");
+        String oldString = args.string("oldString");
+        String newString = args.string("newString");
+        boolean replaceAll = args.bool("replaceAll", false);
         if (oldString.equals(newString)) {
             throw new ToolFailure("No changes to apply: oldString and newString are identical.");
         }

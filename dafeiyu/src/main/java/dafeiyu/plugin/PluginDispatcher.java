@@ -6,12 +6,13 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.Extensions;
-import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.protocol.ToolSpec;
 import dafeiyu.agent.qq.MessageGate;
 import dafeiyu.agent.safety.ContentGuard;
+import dafeiyu.agent.tool.Args;
+import dafeiyu.agent.tool.Tool;
 import dafeiyu.agent.tool.ToolFailure;
-import dafeiyu.agent.tool.Toolbox;
+import dafeiyu.agent.tool.ToolResult;
 import dafeiyu.plugin.api.HostApi;
 import dafeiyu.plugin.manifest.ArgsCheck;
 import dafeiyu.plugin.manifest.Permission;
@@ -422,8 +423,8 @@ final class PluginDispatcher implements MessageGate, Extensions {
     }
 
     @Override
-    public List<ToolSpec> tools(boolean qq, boolean mind, Set<String> enabled) {
-        List<ToolSpec> out = new ArrayList<>();
+    public List<Tool> tools(boolean qq, boolean mind, Set<String> enabled) {
+        List<Tool> out = new ArrayList<>();
         for (PluginSlot slot : host.sorted()) {
             if (!slot.running() || (qq && !store.qqTools(slot.id))) {
                 continue;
@@ -431,7 +432,9 @@ final class PluginDispatcher implements MessageGate, Extensions {
             for (PluginManifest.Tool t : slot.tools) {
                 String name = toolName(slot.id, t.name());
                 if (enabled.contains(name) && (!mind || t.mind())) {
-                    out.add(new ToolSpec(name, "[插件 " + slot.name() + "] " + t.description(), t.parameters().deepCopy()));
+                    String slotId = slot.id;
+                    out.add(Tool.of(new ToolSpec(name, "[插件 " + slot.name() + "] " + t.description(), t.parameters().deepCopy()),
+                            (args, context) -> call(slotId, t.name(), name, args, context.session())));
                 }
             }
         }
@@ -442,55 +445,35 @@ final class PluginDispatcher implements MessageGate, Extensions {
         return out;
     }
 
-    @Override
-    public boolean owns(String toolName) {
-        return toolName.startsWith(TOOL_PREFIX) || toolName.startsWith(McpManager.PREFIX);
-    }
-
-    @Override
-    public Toolbox.Outcome run(ToolCall call, String session) {
-        if (call.name().startsWith(McpManager.PREFIX)) {
-            McpManager mcp = host.mcp();
-            return mcp == null ? new Toolbox.Outcome("MCP 没有启用", true) : mcp.run(call);
-        }
-        String rest = call.name().substring(TOOL_PREFIX.length());
-        int cut = rest.indexOf("__");
-        if (cut <= 0) {
-            return new Toolbox.Outcome("Unknown tool: " + call.name(), true);
-        }
-        PluginSlot slot = host.slot(rest.substring(0, cut));
-        String toolName = rest.substring(cut + 2);
+    private ToolResult call(String slotId, String toolName, String fullName, Args args, String session) {
+        PluginSlot slot = host.slot(slotId);
         if (slot == null || !slot.running()) {
-            return new Toolbox.Outcome("插件已停用或没在运行，这个工具现在用不了：" + call.name(), true);
+            return ToolResult.error("插件已停用或没在运行，这个工具现在用不了：" + fullName);
         }
         PluginManifest.Tool tool = slot.tools.stream().filter(t -> t.name().equals(toolName)).findFirst().orElse(null);
         if (tool == null) {
-            return new Toolbox.Outcome("插件「" + slot.name() + "」没有这个工具：" + toolName, true);
+            return ToolResult.error("插件「" + slot.name() + "」没有这个工具：" + toolName);
         }
-        JsonObject args = Jsons.parseObject(call.arguments());
-        if (args == null) {
-            return new Toolbox.Outcome("Invalid arguments for " + call.name() + ": expected a JSON object", true);
-        }
-        String problem = ArgsCheck.check(tool.parameters(), args);
+        String problem = ArgsCheck.check(tool.parameters(), args.json());
         if (problem != null) {
-            return new Toolbox.Outcome("Invalid arguments for " + call.name() + ": " + problem, true);
+            return ToolResult.error("Invalid arguments for " + fullName + ": " + problem);
         }
         JsonObject params = new JsonObject();
         params.addProperty("name", toolName);
-        params.add("arguments", args);
+        params.add("arguments", args.json());
         params.addProperty("session", session);
         long timeout = tool.timeout() * 1000L;
         try {
             return ToolResults.outcome(slot.process.call("tool/call", params, timeout).get(timeout + 500, TimeUnit.MILLISECONDS));
         } catch (TimeoutException e) {
             host.pluginLog(slot, "warn", "工具 " + toolName + " 超过 " + tool.timeout() + " 秒没返回");
-            return new Toolbox.Outcome("Tool " + call.name() + " timed out after " + tool.timeout() + " s", true);
+            return ToolResult.error("Tool " + fullName + " timed out after " + tool.timeout() + " s");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new Toolbox.Outcome("Tool call interrupted", true);
+            return ToolResult.error("Tool call interrupted");
         } catch (ExecutionException e) {
             host.pluginLog(slot, "warn", "工具 " + toolName + " 出错：" + PluginHost.describe(e));
-            return new Toolbox.Outcome("Tool " + call.name() + " failed: " + PluginHost.describe(e), true);
+            return ToolResult.error("Tool " + fullName + " failed: " + PluginHost.describe(e));
         }
     }
 

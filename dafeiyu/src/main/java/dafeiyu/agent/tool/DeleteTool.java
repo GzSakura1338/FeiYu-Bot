@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.locks.ReentrantLock;
 
-final class DeleteTool implements Tool {
+final class DeleteTool extends TextTool {
 
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
@@ -19,7 +19,7 @@ final class DeleteTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Delete a file or folder by moving it into the .trash folder of the working directory, where the owner can restore it. "
                 + "Only delete files you created or that the user asked you to remove.";
     }
@@ -30,11 +30,11 @@ final class DeleteTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        Path target = ws.resolve(Args.string(args, "path"));
+        Path target = ws.resolve(args.string("path"));
         if (!Files.exists(target)) {
-            throw new ToolFailure("File not found: " + Args.string(args, "path"));
+            throw new ToolFailure("File not found: " + args.string("path"));
         }
         ReentrantLock lock = Workspace.lock(target);
         lock.lock();

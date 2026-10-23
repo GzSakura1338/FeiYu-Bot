@@ -3,18 +3,14 @@ package dafeiyu.agent.qq;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import dafeiyu.agent.ChatAgent;
-import dafeiyu.agent.ToolCall;
-import dafeiyu.agent.ToolSet;
-import dafeiyu.agent.protocol.ToolSpec;
+import dafeiyu.agent.tool.Args;
+import dafeiyu.agent.tool.Tool;
 import dafeiyu.agent.tool.ToolFailure;
-import dafeiyu.agent.tool.Toolbox;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.util.Clock;
-import dafeiyu.util.Jsons;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -32,7 +28,7 @@ import static dafeiyu.util.Jsons.optObject;
 import static dafeiyu.util.Jsons.optString;
 import static dafeiyu.util.Texts.abbreviate;
 
-public final class QqRequests implements ToolSet {
+public final class QqRequests {
 
     public static final String FRIEND = "friend";
     public static final String DOUBT = "doubt";
@@ -54,25 +50,6 @@ public final class QqRequests implements ToolSet {
             return kind.equals(FRIEND) || kind.equals(DOUBT);
         }
     }
-
-    public static final List<ToolSpec> SPECS = List.of(
-            spec("requests", "看看有哪些申请等你处理：谁加你好友、谁邀请你进群、谁申请加入你当管理员的群，验证消息写了什么、你们在哪见过。", """
-                    {"type": "object", "properties": {}}"""),
-            spec("answer_friend", "同意或拒绝好友申请。主人让你同意或拒绝就照做；其他的你自己决定：认识的、聊得来的、正常说明来意的可以加；"
-                    + "广告、来路不明、验证消息奇怪的就拒绝。", """
-                    {"type": "object", "properties": {
-                      "user_id": {"type": "string", "description": "申请人的 QQ 号"},
-                      "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
-                      "remark": {"type": "string", "description": "同意时给他的备注，可以不写"}
-                    }, "required": ["user_id", "approve"]}"""),
-            spec("answer_group", "同意或拒绝进群的事：别人邀请你进某个群，或者有人申请加入你当管理员的群。主人邀请的、主人让你同意的就同意；"
-                    + "其他的你自己决定：熟人拉你进正常的群可以去，来路不明的、广告群、验证消息奇怪的就拒绝。", """
-                    {"type": "object", "properties": {
-                      "group_id": {"type": "string", "description": "群号"},
-                      "user_id": {"type": "string", "description": "申请进群的人的 QQ 号；别人邀请你进群时不用写"},
-                      "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
-                      "reason": {"type": "string", "description": "拒绝时告诉对方的理由，可以不写"}
-                    }, "required": ["group_id", "approve"]}"""));
 
     private static final String KEY = "agent.qq.requests";
     private static final String IGNORED_KEY = "agent.qq.requestsIgnored";
@@ -103,12 +80,34 @@ public final class QqRequests implements ToolSet {
         load();
     }
 
-    private static ToolSpec spec(String name, String description, String schema) {
-        return new ToolSpec(name, description, JsonParser.parseString(schema).getAsJsonObject());
+    public List<Tool> tools() {
+        return List.of(
+                Tool.text("requests", "看看有哪些申请等你处理：谁加你好友、谁邀请你进群、谁申请加入你当管理员的群，验证消息写了什么、你们在哪见过。", """
+                        {"type": "object", "properties": {}}""", (args, context) -> {
+                    String list = describe();
+                    return list.isEmpty() ? "现在没有等你处理的申请" : list;
+                }),
+                Tool.text("answer_friend", "同意或拒绝好友申请。主人让你同意或拒绝就照做；其他的你自己决定：认识的、聊得来的、正常说明来意的可以加；"
+                        + "广告、来路不明、验证消息奇怪的就拒绝。", """
+                        {"type": "object", "properties": {
+                          "user_id": {"type": "string", "description": "申请人的 QQ 号"},
+                          "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
+                          "remark": {"type": "string", "description": "同意时给他的备注，可以不写"}
+                        }, "required": ["user_id", "approve"]}""",
+                        (args, context) -> answerFriend(args.qq("user_id"), approve(args), args.text("remark"))),
+                Tool.text("answer_group", "同意或拒绝进群的事：别人邀请你进某个群，或者有人申请加入你当管理员的群。主人邀请的、主人让你同意的就同意；"
+                        + "其他的你自己决定：熟人拉你进正常的群可以去，来路不明的、广告群、验证消息奇怪的就拒绝。", """
+                        {"type": "object", "properties": {
+                          "group_id": {"type": "string", "description": "群号"},
+                          "user_id": {"type": "string", "description": "申请进群的人的 QQ 号；别人邀请你进群时不用写"},
+                          "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
+                          "reason": {"type": "string", "description": "拒绝时告诉对方的理由，可以不写"}
+                        }, "required": ["group_id", "approve"]}""",
+                        (args, context) -> answerGroup(args.group("group_id"), args.optQq("user_id"), approve(args), args.text("reason"))));
     }
 
-    public static boolean offers(String tool) {
-        return SPECS.stream().anyMatch(s -> s.name().equals(tool));
+    List<Tool> ownerTools() {
+        return pending().isEmpty() ? List.of() : tools();
     }
 
     private synchronized void load() {
@@ -145,10 +144,6 @@ public final class QqRequests implements ToolSet {
             save();
         }
         return List.copyOf(pending.values());
-    }
-
-    ToolSet forOwner() {
-        return pending().isEmpty() ? null : this;
     }
 
     void received(JsonObject event) {
@@ -347,36 +342,6 @@ public final class QqRequests implements ToolSet {
         return group == null ? "；你们没在同一个群里见过" : "；在「" + contacts.groupName(group) + "」里见过";
     }
 
-    @Override
-    public List<ToolSpec> specs() {
-        return SPECS;
-    }
-
-    @Override
-    public Toolbox.Outcome run(ToolCall call) {
-        JsonObject args = Jsons.parseObject(call.arguments());
-        if (args == null) {
-            args = new JsonObject();
-        }
-        try {
-            String output = switch (call.name()) {
-                case "requests" -> {
-                    String list = describe();
-                    yield list.isEmpty() ? "现在没有等你处理的申请" : list;
-                }
-                case "answer_friend" -> answerFriend(qq(optString(args, "user_id"), true), approve(args), optString(args, "remark"));
-                case "answer_group" -> answerGroup(groupId(optString(args, "group_id")), qq(optString(args, "user_id"), false), approve(args),
-                        optString(args, "reason"));
-                default -> throw new ToolFailure("没有这个工具：" + call.name());
-            };
-            return new Toolbox.Outcome(output, false);
-        } catch (ToolFailure e) {
-            return new Toolbox.Outcome(e.getMessage(), true);
-        } catch (RuntimeException e) {
-            return new Toolbox.Outcome("出错了：" + e.getMessage(), true);
-        }
-    }
-
     public String answerFriend(String userId, boolean approve, String remark) throws ToolFailure {
         Request r = pending().stream().filter(x -> x.friend() && x.userId().equals(userId)).findFirst().orElse(null);
         if (r == null) {
@@ -453,31 +418,12 @@ public final class QqRequests implements ToolSet {
         }
     }
 
-    private static boolean approve(JsonObject args) throws ToolFailure {
+    private static boolean approve(Args args) throws ToolFailure {
         JsonElement value = args.get("approve");
         if (value == null || !value.isJsonPrimitive()) {
             throw new ToolFailure("写清楚 approve：true 同意，false 拒绝");
         }
         return value.getAsBoolean();
-    }
-
-    private static String qq(String raw, boolean required) throws ToolFailure {
-        String id = raw.replace("user:", "").strip();
-        if (id.isEmpty() && !required) {
-            return "";
-        }
-        if (!id.matches("\\d{5,12}")) {
-            throw new ToolFailure("QQ 号不对：" + raw);
-        }
-        return id;
-    }
-
-    private static String groupId(String raw) throws ToolFailure {
-        String id = raw.replace("group:", "").strip();
-        if (!id.matches("\\d{5,12}")) {
-            throw new ToolFailure("群号不对：" + raw);
-        }
-        return id;
     }
 
     private String nickname(String userId) {

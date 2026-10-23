@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-final class GlobTool implements Tool {
+final class GlobTool extends TextTool {
 
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
@@ -23,7 +23,7 @@ final class GlobTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return "Search file paths using a glob pattern (examples: \"**/*.ts\", \"src/**/*.tsx\").";
     }
 
@@ -33,22 +33,22 @@ final class GlobTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        String pattern = Args.string(args, "pattern");
+        String pattern = args.string("pattern");
         if (pattern.isBlank()) {
             throw new ToolFailure("Pattern must not be empty");
         }
-        String dirArg = Args.optString(args, "path");
+        String dirArg = args.optString("path");
         if ("undefined".equals(dirArg) || "null".equals(dirArg)) {
             dirArg = null;
         }
         Path root = ws.existingDirectory(dirArg);
-        Integer limitArg = Args.optInt(args, "limit");
+        Integer limitArg = args.optInt("limit");
         int limit = limitArg == null || limitArg < 1 ? FileWalker.DEFAULT_LIMIT : limitArg;
         Pattern matcher = FileWalker.glob(pattern.strip());
         List<String> found = new ArrayList<>();
-        FileWalker.walk(ws, root, Args.optBool(args, "hidden", false), file -> {
+        FileWalker.walk(ws, root, args.bool("hidden", false), file -> {
             if (matcher.matcher(FileWalker.relative(root, file)).matches()) {
                 found.add(ws.relative(file));
             }

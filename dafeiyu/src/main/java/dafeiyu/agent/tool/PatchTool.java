@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
-final class PatchTool implements Tool {
+final class PatchTool extends TextTool {
 
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
@@ -27,7 +27,7 @@ final class PatchTool implements Tool {
     }
 
     @Override
-    public String description() {
+    public String description(ToolContext context) {
         return """
                 Use the `patch` tool to edit several files at once. The patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply:
 
@@ -68,9 +68,9 @@ final class PatchTool implements Tool {
     }
 
     @Override
-    public String run(JsonObject args, ToolContext context) throws ToolFailure {
+    protected String text(Args args, ToolContext context) throws ToolFailure {
         Workspace ws = context.workspace();
-        String text = Args.string(args, "patchText");
+        String text = args.string("patchText");
         if (text.isBlank()) {
             throw new ToolFailure("patchText is required");
         }

@@ -1,0 +1,4392 @@
+{
+ "version": "4.18.41",
+ "categories": [
+  "消息",
+  "好友和进群申请",
+  "群文件",
+  "群相册",
+  "群管理和群信息",
+  "好友和用户",
+  "自己的资料和在线状态",
+  "图片、语音和文件",
+  "流式传输",
+  "闪传和在线文件",
+  "表情包和收藏",
+  "AI 语音",
+  "QQ 空间、频道和其他",
+  "账号和系统"
+ ],
+ "actions": [
+  {
+   "name": "clean_stream_temp_file",
+   "summary": "清理流式传输临时文件",
+   "description": "",
+   "category": "流式传输",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "download_file_stream",
+   "summary": "下载文件流",
+   "description": "以流式方式从网络或本地下载文件",
+   "category": "流式传输",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径或 URL"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件 ID"
+    },
+    {
+     "name": "chunk_size",
+     "type": "number",
+     "required": false,
+     "description": "分块大小 (字节)"
+    }
+   ]
+  },
+  {
+   "name": "download_file_record_stream",
+   "summary": "下载语音文件流",
+   "description": "",
+   "category": "流式传输",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径或 URL"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件 ID"
+    },
+    {
+     "name": "chunk_size",
+     "type": "number",
+     "required": false,
+     "description": "分块大小 (字节)"
+    },
+    {
+     "name": "out_format",
+     "type": "string",
+     "required": false,
+     "description": "输出格式"
+    }
+   ]
+  },
+  {
+   "name": "download_file_image_stream",
+   "summary": "下载图片文件流",
+   "description": "",
+   "category": "流式传输",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径或 URL"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件 ID"
+    },
+    {
+     "name": "chunk_size",
+     "type": "number",
+     "required": false,
+     "description": "分块大小 (字节)"
+    }
+   ]
+  },
+  {
+   "name": "test_download_stream",
+   "summary": "测试下载流",
+   "description": "",
+   "category": "流式传输",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "error",
+     "type": "boolean",
+     "required": false,
+     "description": "是否触发测试错误"
+    }
+   ]
+  },
+  {
+   "name": "upload_file_stream",
+   "summary": "上传文件流",
+   "description": "以流式方式上传文件数据到机器人",
+   "category": "流式传输",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "stream_id",
+     "type": "string",
+     "required": true,
+     "description": "流 ID"
+    },
+    {
+     "name": "chunk_data",
+     "type": "string",
+     "required": false,
+     "description": "分块数据 (Base64)"
+    },
+    {
+     "name": "chunk_index",
+     "type": "number",
+     "required": false,
+     "description": "分块索引"
+    },
+    {
+     "name": "total_chunks",
+     "type": "number",
+     "required": false,
+     "description": "总分块数"
+    },
+    {
+     "name": "file_size",
+     "type": "number",
+     "required": false,
+     "description": "文件总大小"
+    },
+    {
+     "name": "expected_sha256",
+     "type": "string",
+     "required": false,
+     "description": "期望的 SHA256"
+    },
+    {
+     "name": "is_complete",
+     "type": "boolean",
+     "required": false,
+     "description": "是否完成"
+    },
+    {
+     "name": "filename",
+     "type": "string",
+     "required": false,
+     "description": "文件名"
+    },
+    {
+     "name": "reset",
+     "type": "boolean",
+     "required": false,
+     "description": "是否重置"
+    },
+    {
+     "name": "verify_only",
+     "type": "boolean",
+     "required": false,
+     "description": "是否仅验证"
+    },
+    {
+     "name": "file_retention",
+     "type": "number",
+     "required": false,
+     "description": "文件保留时间 (毫秒)"
+    }
+   ]
+  },
+  {
+   "name": "del_group_album_media",
+   "summary": "删除群相册媒体",
+   "description": "",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": true,
+     "description": "媒体ID (lloc)"
+    }
+   ]
+  },
+  {
+   "name": "set_group_album_media_like",
+   "summary": "点赞群相册媒体",
+   "description": "",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "batch_id",
+     "type": "string",
+     "required": true,
+     "description": "batch_id"
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": false,
+     "description": "lloc，若对整个上传操作则不填"
+    }
+   ]
+  },
+  {
+   "name": "cancel_group_album_media_like",
+   "summary": "取消点赞群相册媒体",
+   "description": "",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "batch_id",
+     "type": "string",
+     "required": true,
+     "description": "batch_id"
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": false,
+     "description": "lloc，若对整个上传操作则不填"
+    }
+   ]
+  },
+  {
+   "name": "do_group_album_comment",
+   "summary": "发表群相册评论",
+   "description": "lloc 与 batch_id 至少提供一项。传入 lloc 时评论单张图片；仅传 batch_id 时评论整个上传批次。",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册 ID"
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": false,
+     "description": "图片 ID；不传或为空时评论整个上传批次，此时必须提供 batch_id"
+    },
+    {
+     "name": "batch_id",
+     "type": "string",
+     "required": false,
+     "description": "上传批次 ID，可取自 get_group_album_media_list 返回的 batch.link_id 或 media[].batch_id"
+    },
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": "评论内容"
+    }
+   ]
+  },
+  {
+   "name": "get_group_album_media_list",
+   "summary": "获取群相册媒体列表",
+   "description": "",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "attach_info",
+     "type": "string",
+     "required": false,
+     "description": "附加信息（用于分页）"
+    }
+   ]
+  },
+  {
+   "name": "get_qun_album_list",
+   "summary": "获取群相册列表",
+   "description": "",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "attach_info",
+     "type": "string",
+     "required": false,
+     "description": "附加信息（用于分页，从上一次返回结果中获取）"
+    }
+   ]
+  },
+  {
+   "name": "upload_image_to_qun_album",
+   "summary": "上传图片到群相册",
+   "description": "",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "album_name",
+     "type": "string",
+     "required": true,
+     "description": "相册名称"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "图片路径、URL或Base64"
+    }
+   ]
+  },
+  {
+   "name": "upload_images_to_qun_album",
+   "summary": "上传多张图片到群相册",
+   "description": "一次上传多张图片，这些图片在群相册里显示为同一条上传",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "album_name",
+     "type": "string",
+     "required": true,
+     "description": "相册名称"
+    },
+    {
+     "name": "files",
+     "type": "array",
+     "required": true,
+     "description": "图片路径、URL或Base64 数组，一次上传多张"
+    }
+   ]
+  },
+  {
+   "name": "upload_video_to_qun_album",
+   "summary": "上传视频到群相册",
+   "description": "上传视频到群相册，封面自动抽取首帧（失败时使用内置默认封面）",
+   "category": "群相册",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册ID"
+    },
+    {
+     "name": "album_name",
+     "type": "string",
+     "required": true,
+     "description": "相册名称"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "视频路径、URL或Base64"
+    }
+   ]
+  },
+  {
+   "name": "set_group_todo",
+   "summary": "设置群待办",
+   "description": "将指定消息设置为群待办",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string|number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    },
+    {
+     "name": "message_seq",
+     "type": "string",
+     "required": false,
+     "description": "消息Seq (可选)"
+    }
+   ]
+  },
+  {
+   "name": "complete_group_todo",
+   "summary": "完成群待办",
+   "description": "将指定消息对应的群待办标记为已完成",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string|number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    },
+    {
+     "name": "message_seq",
+     "type": "string",
+     "required": false,
+     "description": "消息Seq (可选)"
+    }
+   ]
+  },
+  {
+   "name": "cancel_group_todo",
+   "summary": "取消群待办",
+   "description": "将指定消息对应的群待办取消",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string|number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    },
+    {
+     "name": "message_seq",
+     "type": "string",
+     "required": false,
+     "description": "消息Seq (可选)"
+    }
+   ]
+  },
+  {
+   "name": "get_group_detail_info",
+   "summary": "获取群详细信息",
+   "description": "获取群聊的详细信息，包括成员数、最大成员数等",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "set_group_kick_members",
+   "summary": "批量踢出群成员",
+   "description": "从指定群聊中批量踢出多个成员",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "array",
+     "required": true,
+     "description": "QQ号列表"
+    },
+    {
+     "name": "reject_add_request",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否拒绝加群请求"
+    }
+   ]
+  },
+  {
+   "name": "set_group_add_option",
+   "summary": "设置群加群选项",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "add_type",
+     "type": "number",
+     "required": true,
+     "description": "加群方式"
+    },
+    {
+     "name": "group_question",
+     "type": "string",
+     "required": false,
+     "description": "加群问题"
+    },
+    {
+     "name": "group_answer",
+     "type": "string",
+     "required": false,
+     "description": "加群答案"
+    }
+   ]
+  },
+  {
+   "name": "set_group_robot_add_option",
+   "summary": "设置群机器人加群选项",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "robot_member_switch",
+     "type": "number",
+     "required": false,
+     "description": "机器人成员开关"
+    },
+    {
+     "name": "robot_member_examine",
+     "type": "number",
+     "required": false,
+     "description": "机器人成员审核"
+    }
+   ]
+  },
+  {
+   "name": "set_group_search",
+   "summary": "设置群搜索选项",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "no_code_finger_open",
+     "type": "number",
+     "required": false,
+     "description": "未知"
+    },
+    {
+     "name": "no_finger_open",
+     "type": "number",
+     "required": false,
+     "description": "未知"
+    }
+   ]
+  },
+  {
+   "name": "set_doubt_friends_add_request",
+   "summary": "处理可疑好友申请",
+   "description": "同意或拒绝系统的可疑好友申请",
+   "category": "好友和进群申请",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "flag",
+     "type": "string",
+     "required": true,
+     "description": "请求 flag"
+    },
+    {
+     "name": "approve",
+     "type": "boolean",
+     "required": false,
+     "description": "是否同意 (强制为 true)"
+    }
+   ]
+  },
+  {
+   "name": "get_doubt_friends_add_request",
+   "summary": "获取可疑好友申请",
+   "description": "获取系统的可疑好友申请列表",
+   "category": "好友和进群申请",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "获取数量"
+    }
+   ]
+  },
+  {
+   "name": "set_friend_remark",
+   "summary": "设置好友备注",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "对方 QQ 号"
+    },
+    {
+     "name": "remark",
+     "type": "string",
+     "required": true,
+     "description": "备注内容"
+    }
+   ]
+  },
+  {
+   "name": "get_rkey",
+   "summary": "获取扩展 RKey",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "get_rkey_server",
+   "summary": "获取 RKey 服务器",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "set_group_remark",
+   "summary": "设置群备注",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "remark",
+     "type": "string",
+     "required": true,
+     "description": "备注"
+    }
+   ]
+  },
+  {
+   "name": "get_group_info_ex",
+   "summary": "获取群详细信息 (扩展)",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_share_link",
+   "summary": "获取群分享链接",
+   "description": "通过 NTQQ 原生 getJoinGroupLink 获取群的 H5 分享/加群链接 (qm.qq.com/q/xxx 或 qun.qq.com/universal-share/share?...)",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number|string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "need_short_url",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否返回短链 (qm.qq.com/q/xxx)，false 返回完整 universal-share 链接"
+    },
+    {
+     "name": "src_id",
+     "type": "number|string",
+     "required": false,
+     "description": "分享来源 ID"
+    },
+    {
+     "name": "additional_param",
+     "type": "string",
+     "required": false,
+     "description": "附加参数"
+    }
+   ]
+  },
+  {
+   "name": "fetch_emoji_like",
+   "summary": "获取表情点赞详情",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    },
+    {
+     "name": "emojiId",
+     "type": "number|string",
+     "required": true,
+     "description": "表情ID"
+    },
+    {
+     "name": "emojiType",
+     "type": "number|string",
+     "required": true,
+     "description": "表情类型"
+    },
+    {
+     "name": "count",
+     "type": "number|string",
+     "required": false,
+     "description": "获取数量"
+    },
+    {
+     "name": "cookie",
+     "type": "string",
+     "required": false,
+     "description": "分页Cookie"
+    }
+   ]
+  },
+  {
+   "name": "get_emoji_likes",
+   "summary": "获取消息表情点赞列表",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号，短ID可不传"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": true,
+     "description": "消息ID，可以传递长ID或短ID"
+    },
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": "表情ID"
+    },
+    {
+     "name": "emoji_type",
+     "type": "string",
+     "required": false,
+     "description": "表情类型"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "数量，0代表全部"
+    }
+   ]
+  },
+  {
+   "name": "fetch_ptt_text",
+   "summary": "获取语音转文字结果",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "get_file",
+   "summary": "获取文件",
+   "description": "获取指定文件的详细信息及下载路径",
+   "category": "图片、语音和文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径、URL或Base64"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件ID"
+    }
+   ]
+  },
+  {
+   "name": "set_qq_profile",
+   "summary": "设置QQ资料",
+   "description": "修改当前账号的昵称、个性签名等资料",
+   "category": "自己的资料和在线状态",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "nickname",
+     "type": "string",
+     "required": true,
+     "description": "昵称"
+    },
+    {
+     "name": "personal_note",
+     "type": "string",
+     "required": false,
+     "description": "个性签名"
+    },
+    {
+     "name": "sex",
+     "type": "number|string",
+     "required": false,
+     "description": "性别 (0: 未知, 1: 男, 2: 女)"
+    }
+   ]
+  },
+  {
+   "name": "ArkShareGroup",
+   "summary": "分享群 (Ark)",
+   "description": "获取群分享的 Ark 内容",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "ArkSharePeer",
+   "summary": "分享用户 (Ark)",
+   "description": "获取用户推荐的 Ark 内容",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "QQ号"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "phone_number",
+     "type": "string",
+     "required": false,
+     "description": "手机号"
+    }
+   ]
+  },
+  {
+   "name": "send_group_ark_share",
+   "summary": "分享群 (Ark)",
+   "description": "获取群分享的 Ark 内容",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "send_ark_share",
+   "summary": "分享用户 (Ark)",
+   "description": "获取用户推荐的 Ark 内容",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "QQ号"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "phone_number",
+     "type": "string",
+     "required": false,
+     "description": "手机号"
+    }
+   ]
+  },
+  {
+   "name": "create_collection",
+   "summary": "创建收藏",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "rawData",
+     "type": "string",
+     "required": true,
+     "description": "原始数据"
+    },
+    {
+     "name": "brief",
+     "type": "string",
+     "required": true,
+     "description": "简要描述"
+    }
+   ]
+  },
+  {
+   "name": "set_self_longnick",
+   "summary": "设置个性签名",
+   "description": "修改当前登录帐号的个性签名",
+   "category": "自己的资料和在线状态",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "longNick",
+     "type": "string",
+     "required": true,
+     "description": "签名内容"
+    }
+   ]
+  },
+  {
+   "name": "forward_friend_single_msg",
+   "summary": "转发单条消息",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "目标群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "目标用户QQ"
+    }
+   ]
+  },
+  {
+   "name": "forward_group_single_msg",
+   "summary": "转发单条消息",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "目标群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "目标用户QQ"
+    }
+   ]
+  },
+  {
+   "name": "mark_group_msg_as_read",
+   "summary": "标记群聊已读",
+   "description": "标记指定渠道的消息为已读",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string|number",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "mark_private_msg_as_read",
+   "summary": "标记私聊已读",
+   "description": "标记指定渠道的消息为已读",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string|number",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "set_qq_avatar",
+   "summary": "设置QQ头像",
+   "description": "修改当前账号的QQ头像",
+   "category": "自己的资料和在线状态",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "图片路径、URL或Base64"
+    }
+   ]
+  },
+  {
+   "name": "translate_en2zh",
+   "summary": "英文单词翻译",
+   "description": "将英文单词列表翻译为中文",
+   "category": "QQ 空间、频道和其他",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "words",
+     "type": "array",
+     "required": true,
+     "description": "待翻译单词列表"
+    }
+   ]
+  },
+  {
+   "name": "get_group_root_files",
+   "summary": "获取群根目录文件列表",
+   "description": "获取群文件根目录下的所有文件和文件夹",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_count",
+     "type": "number|string",
+     "required": false,
+     "description": "文件数量"
+    }
+   ]
+  },
+  {
+   "name": "set_group_sign",
+   "summary": "群打卡",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "send_group_sign",
+   "summary": "群打卡",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_clientkey",
+   "summary": "获取ClientKey",
+   "description": "获取当前登录帐号的ClientKey",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "move_group_file",
+   "summary": "移动群文件",
+   "description": "",
+   "category": "群文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": "文件ID"
+    },
+    {
+     "name": "current_parent_directory",
+     "type": "string",
+     "required": true,
+     "description": "当前父目录"
+    },
+    {
+     "name": "target_parent_directory",
+     "type": "string",
+     "required": true,
+     "description": "目标父目录"
+    }
+   ]
+  },
+  {
+   "name": "rename_group_file",
+   "summary": "重命名群文件",
+   "description": "",
+   "category": "群文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": "文件ID"
+    },
+    {
+     "name": "current_parent_directory",
+     "type": "string",
+     "required": true,
+     "description": "当前父目录"
+    },
+    {
+     "name": "new_name",
+     "type": "string",
+     "required": true,
+     "description": "新文件名"
+    }
+   ]
+  },
+  {
+   "name": "trans_group_file",
+   "summary": "传输群文件",
+   "description": "",
+   "category": "群文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": "文件ID"
+    }
+   ]
+  },
+  {
+   "name": "get_group_signed_list",
+   "summary": "获取群组今日打卡列表",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string|number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "send_qzone_msg",
+   "summary": "发表QQ空间说说",
+   "description": "在QQ空间(Qzone)发表说说, 支持纯文字或带(多)图, 可设置查看权限",
+   "category": "QQ 空间、频道和其他",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": "说说正文"
+    },
+    {
+     "name": "images",
+     "type": "array",
+     "required": false,
+     "description": "图片数组, 支持 file:// http(s):// base64:// , 自动上传"
+    },
+    {
+     "name": "ugc_right",
+     "type": "number|string",
+     "required": false,
+     "description": "查看权限: 1所有人可见 4好友可见 16部分好友可见 64仅自己可见 128部分好友不可见"
+    },
+    {
+     "name": "target_uins",
+     "type": "array",
+     "required": false,
+     "description": "ugc_right为16/128时, 权限作用的QQ号数组"
+    }
+   ]
+  },
+  {
+   "name": "delete_qzone_msg",
+   "summary": "删除QQ空间说说",
+   "description": "删除QQ空间(Qzone)的一条说说, 按 tid 删除",
+   "category": "QQ 空间、频道和其他",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid (来自 get_qzone_msg_list / send_qzone_msg)"
+    }
+   ]
+  },
+  {
+   "name": "set_group_member_invite_policy",
+   "summary": "设置群成员邀请策略",
+   "description": "设置是否允许群成员邀请好友进群，以及邀请是否需要管理员审核",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "policy",
+     "type": "string",
+     "required": true,
+     "description": "成员邀请策略：禁止、需要管理员审核、无需审核、群成员少于100人时无需审核"
+    }
+   ]
+  },
+  {
+   "name": "set_group_member_permissions",
+   "summary": "设置群成员功能权限",
+   "description": "设置群成员上传相册、发起临时会话和发起新群聊的权限；未传入的项目保持不变",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "allow_member_upload_album",
+     "type": "boolean",
+     "required": false,
+     "description": "允许成员上传群相册"
+    },
+    {
+     "name": "allow_member_temporary_session",
+     "type": "boolean",
+     "required": false,
+     "description": "允许成员发起临时会话"
+    },
+    {
+     "name": "allow_member_create_group",
+     "type": "boolean",
+     "required": false,
+     "description": "允许成员发起新的群聊"
+    }
+   ]
+  },
+  {
+   "name": "set_group_new_member_history_visibility",
+   "summary": "设置新成员历史消息可见性",
+   "description": "设置新入群成员默认是否可以查看最近聊天记录",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "visible",
+     "type": "boolean",
+     "required": true,
+     "description": "新成员默认可见最近聊天记录"
+    }
+   ]
+  },
+  {
+   "name": "send_like",
+   "summary": "点赞",
+   "description": "给指定用户点赞",
+   "category": "好友和用户",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "对方 QQ 号"
+    },
+    {
+     "name": "times",
+     "type": "number|string",
+     "required": false,
+     "description": "点赞次数"
+    }
+   ]
+  },
+  {
+   "name": "get_msg",
+   "summary": "获取消息",
+   "description": "根据消息 ID 获取消息详细信息",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "get_login_info",
+   "summary": "获取登录号信息",
+   "description": "获取当前登录帐号的信息",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_friend_list",
+   "summary": "获取好友列表",
+   "description": "获取当前帐号的好友列表",
+   "category": "好友和用户",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "no_cache",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否不使用缓存"
+    }
+   ]
+  },
+  {
+   "name": "get_group_list",
+   "summary": "获取群列表",
+   "description": "获取当前帐号的群聊列表",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "no_cache",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否不使用缓存"
+    }
+   ]
+  },
+  {
+   "name": "get_group_info",
+   "summary": "获取群信息",
+   "description": "获取群聊的基本信息",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_member_list",
+   "summary": "获取群成员列表",
+   "description": "获取群聊中的所有成员列表",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否不使用缓存"
+    }
+   ]
+  },
+  {
+   "name": "get_group_member_info",
+   "summary": "获取群成员信息",
+   "description": "获取群聊中指定成员的信息",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "QQ号"
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否不使用缓存"
+    }
+   ]
+  },
+  {
+   "name": "send_group_msg",
+   "summary": "发送群消息",
+   "description": "",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": "消息类型 (private/group)"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "array|string",
+     "required": true,
+     "description": "OneBot 11 消息混合类型"
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否作为纯文本发送"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": "合并转发来源"
+    },
+    {
+     "name": "news",
+     "type": "array",
+     "required": false,
+     "description": "合并转发新闻"
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "合并转发摘要"
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": "合并转发提示"
+    },
+    {
+     "name": "timeout",
+     "type": "number",
+     "required": false,
+     "description": "自定义发送超时(毫秒)，覆盖自动计算值"
+    }
+   ]
+  },
+  {
+   "name": "send_private_msg",
+   "summary": "发送私聊消息",
+   "description": "",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": "消息类型 (private/group)"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "array|string",
+     "required": true,
+     "description": "OneBot 11 消息混合类型"
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否作为纯文本发送"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": "合并转发来源"
+    },
+    {
+     "name": "news",
+     "type": "array",
+     "required": false,
+     "description": "合并转发新闻"
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "合并转发摘要"
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": "合并转发提示"
+    },
+    {
+     "name": "timeout",
+     "type": "number",
+     "required": false,
+     "description": "自定义发送超时(毫秒)，覆盖自动计算值"
+    }
+   ]
+  },
+  {
+   "name": "send_msg",
+   "summary": "发送消息",
+   "description": "发送私聊或群聊消息",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": "消息类型 (private/group)"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "array|string",
+     "required": true,
+     "description": "OneBot 11 消息混合类型"
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否作为纯文本发送"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": "合并转发来源"
+    },
+    {
+     "name": "news",
+     "type": "array",
+     "required": false,
+     "description": "合并转发新闻"
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "合并转发摘要"
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": "合并转发提示"
+    },
+    {
+     "name": "timeout",
+     "type": "number",
+     "required": false,
+     "description": "自定义发送超时(毫秒)，覆盖自动计算值"
+    }
+   ]
+  },
+  {
+   "name": "delete_msg",
+   "summary": "撤回消息",
+   "description": "撤回已发送的消息",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "set_group_add_request",
+   "summary": "处理加群请求",
+   "description": "同意或拒绝加群请求或邀请",
+   "category": "好友和进群申请",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "flag",
+     "type": "string",
+     "required": true,
+     "description": "请求flag"
+    },
+    {
+     "name": "approve",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否同意"
+    },
+    {
+     "name": "reason",
+     "type": "string|null",
+     "required": false,
+     "description": "拒绝理由"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "搜索通知数量"
+    }
+   ]
+  },
+  {
+   "name": "set_friend_add_request",
+   "summary": "处理加好友请求",
+   "description": "同意或拒绝加好友请求",
+   "category": "好友和进群申请",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "flag",
+     "type": "string",
+     "required": true,
+     "description": "加好友请求的 flag (需从上报中获取)"
+    },
+    {
+     "name": "approve",
+     "type": "string|boolean",
+     "required": false,
+     "description": "是否同意请求"
+    },
+    {
+     "name": "remark",
+     "type": "string",
+     "required": false,
+     "description": "添加后的好友备注"
+    }
+   ]
+  },
+  {
+   "name": "set_group_leave",
+   "summary": "退出群组",
+   "description": "退出或解散指定群聊",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "is_dismiss",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否解散"
+    }
+   ]
+  },
+  {
+   "name": "get_version_info",
+   "summary": "获取版本信息",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "can_send_record",
+   "summary": "是否可以发送语音",
+   "description": "检查是否可以发送语音",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "can_send_image",
+   "summary": "是否可以发送图片",
+   "description": "检查是否可以发送图片",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_status",
+   "summary": "获取运行状态",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "set_group_whole_ban",
+   "summary": "全员禁言",
+   "description": "开启或关闭指定群聊的全员禁言",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "enable",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否开启全员禁言"
+    }
+   ]
+  },
+  {
+   "name": "set_group_ban",
+   "summary": "群组禁言",
+   "description": "禁言群聊中的指定成员",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "duration",
+     "type": "number|string",
+     "required": false,
+     "description": "禁言时长(秒)"
+    }
+   ]
+  },
+  {
+   "name": "set_group_kick",
+   "summary": "群组踢人",
+   "description": "将指定成员踢出群聊",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "reject_add_request",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否拒绝加群请求"
+    }
+   ]
+  },
+  {
+   "name": "set_group_admin",
+   "summary": "设置群管理员",
+   "description": "设置或取消群聊中的管理员",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "enable",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否设置为管理员"
+    }
+   ]
+  },
+  {
+   "name": "set_group_name",
+   "summary": "设置群名称",
+   "description": "修改指定群聊的名称",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "group_name",
+     "type": "string",
+     "required": true,
+     "description": "群名称"
+    }
+   ]
+  },
+  {
+   "name": "set_group_card",
+   "summary": "设置群名片",
+   "description": "设置群聊中指定成员的群名片",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "card",
+     "type": "string",
+     "required": false,
+     "description": "群名片"
+    }
+   ]
+  },
+  {
+   "name": "get_image",
+   "summary": "获取图片",
+   "description": "获取指定图片的信息及路径",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径、URL或Base64"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件ID"
+    }
+   ]
+  },
+  {
+   "name": "get_record",
+   "summary": "获取语音",
+   "description": "获取指定语音文件的信息，并支持格式转换",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径、URL或Base64"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件ID"
+    },
+    {
+     "name": "out_format",
+     "type": "string",
+     "required": true,
+     "description": "输出格式"
+    }
+   ]
+  },
+  {
+   "name": "set_msg_emoji_like",
+   "summary": "设置消息表情点赞",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    },
+    {
+     "name": "emoji_id",
+     "type": "number|string",
+     "required": true,
+     "description": "表情ID"
+    },
+    {
+     "name": "set",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否设置"
+    }
+   ]
+  },
+  {
+   "name": "get_cookies",
+   "summary": "获取 Cookies",
+   "description": "获取指定域名的 Cookies",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "domain",
+     "type": "string",
+     "required": true,
+     "description": "需要获取 cookies 的域名"
+    }
+   ]
+  },
+  {
+   "name": "set_online_status",
+   "summary": "设置在线状态",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "status",
+     "type": "number|string",
+     "required": true,
+     "description": "在线状态"
+    },
+    {
+     "name": "ext_status",
+     "type": "number|string",
+     "required": true,
+     "description": "扩展状态"
+    },
+    {
+     "name": "battery_status",
+     "type": "number|string",
+     "required": true,
+     "description": "电量状态"
+    }
+   ]
+  },
+  {
+   "name": "get_robot_uin_range",
+   "summary": "获取机器人 UIN 范围",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "get_friends_with_category",
+   "summary": "获取带分组的好友列表",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "delete_friend",
+   "summary": "删除好友",
+   "description": "从好友列表中删除指定用户",
+   "category": "好友和用户",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "friend_id",
+     "type": "string|number",
+     "required": false,
+     "description": "好友 QQ 号"
+    },
+    {
+     "name": "user_id",
+     "type": "string|number",
+     "required": false,
+     "description": "用户 QQ 号"
+    },
+    {
+     "name": "temp_block",
+     "type": "boolean",
+     "required": false,
+     "description": "是否加入黑名单"
+    },
+    {
+     "name": "temp_both_del",
+     "type": "boolean",
+     "required": false,
+     "description": "是否双向删除"
+    }
+   ]
+  },
+  {
+   "name": "check_url_safely",
+   "summary": "检查URL安全性",
+   "description": "检查指定URL的安全等级",
+   "category": "账号和系统",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "url",
+     "type": "string",
+     "required": true,
+     "description": "要检查的 URL"
+    }
+   ]
+  },
+  {
+   "name": "get_online_clients",
+   "summary": "获取在线客户端",
+   "description": "获取当前登录账号的在线客户端列表",
+   "category": "自己的资料和在线状态",
+   "origin": "go-cqhttp",
+   "params": []
+  },
+  {
+   "name": "ocr_image",
+   "summary": "图片 OCR 识别",
+   "description": "识别图片中的文字内容(仅Windows端支持)",
+   "category": "QQ 空间、频道和其他",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "image",
+     "type": "string",
+     "required": true,
+     "description": "图片路径、URL或Base64"
+    }
+   ]
+  },
+  {
+   "name": ".ocr_image",
+   "summary": "图片 OCR 识别 (内部)",
+   "description": "识别图片中的文字内容(仅Windows端支持)",
+   "category": "QQ 空间、频道和其他",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "image",
+     "type": "string",
+     "required": true,
+     "description": "图片路径、URL或Base64"
+    }
+   ]
+  },
+  {
+   "name": "get_group_honor_info",
+   "summary": "获取群荣誉信息",
+   "description": "获取指定群聊的荣誉信息，如龙王等",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "type",
+     "type": "enum",
+     "required": false,
+     "description": "荣誉类型"
+    }
+   ]
+  },
+  {
+   "name": "_send_group_notice",
+   "summary": "发送群公告",
+   "description": "在指定群聊中发布新的公告",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": "公告内容"
+    },
+    {
+     "name": "image",
+     "type": "string",
+     "required": false,
+     "description": "公告图片路径或 URL"
+    },
+    {
+     "name": "pinned",
+     "type": "number|string",
+     "required": false,
+     "description": "是否置顶 (0/1)"
+    },
+    {
+     "name": "type",
+     "type": "number|string",
+     "required": false,
+     "description": "类型 (默认为 1)"
+    },
+    {
+     "name": "confirm_required",
+     "type": "number|string",
+     "required": false,
+     "description": "是否需要确认 (0/1)"
+    },
+    {
+     "name": "is_show_edit_card",
+     "type": "number|string",
+     "required": false,
+     "description": "是否显示修改群名片引导 (0/1)"
+    },
+    {
+     "name": "tip_window_type",
+     "type": "number|string",
+     "required": false,
+     "description": "弹窗类型 (默认为 0)"
+    }
+   ]
+  },
+  {
+   "name": "_get_group_notice",
+   "summary": "获取群公告",
+   "description": "获取指定群聊中的公告列表",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_essence_msg_list",
+   "summary": "获取群精华消息",
+   "description": "获取指定群聊中的精华消息列表",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_at_all_remain",
+   "summary": "获取群艾特全体剩余次数",
+   "description": "获取指定群聊中艾特全体成员的剩余次数",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "send_forward_msg",
+   "summary": "发送合并转发消息",
+   "description": "",
+   "category": "消息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": "消息类型 (private/group)"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "array|string",
+     "required": true,
+     "description": "OneBot 11 消息混合类型"
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否作为纯文本发送"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": "合并转发来源"
+    },
+    {
+     "name": "news",
+     "type": "array",
+     "required": false,
+     "description": "合并转发新闻"
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "合并转发摘要"
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": "合并转发提示"
+    },
+    {
+     "name": "timeout",
+     "type": "number",
+     "required": false,
+     "description": "自定义发送超时(毫秒)，覆盖自动计算值"
+    }
+   ]
+  },
+  {
+   "name": "send_group_forward_msg",
+   "summary": "发送群合并转发消息",
+   "description": "",
+   "category": "消息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": "消息类型 (private/group)"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "array|string",
+     "required": true,
+     "description": "OneBot 11 消息混合类型"
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否作为纯文本发送"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": "合并转发来源"
+    },
+    {
+     "name": "news",
+     "type": "array",
+     "required": false,
+     "description": "合并转发新闻"
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "合并转发摘要"
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": "合并转发提示"
+    },
+    {
+     "name": "timeout",
+     "type": "number",
+     "required": false,
+     "description": "自定义发送超时(毫秒)，覆盖自动计算值"
+    }
+   ]
+  },
+  {
+   "name": "send_private_forward_msg",
+   "summary": "发送私聊合并转发消息",
+   "description": "",
+   "category": "消息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": "消息类型 (private/group)"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "array|string",
+     "required": true,
+     "description": "OneBot 11 消息混合类型"
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否作为纯文本发送"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": "合并转发来源"
+    },
+    {
+     "name": "news",
+     "type": "array",
+     "required": false,
+     "description": "合并转发新闻"
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "合并转发摘要"
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": "合并转发提示"
+    },
+    {
+     "name": "timeout",
+     "type": "number",
+     "required": false,
+     "description": "自定义发送超时(毫秒)，覆盖自动计算值"
+    }
+   ]
+  },
+  {
+   "name": "get_stranger_info",
+   "summary": "获取陌生人信息",
+   "description": "获取指定非好友用户的信息",
+   "category": "好友和用户",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean|string",
+     "required": false,
+     "description": "是否不使用缓存"
+    }
+   ]
+  },
+  {
+   "name": "download_file",
+   "summary": "下载文件",
+   "description": "下载网络文件到本地临时目录",
+   "category": "图片、语音和文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "url",
+     "type": "string",
+     "required": false,
+     "description": "下载链接"
+    },
+    {
+     "name": "base64",
+     "type": "string",
+     "required": false,
+     "description": "base64数据"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": "文件名"
+    },
+    {
+     "name": "headers",
+     "type": "string|array",
+     "required": false,
+     "description": "请求头"
+    }
+   ]
+  },
+  {
+   "name": "get_guild_list",
+   "summary": "获取频道列表",
+   "description": "获取当前帐号已加入的频道列表",
+   "category": "QQ 空间、频道和其他",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "mark_msg_as_read",
+   "summary": "标记消息已读 (Go-CQHTTP)",
+   "description": "标记指定渠道的消息为已读",
+   "category": "消息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string|number",
+     "required": false,
+     "description": "用户QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "upload_group_file",
+   "summary": "上传群文件",
+   "description": "上传资源路径或URL指定的文件到指定群聊的文件系统中",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "资源路径或URL"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": true,
+     "description": "文件名"
+    },
+    {
+     "name": "folder",
+     "type": "string",
+     "required": false,
+     "description": "父目录 ID"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": false,
+     "description": "父目录 ID (兼容性字段)"
+    },
+    {
+     "name": "upload_file",
+     "type": "boolean",
+     "required": false,
+     "description": "是否执行上传"
+    }
+   ]
+  },
+  {
+   "name": "get_group_msg_history",
+   "summary": "获取群历史消息",
+   "description": "获取指定群聊的历史聊天记录",
+   "category": "消息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_seq",
+     "type": "string",
+     "required": false,
+     "description": "起始消息序号"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "获取消息数量"
+    },
+    {
+     "name": "reverse_order",
+     "type": "boolean",
+     "required": false,
+     "description": "是否反向排序"
+    },
+    {
+     "name": "disable_get_url",
+     "type": "boolean",
+     "required": false,
+     "description": "是否禁用获取URL"
+    },
+    {
+     "name": "parse_mult_msg",
+     "type": "boolean",
+     "required": false,
+     "description": "是否解析合并消息"
+    },
+    {
+     "name": "quick_reply",
+     "type": "boolean",
+     "required": false,
+     "description": "是否快速回复"
+    },
+    {
+     "name": "reverseOrder",
+     "type": "boolean",
+     "required": false,
+     "description": "是否反向排序(旧版本兼容)"
+    }
+   ]
+  },
+  {
+   "name": "get_forward_msg",
+   "summary": "获取合并转发消息",
+   "description": "获取合并转发消息的具体内容",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "required": false,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "get_friend_msg_history",
+   "summary": "获取好友历史消息",
+   "description": "获取指定好友的历史聊天记录",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "message_seq",
+     "type": "string",
+     "required": false,
+     "description": "起始消息序号"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "获取消息数量"
+    },
+    {
+     "name": "reverse_order",
+     "type": "boolean",
+     "required": false,
+     "description": "是否反向排序"
+    },
+    {
+     "name": "disable_get_url",
+     "type": "boolean",
+     "required": false,
+     "description": "是否禁用获取URL"
+    },
+    {
+     "name": "parse_mult_msg",
+     "type": "boolean",
+     "required": false,
+     "description": "是否解析合并消息"
+    },
+    {
+     "name": "quick_reply",
+     "type": "boolean",
+     "required": false,
+     "description": "是否快速回复"
+    },
+    {
+     "name": "reverseOrder",
+     "type": "boolean",
+     "required": false,
+     "description": "是否反向排序(旧版本兼容)"
+    }
+   ]
+  },
+  {
+   "name": ".handle_quick_operation",
+   "summary": "处理快速操作",
+   "description": "处理来自事件上报的快速操作请求",
+   "category": "账号和系统",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "context",
+     "type": "object",
+     "required": true,
+     "description": "事件上下文"
+    },
+    {
+     "name": "operation",
+     "type": "object",
+     "required": true,
+     "description": "快速操作内容"
+    }
+   ]
+  },
+  {
+   "name": "get_group_ignored_notifies",
+   "summary": "获取群忽略通知",
+   "description": "获取被忽略的入群申请和邀请通知",
+   "category": "好友和进群申请",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "delete_essence_msg",
+   "summary": "移出精华消息",
+   "description": "将一条消息从群精华消息列表中移出",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": false,
+     "description": "消息ID"
+    },
+    {
+     "name": "msg_seq",
+     "type": "string",
+     "required": false,
+     "description": "消息序号"
+    },
+    {
+     "name": "msg_random",
+     "type": "string",
+     "required": false,
+     "description": "消息随机数"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "set_essence_msg",
+   "summary": "设置精华消息",
+   "description": "将一条消息设置为群精华消息",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number|string",
+     "required": true,
+     "description": "消息ID"
+    }
+   ]
+  },
+  {
+   "name": "get_recent_contact",
+   "summary": "获取最近会话",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "count",
+     "type": "number|string",
+     "required": false,
+     "description": "获取的数量"
+    }
+   ]
+  },
+  {
+   "name": "_mark_all_as_read",
+   "summary": "标记所有消息已读",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "get_profile_like",
+   "summary": "获取资料点赞",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "QQ号"
+    },
+    {
+     "name": "start",
+     "type": "number|string",
+     "required": false,
+     "description": "起始位置"
+    },
+    {
+     "name": "count",
+     "type": "number|string",
+     "required": false,
+     "description": "获取数量"
+    }
+   ]
+  },
+  {
+   "name": "set_group_portrait",
+   "summary": "设置群头像",
+   "description": "修改指定群聊的头像",
+   "category": "群管理和群信息",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "头像文件路径或 URL"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "fetch_custom_face",
+   "summary": "获取自定义表情",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "count",
+     "type": "number|string",
+     "required": false,
+     "description": "获取数量"
+    }
+   ]
+  },
+  {
+   "name": "fetch_custom_face_detail",
+   "summary": "获取自定义表情详情",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "count",
+     "type": "number|string",
+     "required": false,
+     "description": "获取数量"
+    }
+   ]
+  },
+  {
+   "name": "add_custom_face",
+   "summary": "添加自定义表情",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "本地表情文件路径"
+    },
+    {
+     "name": "emoji_id",
+     "type": "string|number",
+     "required": false,
+     "description": "表情ID，未提供时传空字符串"
+    },
+    {
+     "name": "package_id",
+     "type": "string|number",
+     "required": false,
+     "description": "表情包ID，未提供时传0"
+    },
+    {
+     "name": "file_name",
+     "type": "string",
+     "required": false,
+     "description": "文件名，未提供时从file路径取basename"
+    },
+    {
+     "name": "file_size",
+     "type": "string|number",
+     "required": false,
+     "description": "文件大小，未提供时读取本地文件"
+    },
+    {
+     "name": "md5",
+     "type": "string",
+     "required": false,
+     "description": "文件MD5，未提供时读取本地文件计算"
+    },
+    {
+     "name": "is_mark_face",
+     "type": "boolean",
+     "required": false,
+     "description": "是否商城表情"
+    },
+    {
+     "name": "is_origin",
+     "type": "boolean",
+     "required": false,
+     "description": "是否原图"
+    }
+   ]
+  },
+  {
+   "name": "delete_custom_face",
+   "summary": "删除自定义表情",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "res_id",
+     "type": "string|array",
+     "required": false,
+     "description": "fetch_custom_face_detail返回的resId"
+    },
+    {
+     "name": "id",
+     "type": "string|array",
+     "required": false,
+     "description": "native deleteFavEmoji字符串ID，通常为resId"
+    },
+    {
+     "name": "ids",
+     "type": "array",
+     "required": false,
+     "description": "native deleteFavEmoji字符串ID列表，通常为resId列表"
+    },
+    {
+     "name": "md5",
+     "type": "string|array",
+     "required": false,
+     "description": "表情MD5，不能直接删除，请先通过fetch_custom_face_detail获取resId"
+    }
+   ]
+  },
+  {
+   "name": "set_custom_face_desc",
+   "summary": "修改自定义表情描述",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "emoji_id",
+     "type": "number|string",
+     "required": true,
+     "description": "表情ID"
+    },
+    {
+     "name": "res_id",
+     "type": "string",
+     "required": true,
+     "description": "资源ID"
+    },
+    {
+     "name": "md5",
+     "type": "string",
+     "required": true,
+     "description": "表情MD5"
+    },
+    {
+     "name": "desc",
+     "type": "string",
+     "required": true,
+     "description": "新的表情描述"
+    }
+   ]
+  },
+  {
+   "name": "upload_private_file",
+   "summary": "上传私聊文件",
+   "description": "上传本地文件到指定私聊会话中",
+   "category": "图片、语音和文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "资源路径或URL"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": true,
+     "description": "文件名"
+    },
+    {
+     "name": "upload_file",
+     "type": "boolean",
+     "required": false,
+     "description": "是否执行上传"
+    }
+   ]
+  },
+  {
+   "name": "get_guild_service_profile",
+   "summary": "获取频道个人信息",
+   "description": "获取当前帐号在频道中的个人资料",
+   "category": "QQ 空间、频道和其他",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "_get_model_show",
+   "summary": "获取机型显示",
+   "description": "获取当前账号可用的设备机型显示名称列表",
+   "category": "自己的资料和在线状态",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "model",
+     "type": "string",
+     "required": false,
+     "description": "模型名称"
+    }
+   ]
+  },
+  {
+   "name": "_set_model_show",
+   "summary": "设置机型",
+   "description": "设置当前账号的设备机型名称",
+   "category": "自己的资料和在线状态",
+   "origin": "go-cqhttp",
+   "params": []
+  },
+  {
+   "name": "set_input_status",
+   "summary": "设置输入状态",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "QQ号"
+    },
+    {
+     "name": "event_type",
+     "type": "number",
+     "required": true,
+     "description": "事件类型"
+    }
+   ]
+  },
+  {
+   "name": "get_csrf_token",
+   "summary": "获取 CSRF Token",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_credentials",
+   "summary": "获取登录凭证",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "domain",
+     "type": "string",
+     "required": true,
+     "description": "需要获取 cookies 的域名"
+    }
+   ]
+  },
+  {
+   "name": "_del_group_notice",
+   "summary": "删除群公告",
+   "description": "删除群聊中的公告",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "notice_id",
+     "type": "string",
+     "required": true,
+     "description": "公告ID"
+    }
+   ]
+  },
+  {
+   "name": "delete_group_file",
+   "summary": "删除群文件",
+   "description": "在群文件系统中删除指定的文件",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": "文件ID"
+    },
+    {
+     "name": "bus_id",
+     "type": "number",
+     "required": false,
+     "description": "文件业务ID，默认使用文件列表中的 busid"
+    },
+    {
+     "name": "busid",
+     "type": "number",
+     "required": false,
+     "description": "文件业务ID，兼容 busid 字段"
+    }
+   ]
+  },
+  {
+   "name": "create_group_file_folder",
+   "summary": "创建群文件目录",
+   "description": "在群文件系统中创建新的文件夹",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_name",
+     "type": "string",
+     "required": false,
+     "description": "文件夹名称"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": "文件夹名称"
+    }
+   ]
+  },
+  {
+   "name": "delete_group_folder",
+   "summary": "删除群文件目录",
+   "description": "在群文件系统中删除指定的文件夹",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": false,
+     "description": "文件夹ID"
+    },
+    {
+     "name": "folder",
+     "type": "string",
+     "required": false,
+     "description": "文件夹ID"
+    }
+   ]
+  },
+  {
+   "name": "get_group_file_system_info",
+   "summary": "获取群文件系统信息",
+   "description": "获取群聊文件系统的空间及状态信息",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_files_by_folder",
+   "summary": "获取群文件夹文件列表",
+   "description": "获取指定群文件夹下的文件及子文件夹列表",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": false,
+     "description": "文件夹ID"
+    },
+    {
+     "name": "folder",
+     "type": "string",
+     "required": false,
+     "description": "文件夹ID"
+    },
+    {
+     "name": "file_count",
+     "type": "number|string",
+     "required": false,
+     "description": "文件数量"
+    }
+   ]
+  },
+  {
+   "name": "nc_get_packet_status",
+   "summary": "获取Packet状态",
+   "description": "获取底层Packet服务的运行状态",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "set_restart",
+   "summary": "重启服务",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "group_poke",
+   "summary": "发送戳一戳",
+   "description": "在群聊或私聊中发送戳一戳动作",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "target_id",
+     "type": "string",
+     "required": false,
+     "description": "目标QQ"
+    }
+   ]
+  },
+  {
+   "name": "friend_poke",
+   "summary": "发送戳一戳",
+   "description": "在群聊或私聊中发送戳一戳动作",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "target_id",
+     "type": "string",
+     "required": false,
+     "description": "目标QQ"
+    }
+   ]
+  },
+  {
+   "name": "nc_get_user_status",
+   "summary": "获取用户在线状态",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "QQ号"
+    }
+   ]
+  },
+  {
+   "name": "nc_get_rkey",
+   "summary": "获取 RKey",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "set_group_special_title",
+   "summary": "设置专属头衔",
+   "description": "设置群聊中指定成员的专属头衔",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "QQ号"
+    },
+    {
+     "name": "special_title",
+     "type": "string",
+     "required": false,
+     "description": "专属头衔"
+    }
+   ]
+  },
+  {
+   "name": "set_diy_online_status",
+   "summary": "设置自定义在线状态",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "face_id",
+     "type": "number|string",
+     "required": true,
+     "description": "图标ID"
+    },
+    {
+     "name": "face_type",
+     "type": "number|string",
+     "required": false,
+     "description": "图标类型"
+    },
+    {
+     "name": "wording",
+     "type": "string",
+     "required": false,
+     "description": "状态文字内容"
+    }
+   ]
+  },
+  {
+   "name": "get_group_shut_list",
+   "summary": "获取群禁言列表",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_file_url",
+   "summary": "获取群文件URL",
+   "description": "获取指定群文件的下载链接",
+   "category": "群文件",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": "文件ID"
+    }
+   ]
+  },
+  {
+   "name": "get_mini_app_ark",
+   "summary": "获取小程序 Ark",
+   "description": "参数有 2 种写法：写法 1 用 type、title、desc、picUrl、jumpUrl、webUrl、rawArkData；写法 2 用 title、desc、picUrl、jumpUrl、iconUrl、webUrl、appId、scene、templateType、businessType、verType、shareType、versionId、sdkId、withShareTicket、rawArkData",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "type",
+     "type": "string",
+     "required": false,
+     "description": "模板类型"
+    },
+    {
+     "name": "title",
+     "type": "string",
+     "required": true,
+     "description": "标题"
+    },
+    {
+     "name": "desc",
+     "type": "string",
+     "required": true,
+     "description": "描述"
+    },
+    {
+     "name": "picUrl",
+     "type": "string",
+     "required": true,
+     "description": "图片URL"
+    },
+    {
+     "name": "jumpUrl",
+     "type": "string",
+     "required": true,
+     "description": "跳转URL"
+    },
+    {
+     "name": "webUrl",
+     "type": "string",
+     "required": false,
+     "description": "网页URL"
+    },
+    {
+     "name": "rawArkData",
+     "type": "string",
+     "required": false,
+     "description": "是否返回原始Ark数据"
+    },
+    {
+     "name": "iconUrl",
+     "type": "string",
+     "required": false,
+     "description": "图标URL"
+    },
+    {
+     "name": "appId",
+     "type": "string",
+     "required": false,
+     "description": "小程序AppID"
+    },
+    {
+     "name": "scene",
+     "type": "string",
+     "required": false,
+     "description": "场景ID"
+    },
+    {
+     "name": "templateType",
+     "type": "string",
+     "required": false,
+     "description": "模板类型"
+    },
+    {
+     "name": "businessType",
+     "type": "string",
+     "required": false,
+     "description": "业务类型"
+    },
+    {
+     "name": "verType",
+     "type": "string",
+     "required": false,
+     "description": "版本类型"
+    },
+    {
+     "name": "shareType",
+     "type": "string",
+     "required": false,
+     "description": "分享类型"
+    },
+    {
+     "name": "versionId",
+     "type": "string",
+     "required": false,
+     "description": "版本ID"
+    },
+    {
+     "name": "sdkId",
+     "type": "string",
+     "required": false,
+     "description": "SDK ID"
+    },
+    {
+     "name": "withShareTicket",
+     "type": "string",
+     "required": false,
+     "description": "是否携带分享票据"
+    }
+   ]
+  },
+  {
+   "name": "get_ai_record",
+   "summary": "获取 AI 语音",
+   "description": "通过 AI 语音引擎获取指定文本的语音 URL",
+   "category": "AI 语音",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "character",
+     "type": "string",
+     "required": true,
+     "description": "角色ID"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "required": true,
+     "description": "语音文本内容"
+    }
+   ]
+  },
+  {
+   "name": "send_group_ai_record",
+   "summary": "发送群 AI 语音",
+   "description": "发送 AI 生成的语音到指定群聊",
+   "category": "AI 语音",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "character",
+     "type": "string",
+     "required": true,
+     "description": "角色ID"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "required": true,
+     "description": "语音文本内容"
+    }
+   ]
+  },
+  {
+   "name": "get_ai_characters",
+   "summary": "获取AI角色列表",
+   "description": "获取群聊中的AI角色列表",
+   "category": "AI 语音",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "chat_type",
+     "type": "number|string",
+     "required": false,
+     "description": "聊天类型"
+    }
+   ]
+  },
+  {
+   "name": "send_packet",
+   "summary": "发送原始数据包",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "cmd",
+     "type": "string",
+     "required": true,
+     "description": "命令字"
+    },
+    {
+     "name": "data",
+     "type": "string",
+     "required": true,
+     "description": "十六进制数据"
+    },
+    {
+     "name": "rsp",
+     "type": "string|boolean",
+     "required": false,
+     "description": "是否等待响应"
+    }
+   ]
+  },
+  {
+   "name": "send_poke",
+   "summary": "发送戳一戳",
+   "description": "在群聊或私聊中发送戳一戳动作",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户QQ"
+    },
+    {
+     "name": "target_id",
+     "type": "string",
+     "required": false,
+     "description": "目标QQ"
+    }
+   ]
+  },
+  {
+   "name": "get_group_system_msg",
+   "summary": "获取群系统消息",
+   "description": "",
+   "category": "好友和进群申请",
+   "origin": "go-cqhttp",
+   "params": [
+    {
+     "name": "count",
+     "type": "number|string",
+     "required": false,
+     "description": "获取的消息数量"
+    }
+   ]
+  },
+  {
+   "name": "bot_exit",
+   "summary": "退出登录",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "click_inline_keyboard_button",
+   "summary": "点击内联键盘按钮",
+   "description": "",
+   "category": "消息",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "bot_appid",
+     "type": "string",
+     "required": true,
+     "description": "机器人AppID"
+    },
+    {
+     "name": "button_id",
+     "type": "string",
+     "required": false,
+     "description": "按钮ID"
+    },
+    {
+     "name": "callback_data",
+     "type": "string",
+     "required": false,
+     "description": "回调数据"
+    },
+    {
+     "name": "msg_seq",
+     "type": "string",
+     "required": false,
+     "description": "消息序列号"
+    }
+   ]
+  },
+  {
+   "name": "get_private_file_url",
+   "summary": "获取私聊文件URL",
+   "description": "获取指定私聊文件的下载链接",
+   "category": "图片、语音和文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": "文件ID"
+    }
+   ]
+  },
+  {
+   "name": "get_unidirectional_friend_list",
+   "summary": "获取单向好友列表",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "clean_cache",
+   "summary": "清理缓存",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_group_ignore_add_request",
+   "summary": "获取群被忽略的加群请求",
+   "description": "",
+   "category": "好友和进群申请",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "get_collection_list",
+   "summary": "获取收藏列表",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "category",
+     "type": "string",
+     "required": true,
+     "description": "分类ID"
+    },
+    {
+     "name": "count",
+     "type": "string",
+     "required": false,
+     "description": "获取数量"
+    }
+   ]
+  },
+  {
+   "name": "create_flash_task",
+   "summary": "创建闪传任务",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "files",
+     "type": "array|string",
+     "required": true,
+     "description": "文件列表或单个文件路径"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": "任务名称"
+    },
+    {
+     "name": "thumb_path",
+     "type": "string",
+     "required": false,
+     "description": "缩略图路径"
+    },
+    {
+     "name": "validitySeconds",
+     "type": "number",
+     "required": false,
+     "description": "文件集有效期（秒），可选 14 天 1209600 / 90 天 7776000 / 180 天 15552000，默认 1209600"
+    }
+   ]
+  },
+  {
+   "name": "get_flash_file_list",
+   "summary": "获取闪传文件列表",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": "文件集 ID"
+    }
+   ]
+  },
+  {
+   "name": "get_flash_file_url",
+   "summary": "获取闪传文件链接",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": "文件集 ID"
+    },
+    {
+     "name": "file_name",
+     "type": "string",
+     "required": false,
+     "description": "文件名"
+    },
+    {
+     "name": "file_index",
+     "type": "number",
+     "required": false,
+     "description": "文件索引"
+    }
+   ]
+  },
+  {
+   "name": "send_flash_msg",
+   "summary": "发送闪传消息",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": "文件集 ID"
+    },
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": false,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "group_id",
+     "type": "string",
+     "required": false,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_share_link",
+   "summary": "获取文件分享链接",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": "文件集 ID"
+    }
+   ]
+  },
+  {
+   "name": "get_fileset_info",
+   "summary": "获取文件集信息",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": "文件集 ID"
+    }
+   ]
+  },
+  {
+   "name": "get_online_file_msg",
+   "summary": "获取在线文件消息",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    }
+   ]
+  },
+  {
+   "name": "send_online_file",
+   "summary": "发送在线文件",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "file_path",
+     "type": "string",
+     "required": true,
+     "description": "本地文件路径"
+    },
+    {
+     "name": "file_name",
+     "type": "string",
+     "required": false,
+     "description": "文件名 (可选)"
+    }
+   ]
+  },
+  {
+   "name": "send_online_folder",
+   "summary": "发送在线文件夹",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "folder_path",
+     "type": "string",
+     "required": true,
+     "description": "本地文件夹路径"
+    },
+    {
+     "name": "folder_name",
+     "type": "string",
+     "required": false,
+     "description": "文件夹名称 (可选)"
+    }
+   ]
+  },
+  {
+   "name": "receive_online_file",
+   "summary": "接收在线文件",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "msg_id",
+     "type": "string",
+     "required": true,
+     "description": "消息 ID"
+    },
+    {
+     "name": "element_id",
+     "type": "string",
+     "required": true,
+     "description": "元素 ID"
+    }
+   ]
+  },
+  {
+   "name": "refuse_online_file",
+   "summary": "拒绝在线文件",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "msg_id",
+     "type": "string",
+     "required": true,
+     "description": "消息 ID"
+    },
+    {
+     "name": "element_id",
+     "type": "string",
+     "required": true,
+     "description": "元素 ID"
+    }
+   ]
+  },
+  {
+   "name": "cancel_online_file",
+   "summary": "取消在线文件",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "string",
+     "required": true,
+     "description": "用户 QQ"
+    },
+    {
+     "name": "msg_id",
+     "type": "string",
+     "required": true,
+     "description": "消息 ID"
+    }
+   ]
+  },
+  {
+   "name": "download_fileset",
+   "summary": "下载文件集",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": "文件集 ID"
+    }
+   ]
+  },
+  {
+   "name": "get_fileset_id",
+   "summary": "获取文件集 ID",
+   "description": "",
+   "category": "闪传和在线文件",
+   "origin": "NapCat",
+   "params": [
+    {
+     "name": "share_code",
+     "type": "string",
+     "required": true,
+     "description": "分享码或分享链接"
+    }
+   ]
+  },
+  {
+   "name": "test_auto_register_01",
+   "summary": "test_auto_register_01",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  },
+  {
+   "name": "test_auto_register_02",
+   "summary": "test_auto_register_02",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "NapCat",
+   "params": []
+  }
+ ]
+}

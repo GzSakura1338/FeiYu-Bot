@@ -286,6 +286,11 @@ public final class QqActions {
         return event;
     }
 
+    String senderOf(String messageId) {
+        StoredMessage message = messageId == null || messageId.isBlank() ? null : archive.byMessageId(messageId.strip());
+        return message == null || message.userId() == null ? "" : message.userId();
+    }
+
     String sharedGroup(String userId) {
         Map<String, String> mine = contacts.groups();
         for (MessageArchive.Seen s : archive.findPeople(userId, 20)) {

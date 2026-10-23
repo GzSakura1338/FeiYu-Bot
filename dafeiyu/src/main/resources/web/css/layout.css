@@ -168,6 +168,48 @@ body {
 .settings-row .segmented { margin-left: auto; }
 .settings-row .list-text { min-width: 180px; }
 
+.qqapi-groups { display: flex; flex-direction: column; padding: 0 12px 12px; transition: opacity var(--md-sys-motion-duration-short4) linear; }
+.qqapi-groups.off { opacity: .5; }
+.qqapi-group {
+  display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px 0 12px;
+  border-radius: var(--md-sys-shape-corner-large); color: var(--md-sys-color-on-surface); cursor: pointer; outline: none;
+}
+.qqapi-group:focus-visible { outline: 3px solid var(--md-sys-color-secondary); outline-offset: -3px; }
+.qqapi-chevron { flex: none; color: var(--md-sys-color-on-surface-variant); transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized); }
+.qqapi-group[aria-expanded="true"] .qqapi-chevron { transform: rotate(90deg); }
+.qqapi-group-name { flex: 1; min-width: 0; }
+.qqapi-count { color: var(--md-sys-color-on-surface-variant); font-variant-numeric: tabular-nums; }
+.qqapi-fold {
+  display: grid; grid-template-rows: 0fr; opacity: 0;
+  transition: grid-template-rows var(--md-sys-motion-duration-medium1) var(--md-sys-motion-easing-emphasized-accelerate),
+    opacity var(--md-sys-motion-duration-short3) linear;
+}
+.qqapi-fold.open {
+  grid-template-rows: 1fr; opacity: 1;
+  transition: grid-template-rows var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate),
+    opacity var(--md-sys-motion-duration-medium1) linear;
+}
+.qqapi-fold-list { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.qqapi-row {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 42px;
+  transform: translateY(-12px); transition: transform var(--md-sys-motion-duration-medium1) var(--md-sys-motion-easing-emphasized-accelerate);
+}
+.qqapi-fold.open .qqapi-row { transform: none; transition: transform var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate); }
+.qqapi-row .list-text { flex: 1; min-width: 0; }
+.qqapi-row code { font: 13px/1.5 var(--md-ref-typeface-mono, ui-monospace, monospace); color: var(--md-sys-color-on-surface-variant); }
+.qqapi-access {
+  height: 32px; padding: 0 12px 0 8px;
+  transition: background-color var(--md-sys-motion-spring-fast-effects), color var(--md-sys-motion-spring-fast-effects),
+    border-color var(--md-sys-motion-spring-fast-effects);
+}
+.qqapi-access .icon { color: var(--md-sys-color-primary); }
+.qqapi-access[data-access="WRITE"] {
+  border-color: transparent; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+}
+.qqapi-access[data-access="WRITE"] .icon { color: inherit; }
+.kind-chip.qqapi-locked { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+@media (prefers-reduced-motion: reduce) { .qqapi-groups, .qqapi-fold, .qqapi-row, .qqapi-chevron, .qqapi-access { transition: none; } }
+
 .palette-grid { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px 52px; }
 .palette-swatch {
   display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px; padding: 10px 0 8px;
