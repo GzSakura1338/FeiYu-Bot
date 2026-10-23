@@ -98,6 +98,8 @@ public final class TurnRunner {
     private static final int STICKER_CATALOG = 40;
     private static final int STICKER_NUDGE = 4;
     private static final int MAX_ERRANDS = 2;
+    private static final int MAX_VIEWS = 6;
+    private static final String VIEWED = "（这是你刚才用 view_image 要看的图）";
     public static final String SILENCE = "[沉默]";
     public static final String AMBIENT = "【旁听】";
 
@@ -137,6 +139,8 @@ public final class TurnRunner {
     private final List<ChatMessage> live = new ArrayList<>();
     private final List<ConversationMemory.Heard> arrived = new ArrayList<>();
     private final List<String> sentFiles = new ArrayList<>();
+    private final List<ImagePart> shown = new ArrayList<>();
+    private int views;
     private long heardId;
     private boolean userSaved;
     private ChatMessage marker;
@@ -209,6 +213,9 @@ public final class TurnRunner {
             if (requestTools != null) {
                 all.addAll(requestTools.specs());
             }
+            if (capabilities.toolCall(profile) && capabilities.vision(profile, protocol)) {
+                all.add(ImageViewer.SPEC);
+            }
             this.tools = List.copyOf(all);
             this.enabled = tools.stream().map(ToolSpec::name).toList();
         }
@@ -252,7 +259,7 @@ public final class TurnRunner {
                     continue;
                 }
                 if (hasLiveImages() && capabilities.rejectsImages(profile, e)) {
-                    live.set(0, live.getFirst().withoutImages(VisionProbe.UNSUPPORTED));
+                    live.replaceAll(m -> m.withoutImages(VisionProbe.UNSUPPORTED));
                     continue;
                 }
                 if (!tools.isEmpty() && capabilities.rejectsTools(profile, e)) {
@@ -310,6 +317,10 @@ public final class TurnRunner {
                 fresh.add(runTool(call));
             }
             save(fresh, result);
+            if (!shown.isEmpty()) {
+                live.add(ChatMessage.user(VIEWED, List.copyOf(shown)));
+                shown.clear();
+            }
             if (calls.isEmpty()) {
                 long latencyMs = (System.nanoTime() - started) / 1_000_000;
                 return new ChatResult(content, result.reasoning(), List.of(), result.model(), latencyMs,
@@ -617,6 +628,8 @@ public final class TurnRunner {
                 : call.name().equals(STEER_TASK) && enabled.contains(STEER_TASK) ? steerTask(call)
                 : requestTools != null && enabled.contains(call.name()) && requestTools.specs().stream().anyMatch(s -> s.name().equals(call.name()))
                 ? requestTools.run(call)
+                : call.name().equals(ImageViewer.NAME) && enabled.contains(ImageViewer.NAME)
+                ? ImageViewer.run(agent, call.arguments(), enabled.contains("read") ? workspace : null)
                 : agent.extensions().owns(call.name()) && enabled.contains(call.name()) ? agent.extensions().run(call, turn.session())
                 : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files(), network, direct));
         listener.onToolResult(call, outcome.output(), outcome.error());
@@ -627,6 +640,14 @@ public final class TurnRunner {
             }
         }
         String output = outcome.output();
+        if (!outcome.images().isEmpty()) {
+            if (views < MAX_VIEWS) {
+                views++;
+                shown.addAll(outcome.images());
+            } else {
+                output += "（这一轮已经看了 " + MAX_VIEWS + " 次图，这张没给你看了，先根据看到的说吧）";
+            }
+        }
         if (repeating(call)) {
             output += "\n\n[You have now made this exact same " + call.name() + " call " + DOOM_LOOP
                     + " times in a row. Repeating it will not change the result: try a different approach, or stop and tell the user where you are stuck.]";
@@ -835,7 +856,7 @@ public final class TurnRunner {
     }
 
     private boolean hasLiveImages() {
-        return !live.isEmpty() && live.getFirst().isUser() && !live.getFirst().images().isEmpty();
+        return live.stream().anyMatch(m -> !m.images().isEmpty());
     }
 
     private ChatMessage prepareImages(ChatMessage user) {

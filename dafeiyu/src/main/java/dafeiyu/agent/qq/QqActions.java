@@ -38,13 +38,15 @@ public final class QqActions {
     private final MessageArchive archive;
     private final QqOutbox outbox;
     private final QqContacts contacts;
+    private final QqImages images;
     private final LogBuffer log;
 
-    QqActions(ChatAgent agent, MessageArchive archive, QqOutbox outbox, QqContacts contacts, LogBuffer log) {
+    QqActions(ChatAgent agent, MessageArchive archive, QqOutbox outbox, QqContacts contacts, QqImages images, LogBuffer log) {
         this.agent = agent;
         this.archive = archive;
         this.outbox = outbox;
         this.contacts = contacts;
+        this.images = images;
         this.log = log;
     }
 
@@ -251,7 +253,8 @@ public final class QqActions {
             String userId = sender == null ? optString(event, "user_id") : optString(sender, "user_id");
             String name = sender == null ? optString(data2 == null ? event : data2, "nickname")
                     : !optString(sender, "card").isBlank() ? optString(sender, "card") : optString(sender, "nickname");
-            QqMessages.Incoming in = QqMessages.parse(event, self, (qq, nick) -> nick.isBlank() ? qq : nick, null);
+            QqMessages.Incoming in = QqMessages.parse(event, self, (qq, nick) -> nick.isBlank() ? qq : nick, null,
+                    (file, url) -> images.number(file, url, "forward"));
             long time = event.has("time") ? event.get("time").getAsLong() * 1000 : 0;
             lines.add(new ForwardLine(unforgeable(name.isBlank() ? "QQ " + userId : name), userId, time, in.text(), in.imageUrls(), in.attachments()));
             cacheNested(event);

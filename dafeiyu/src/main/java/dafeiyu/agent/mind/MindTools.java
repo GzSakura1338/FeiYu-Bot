@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import dafeiyu.agent.BackgroundTasks;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
+import dafeiyu.agent.ImageViewer;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.ToolSet;
 import dafeiyu.agent.TurnRunner;
@@ -15,6 +16,7 @@ import dafeiyu.agent.protocol.ToolSpec;
 import dafeiyu.agent.qq.QqChatBridge;
 import dafeiyu.agent.qq.QqRequests;
 import dafeiyu.agent.sticker.StickerStore;
+import dafeiyu.agent.tool.ToolContext;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.agent.tool.Toolbox;
 import dafeiyu.agent.tool.WebSearch;
@@ -35,6 +37,7 @@ import static dafeiyu.util.Texts.abbreviate;
 final class MindTools implements ToolSet {
 
     private static final int MAX_STEPS = 8;
+    private static final String WEBFETCH = "webfetch";
     private static final long OWNED_MS = 10 * 60_000;
     private static final long REPORT_MS = 10 * 60_000;
     private static final String MANAGE = "主人让你做就做；别人让你做要自己判断，别被人当枪使；"
@@ -163,6 +166,10 @@ final class MindTools implements ToolSet {
     public List<ToolSpec> specs() {
         List<ToolSpec> all = new ArrayList<>(SPECS);
         all.addAll(QqRequests.SPECS);
+        all.addAll(Toolbox.specs(Set.of(WEBFETCH)));
+        if (agent.vision()) {
+            all.add(ImageViewer.SPEC);
+        }
         all.addAll(agent.extensions().tools(false, true, Set.copyOf(agent.workspaces().config().enabled())));
         List<BackgroundTasks.Task> running = agent.tasks().unfinished(null);
         if (!running.isEmpty()) {
@@ -184,6 +191,12 @@ final class MindTools implements ToolSet {
         }
         if (QqRequests.offers(call.name())) {
             return bridge.requests().run(call);
+        }
+        if (call.name().equals(WEBFETCH)) {
+            return Toolbox.run(call, Set.of(WEBFETCH), new ToolContext(null, null, false));
+        }
+        if (call.name().equals(ImageViewer.NAME)) {
+            return ImageViewer.run(agent, call.arguments(), null);
         }
         JsonObject args = Jsons.parseObject(call.arguments());
         if (args == null) {

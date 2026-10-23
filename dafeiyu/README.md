@@ -84,6 +84,8 @@
   - 回复里写「@昵称」会转成真正的 @；原消息之后又有人说话时引用原消息
 - 工作目录与文件工具（移植自 opencode 的 read / write / edit / patch / list / glob / grep / todowrite / webfetch，另加 move 移动改名、delete 删除、send_file 发文件。patch 先全部校验再动手，删除进 .trash；webfetch 拒绝本机和内网地址）。
 - 网络检索 `websearch`（`WebSearch`、`WebSearchTool`，不需要 API Key）：含中文的查询先走 cn.bing.com（抓结果页的标题、链接、摘要），英文先走 Exa（opencode 同款的 `mcp.exa.ai` 免费接口，带网页正文摘录），一边失败或没结果就换另一边；默认 8 条，最多 15 条。工具说明里带当天日期，提示查近况时带上年份，需要细节再用 webfetch 打开。后端直连，不走系统代理。内心也有一个 `search` 工具（每次 5 条），好奇或群里聊到不懂的东西时会自己去搜
+- 读网页 `webfetch`（`WebFetchTool`、`HtmlText`、`PublicWeb`）：用真浏览器标识；有 `<article>` / `<main>` 就只取正文，几乎全是短链接的列表当菜单去掉；一次给约 8000 字，`offset` 接着读，`find` 写关键词只返回相关段落；第一次打开时在末尾列出编号链接（正文里写成「文字[3]」）和页面上的图片，可以顺着点下去或交给 `view_image` 看；同一网址 15 分钟内不重新下载。直连连不上时，如果 Windows 设了本机系统代理（比如 127.0.0.1:7897），就改走代理并记住这个网站；网站拒绝（403 / 412 / 429 等）或网页要靠脚本才有内容时，用 Exa 的 `web_fetch_exa` 兜底。知乎、百度百科、贴吧、B 站这类网站两边都读不了。内心也有 `webfetch`，提示词里鼓励她闲着时上网冲浪
+- 看图放大 `view_image`（`ImageViewer`，模型支持看图才给）：QQ 收到的普通图片都登记进 `images` 表（库版本 12，按 QQ 文件名去重），聊天里显示成「[图片#12]」；图片链接过期后用 NapCat `get_image` 重新取。不写 area 看整张（小图放大到 768 像素以上，大图缩到 1568），图上画 4×4 格子（列 A–D、行 1–4）；area 写格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55）时从原图裁出来，最多放大 4 倍。也能看 `[表情包#5]`、网页图片网址和（能用 read 时）工作目录里的图片。返回的图只放在这一轮的请求里，不写进聊天记录；每轮最多看 6 次。QQ 会话、网页会话、后台任务和内心都能用
   shell（沙盒执行，默认关闭）跑在 Windows AppContainer「dafeiyu.sandbox」里：只能读写工作目录，断网（含本机回环），注册表和用户目录都碰不到；
   Job 对象限制 1 GB 内存、64 个进程、低优先级、CPU 上限 50%，超时整棵进程树一起杀掉。第一次使用时会用 icacls 给容器 SID 加两条权限：工作目录可写、Python 安装目录只读。
   撤销：`icacls <目录> /remove *<容器 SID> /T /C /Q`（SID 在日志或 `CheckNetIsolation` 里能查到）。Node 装在 Program Files 里，要用的话需要管理员手动加只读权限。网页上的文件列表可以预览图片、文本和 HTML（HTML 在沙箱里打开）：
@@ -120,12 +122,13 @@
 | --- | --- | --- |
 | `dafeiyu` | `Main` | 入口，组装各模块 |
 | `config` | `AppConfig`、`WsSettings`、`WsProfile`、`WsProfileStore` | config.properties、反向 WebSocket 配置列表 |
-| `db` | `Database`、`Migrations`、`Settings`、`DatabaseException` | SQLite 连接、按版本迁移表结构（库版本 11，升级前自动备份）、键值设置 |
+| `db` | `Database`、`Migrations`、`Settings`、`DatabaseException` | SQLite 连接、按版本迁移表结构（库版本 12，升级前自动备份）、键值设置 |
 | `log` | `LogBuffer`、`LogEntry` | 最近 500 条日志（控制台输出为英文） |
 | `message` | `MessageArchive`、`StoredMessage` | QQ 收发消息记录 |
 | `onebot` | `NapCatServer`、`NapCatService`、`PendingActions`、`EventFormatter`、`NapCatStatus` | OneBot v11 反向 WebSocket、运行中切换监听、事件订阅 |
 | `agent` | `ChatAgent` | 对外入口：按会话加锁后交给 `TurnRunner`；收消息、清空会话、看图检测、模型列表 |
 | | `TurnRunner`、`Prompt` | 一轮对话：组装请求 → 调模型 → 执行工具 → 逐步落库，处理超长压缩、看图/工具不支持时的回退、内容审核；系统提示词 |
+| | `ImageViewer` | 看图放大工具：取图（图片编号、表情包、网址、工作目录）、画格子、按格子或方位从原图裁剪放大 |
 | | `ChatTurn`、`ChatMessage`、`ChatResult`、`ToolCall`、`ToolSet`、`StreamListener`、`AgentException` 等 | 一轮的输入（可带自己的一套工具）、消息与结果、流式事件、错误分类 |
 | | `SessionMonitor`、`SessionSummary`、`SessionDetail` | 正在进行的回复（实时事件、停止）、会话列表与明细 |
 | `agent.model` | `AgentStore`、`ModelProfile`、`ModelLimits`、`ModelRetry`、`Capabilities`、`VisionProbe`、`SystemRoleProbe`、`ImageLoader` | 模型配置与各个开关、上下文窗口、重试策略、能力探测、图片下载 |
@@ -134,7 +137,7 @@
 | `agent.reply` | `Markup` | 回复里隐藏标签的唯一解析和写回处：`<内心>`、`<记住>`、`<去做>`、`<拍一拍>` |
 | `agent.memory` | `Mood`、`MemoryStore`、`SkillStore`、`SkillPack`、`Reflection` | 心情、长期记忆分区与回忆（按来源控制隐私，私聊来源只在本私聊可见、最近在别处）、一天一篇的日记和按主题的自我认识、学会的技能、自我总结与整理 |
 | `agent.mind` | `Mind`、`MindTools` | 内心：一直在想的意识流、接别处托付的事、想事情用的工具（看群、翻记录、回想、找人、去群里说、私聊、拍一拍、记下）；私聊只感知「谁来找过」，不看内容 |
-| `agent.qq` | `QqChatBridge`、`QqOutbox`、`QqContacts`、`QqBackfill`、`QqActions`、`QqRequests`、`GroupState`、`QqMessages`、`QqText`、`QqFaces` | 收消息与调度（群聊和私聊都即收即存、忙时排队）、主动开口；NapCat 每次连上后补拉断线期间漏掉的消息（只拉最近一周有动静的群和私聊，10 分钟内的照常回复）；统一的发送管线（格式化、审核、表情包、文件、拍一拍）；群列表、好友与找人；群管理；好友申请、进群邀请和进群申请（存在 settings 表 `agent.qq.requests`，连上后用 `get_group_system_msg` 和 `get_doubt_friends_add_request` 补拉，3 天过期）；每个群的状态；消息解析与 @ 转换；回复格式；QQ 表情 |
+| `agent.qq` | `QqChatBridge`、`QqOutbox`、`QqContacts`、`QqBackfill`、`QqActions`、`QqRequests`、`QqImages`、`GroupState`、`QqMessages`、`QqText`、`QqFaces` | 收消息与调度（群聊和私聊都即收即存、忙时排队）、主动开口；NapCat 每次连上后补拉断线期间漏掉的消息（只拉最近一周有动静的群和私聊，10 分钟内的照常回复）；统一的发送管线（格式化、审核、表情包、文件、拍一拍）；群列表、好友与找人；群管理；好友申请、进群邀请和进群申请（存在 settings 表 `agent.qq.requests`，连上后用 `get_group_system_msg` 和 `get_doubt_friends_add_request` 补拉，3 天过期）；每个群的状态；消息解析与 @ 转换；回复格式；QQ 表情 |
 | `agent.safety` | `ContentGuard` | 内容红线：关键词表 + 模型审核 |
 | `agent.sticker` | `StickerStore`、`StickerKeeper` | 表情包库、后台下载和认图、收藏导入 |
 | `agent.tool` | `Workspace`、`WorkspaceStore`、`Toolbox`、`ReadTool`、`ListTool`、`MoveTool`、`DeleteTool` 等 | 工作目录沙箱、设置与 QQ 权限、工具注册与执行 |

@@ -212,6 +212,16 @@ public final class Migrations {
                 text        TEXT NOT NULL
             );
             CREATE INDEX idx_plugin_logs ON plugin_logs (plugin_id, id)
+            """,
+            """
+            CREATE TABLE images (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                file        TEXT NOT NULL,
+                url         TEXT NOT NULL,
+                session     TEXT NOT NULL,
+                created_at  INTEGER NOT NULL
+            );
+            CREATE INDEX idx_images_file ON images (file)
             """
     );
 

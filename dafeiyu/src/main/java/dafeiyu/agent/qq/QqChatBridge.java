@@ -107,6 +107,7 @@ public final class QqChatBridge {
     private final QqContacts contacts;
     private final QqBackfill backfill;
     private final QqActions actions;
+    private final QqImages images;
     private final QqRequests requests;
     private volatile Observer observer;
     private volatile MessageGate gate = MessageGate.NONE;
@@ -127,7 +128,9 @@ public final class QqChatBridge {
         this.outbox = new QqOutbox(agent, napcat, archive, log, groups);
         this.contacts = new QqContacts(agent, napcat, archive, outbox, log);
         this.backfill = new QqBackfill(agent, archive, outbox, log);
-        this.actions = new QqActions(agent, archive, outbox, contacts, log);
+        this.images = new QqImages(db, outbox);
+        this.actions = new QqActions(agent, archive, outbox, contacts, images, log);
+        agent.setImageSource(images::load);
         this.requests = new QqRequests(agent, db, outbox, contacts, actions, log);
         requests.setOnNew(r -> {
             Observer o = observer;
@@ -415,9 +418,10 @@ public final class QqChatBridge {
         }
         GroupState state = messageType.equals("group") ? groups.computeIfAbsent(optString(event, "group_id"), GroupState::new) : null;
         String eventGroup = optString(event, "group_id");
+        String where = state == null ? "private:" + userId : "group:" + eventGroup;
         Incoming incoming = QqMessages.parse(event, selfId, state == null ? (qq, hint) -> hint
                 : (qq, hint) -> state.mentionName(qq, hint == null || hint.isBlank() ? contacts.memberName(eventGroup, qq) : hint,
-                        agent.personas().isOwner(qq), this::reservedName), this::stickerLabel);
+                        agent.personas().isOwner(qq), this::reservedName), this::stickerLabel, (file, url) -> images.number(file, url, where));
         if (incoming.text().isEmpty() && incoming.imageUrls().isEmpty()) {
             return;
         }
@@ -766,8 +770,8 @@ public final class QqChatBridge {
             int said = state.spokenWithin(RECENT_TALK_MS);
             prompt.append(prompt.isEmpty() ? "" : "\n").append(TurnRunner.AMBIENT).append("以上是群里刚刚的聊天，没人 @ 你。")
                     .append(said > 0 ? "你最近十分钟已经在群里说了 " + said + " 句。" : "你最近十分钟没在群里说话。")
-                    .append("你是群里最活跃的那个，看到了就接一句：接话、吐槽、起哄、回答、关心人、发个表情包都行，别光看着；")
-                    .append("只有别人两个人之间 @ 着说私事、实在插不上嘴时，才只写 ").append(TurnRunner.SILENCE).append("。");
+                    .append("有感兴趣的、能接上的、好笑的就自然地插一句；跟你关系不大、你刚说过不少、插不上嘴，就只写 ")
+                    .append(TurnRunner.SILENCE).append("，潜水也很正常。");
         } else {
             prompt.append(prompt.isEmpty() ? "" : "\n").append("（").append(resumedGroups.remove(state.groupId) ? RESUMED : "")
                     .append("有人在跟你说话，现在要回的是这条：「").append(abbreviate(trigger.text(), 300)).append("」。").append(FOCUS).append("）");

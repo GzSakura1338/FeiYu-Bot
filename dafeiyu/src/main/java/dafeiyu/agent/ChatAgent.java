@@ -171,6 +171,23 @@ public final class ChatAgent {
         return forwards.read(id);
     }
 
+    public interface ImageSource {
+
+        byte[] load(long id) throws dafeiyu.agent.tool.ToolFailure;
+    }
+
+    private volatile ImageSource images = id -> {
+        throw new dafeiyu.agent.tool.ToolFailure("QQ 没连上，取不到图片#" + id);
+    };
+
+    public void setImageSource(ImageSource images) {
+        this.images = images;
+    }
+
+    byte[] image(long id) throws dafeiyu.agent.tool.ToolFailure {
+        return images.load(id);
+    }
+
     private volatile java.util.function.Supplier<ToolSet> requestTools = () -> null;
 
     public void setRequestTools(java.util.function.Supplier<ToolSet> requestTools) {

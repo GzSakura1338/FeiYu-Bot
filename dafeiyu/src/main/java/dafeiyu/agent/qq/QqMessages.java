@@ -34,10 +34,11 @@ public final class QqMessages {
     private QqMessages() {}
 
     static Incoming parse(JsonObject event, String selfId, BiFunction<String, String, String> nameOf) {
-        return parse(event, selfId, nameOf, null);
+        return parse(event, selfId, nameOf, null, null);
     }
 
-    static Incoming parse(JsonObject event, String selfId, BiFunction<String, String, String> nameOf, BiFunction<String, String, String> stickers) {
+    static Incoming parse(JsonObject event, String selfId, BiFunction<String, String, String> nameOf, BiFunction<String, String, String> stickers,
+                          BiFunction<String, String, String> photos) {
         JsonElement message = event.get("message");
         StringBuilder text = new StringBuilder();
         List<String> images = new ArrayList<>();
@@ -61,7 +62,8 @@ public final class QqMessages {
                         String type = optString(seg, "type");
                         boolean sticker = type.equals("mface") || optString(data, "sub_type").equals("1");
                         String file = type.equals("mface") ? "mface-" + optString(data, "emoji_id") : optString(data, "file");
-                        addImage(text, images, optString(data, "url"), optString(data, "summary"), type, sticker ? stickers : null, file, attachments);
+                        addImage(text, images, optString(data, "url"), optString(data, "summary"), type, sticker ? stickers : null, photos, file,
+                                attachments);
                     }
                     case "face" -> text.append(QqFaces.describe(optString(data, "id")));
                     case "reply" -> replyTo = optString(data, "id");
@@ -85,7 +87,7 @@ public final class QqMessages {
                         boolean sticker = m.group(1).equals("mface") || "1".equals(params.get("sub_type"));
                         String file = m.group(1).equals("mface") ? "mface-" + params.getOrDefault("emoji_id", "") : params.getOrDefault("file", "");
                         addImage(text, images, params.getOrDefault("url", ""), params.getOrDefault("summary", ""), m.group(1), sticker ? stickers : null,
-                                file, attachments);
+                                photos, file, attachments);
                     }
                     case "face" -> text.append(QqFaces.describe(params.getOrDefault("id", "")));
                     case "reply" -> replyTo = params.getOrDefault("id", "");
@@ -269,11 +271,14 @@ public final class QqMessages {
     }
 
     private static void addImage(StringBuilder text, List<String> images, String url, String summary, String type,
-                                 BiFunction<String, String, String> stickers, String file, JsonArray attachments) {
+                                 BiFunction<String, String, String> stickers, BiFunction<String, String, String> photos, String file,
+                                 JsonArray attachments) {
         String label = !summary.isBlank() ? summary : type.equals("mface") ? "[表情]" : "[图片]";
-        String sticker = stickers == null ? null : stickers.apply(file, url);
-        text.append(sticker != null ? sticker : label.startsWith("[") ? label : "[" + label + "]");
+        String bare = label.startsWith("[") && label.endsWith("]") ? label.substring(1, label.length() - 1) : label;
         boolean web = url.startsWith("http://") || url.startsWith("https://");
+        String sticker = stickers == null ? null : stickers.apply(file, url);
+        String number = sticker == null && photos != null && web ? photos.apply(file, url) : null;
+        text.append(sticker != null ? sticker : "[" + bare + (number == null ? "" : "#" + number) + "]");
         if (web) {
             images.add(url);
         }

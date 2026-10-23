@@ -1,6 +1,7 @@
 package dafeiyu.agent.tool;
 
 import com.google.gson.JsonObject;
+import dafeiyu.agent.ImagePart;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.protocol.ToolSpec;
 import dafeiyu.util.Jsons;
@@ -10,7 +11,16 @@ import java.util.Set;
 
 public final class Toolbox {
 
-    public record Outcome(String output, boolean error) {}
+    public record Outcome(String output, boolean error, List<ImagePart> images) {
+
+        public Outcome {
+            images = images == null ? List.of() : List.copyOf(images);
+        }
+
+        public Outcome(String output, boolean error) {
+            this(output, error, List.of());
+        }
+    }
 
     private static final int MAX_OUTPUT = 50_000;
     private static final List<Tool> ALL = List.of(

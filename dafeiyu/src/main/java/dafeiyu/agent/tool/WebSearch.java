@@ -138,6 +138,54 @@ public final class WebSearch {
         return parseExa(response.body(), count);
     }
 
+    static String exaFetch(String url, int maxCharacters) throws IOException, InterruptedException {
+        JsonObject arguments = new JsonObject();
+        JsonArray urls = new JsonArray();
+        urls.add(url);
+        arguments.add("urls", urls);
+        arguments.addProperty("maxCharacters", maxCharacters);
+        JsonObject params = new JsonObject();
+        params.addProperty("name", "web_fetch_exa");
+        params.add("arguments", arguments);
+        JsonObject body = new JsonObject();
+        body.addProperty("jsonrpc", "2.0");
+        body.addProperty("id", 1);
+        body.addProperty("method", "tools/call");
+        body.add("params", params);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(EXA))
+                .timeout(Duration.ofSeconds(45))
+                .header("Accept", "application/json, text/event-stream")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .build();
+        HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (response.statusCode() != 200) {
+            throw new IOException("HTTP " + response.statusCode());
+        }
+        StringBuilder text = new StringBuilder();
+        boolean error = false;
+        for (String line : response.body().split("\n")) {
+            if (!line.startsWith("data:")) {
+                continue;
+            }
+            JsonElement json = JsonParser.parseString(line.substring(5).strip());
+            JsonObject result = json.isJsonObject() && json.getAsJsonObject().has("result") ? json.getAsJsonObject().getAsJsonObject("result") : null;
+            if (result == null) {
+                continue;
+            }
+            error |= result.has("isError") && result.get("isError").getAsBoolean();
+            for (JsonElement part : result.has("content") ? result.getAsJsonArray("content") : new JsonArray()) {
+                if (part.getAsJsonObject().has("text")) {
+                    text.append(part.getAsJsonObject().get("text").getAsString()).append('\n');
+                }
+            }
+        }
+        if (error || text.isEmpty()) {
+            throw new IOException(text.isEmpty() ? "no content" : text.toString().strip());
+        }
+        return text.toString().strip();
+    }
+
     static List<Hit> parseExa(String raw, int count) {
         StringBuilder text = new StringBuilder();
         for (String line : raw.split("\n")) {

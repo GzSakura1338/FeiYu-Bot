@@ -23,7 +23,8 @@ final class WebSearchTool implements Tool {
                 + "Use this for anything you are not sure about or that may have changed: news, recent events, prices, versions, "
                 + "release dates, documentation, how-tos, unfamiliar names and slang. The current date is " + LocalDate.now()
                 + ", so include the year when searching for recent information. Chinese queries search Chinese sites, English queries search "
-                + "the wider web. Snippets are short; use the webfetch tool on a result URL to read the full page before relying on details.";
+                + "the wider web. Snippets are short; open a result with the webfetch tool before relying on details, and pass find with your "
+                + "keywords to read just the relevant passages instead of the whole page.";
     }
 
     @Override

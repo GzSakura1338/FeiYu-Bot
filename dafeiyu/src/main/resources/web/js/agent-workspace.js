@@ -38,6 +38,7 @@ export const MIND_TOOLS = {
   requests: { icon: 'person', label: '看看申请' },
   answer_friend: { icon: 'person', label: '处理好友申请' },
   answer_group: { icon: 'groups', label: '处理进群' },
+  view_image: { icon: 'visibility', label: '看图' },
 };
 
 const ACCESS_HINT = {

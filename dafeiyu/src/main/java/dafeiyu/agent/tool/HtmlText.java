@@ -1,10 +1,33 @@
 package dafeiyu.agent.tool;
 
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class HtmlText {
+
+    record Link(String text, String url) {}
+
+    record Img(String alt, String url) {}
+
+    record Page(String title, String text, List<Link> links, List<Img> images) {}
+
+    private static final Pattern REGION = Pattern.compile("(?is)<(article|main)\\b[^>]*>(.*?)</\\1\\s*>");
+    private static final Pattern IMG_TAG = Pattern.compile("(?is)<img\\b[^>]*>");
+    private static final Pattern ATTR = Pattern.compile("(?is)\\b([\\w-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))");
+    private static final Pattern NOT_CONTENT = Pattern.compile("(?i)logo|icon|avatar|sprite|blank|placeholder|loading|spacer|pixel|1x1|emoji|badge");
+    private static final Pattern LIST = Pattern.compile("(?is)<(ul|ol)\\b[^>]*>((?:(?!<(?:ul|ol)\\b).)*?)</\\1\\s*>");
+    private static final Pattern ANCHOR = Pattern.compile("(?is)<a\\b[^>]*>(.*?)</a\\s*>");
+    private static final Pattern LIST_ITEM = Pattern.compile("(?i)<li\\b");
+    private static final int MIN_REGION_TEXT = 400;
+    private static final int MAX_PRUNE_HTML = 3_000_000;
 
     private static final Pattern DROP = Pattern.compile(
             "(?is)<(script|style|noscript|svg|template|iframe|canvas|head|nav|footer|form)\\b[^>]*>.*?</\\1\\s*>|<!--.*?-->|<!doctype[^>]*>");
@@ -28,30 +51,145 @@ final class HtmlText {
 
     private HtmlText() {}
 
-    static String markdown(String html) {
+    static Page page(String html, URI base, int maxLinks, int maxImages) {
         String title = title(html);
-        String text = DROP.matcher(html).replaceAll(" ");
+        String scope = withoutMenus(DROP.matcher(region(html)).replaceAll(" "));
+        List<Img> images = images(scope, base, maxImages);
+        Map<String, Integer> numbers = new HashMap<>();
+        List<Link> links = new ArrayList<>();
+        String text = DROP.matcher(scope).replaceAll(" ");
         text = PRE.matcher(text).replaceAll(m -> Matcher.quoteReplacement("\n```\n" + TAG.matcher(m.group(1)).replaceAll("") + "\n```\n"));
         text = HEADING.matcher(text).replaceAll(m -> Matcher.quoteReplacement("\n\n" + "#".repeat(Integer.parseInt(m.group(1))) + " "
                 + oneLine(m.group(2)) + "\n\n"));
         text = LINK.matcher(text).replaceAll(m -> {
             String label = oneLine(m.group(3));
-            String href = m.group(2).strip();
-            if (label.isEmpty() || href.startsWith("#") || href.startsWith("javascript:")) {
+            String href = resolve(base, decode(m.group(2)));
+            if (label.isEmpty() || href == null) {
                 return Matcher.quoteReplacement(label);
             }
-            return Matcher.quoteReplacement("[" + label + "](" + href + ")");
+            Integer n = numbers.get(href);
+            if (n == null && links.size() < maxLinks) {
+                n = links.size() + 1;
+                numbers.put(href, n);
+                links.add(new Link(label.length() > 60 ? label.substring(0, 60) + "…" : label, href));
+            }
+            return Matcher.quoteReplacement(n == null ? label : label + "[" + n + "]");
         });
-        text = IMAGE.matcher(text).replaceAll(m -> m.group(2).isBlank() ? "" : Matcher.quoteReplacement("![" + m.group(2).strip() + "]"));
+        text = IMAGE.matcher(text).replaceAll(m -> m.group(2).isBlank() ? "" : Matcher.quoteReplacement("[图：" + oneLine(m.group(2)) + "]"));
         text = CODE.matcher(text).replaceAll(m -> Matcher.quoteReplacement("`" + m.group(1) + "`"));
         text = BOLD.matcher(text).replaceAll(m -> Matcher.quoteReplacement("**" + m.group(2) + "**"));
         text = ITEM.matcher(text).replaceAll("\n- ");
         text = BREAK.matcher(text).replaceAll("\n");
         text = CELL.matcher(text).replaceAll(" | ");
         text = BLOCK.matcher(text).replaceAll("\n\n");
-        text = decode(TAG.matcher(text).replaceAll(""));
-        text = tidy(text);
-        return title.isEmpty() || text.startsWith("# ") ? text : "# " + title + "\n\n" + text;
+        text = tidy(decode(TAG.matcher(text).replaceAll("")));
+        return new Page(title, text, List.copyOf(links), images);
+    }
+
+    private static String region(String html) {
+        String best = null;
+        int bestLength = MIN_REGION_TEXT;
+        Matcher m = REGION.matcher(html);
+        while (m.find()) {
+            int length = TAG.matcher(DROP.matcher(m.group(2)).replaceAll(" ")).replaceAll("").replaceAll("\\s+", "").length();
+            if (length >= bestLength) {
+                best = m.group(2);
+                bestLength = length;
+            }
+        }
+        return best == null ? html : best;
+    }
+
+    private static String withoutMenus(String html) {
+        if (html.length() > MAX_PRUNE_HTML) {
+            return html;
+        }
+        String current = html;
+        for (int pass = 0; pass < 4; pass++) {
+            Matcher m = LIST.matcher(current);
+            StringBuilder out = new StringBuilder(current.length());
+            boolean changed = false;
+            while (m.find()) {
+                boolean menu = menu(m.group(2));
+                changed |= menu;
+                m.appendReplacement(out, menu ? " " : Matcher.quoteReplacement(m.group()));
+            }
+            m.appendTail(out);
+            current = out.toString();
+            if (!changed) {
+                break;
+            }
+        }
+        return current;
+    }
+
+    private static boolean menu(String list) {
+        int items = 0;
+        Matcher item = LIST_ITEM.matcher(list);
+        while (item.find()) {
+            items++;
+        }
+        int text = visible(list);
+        if (items < 3 || text == 0) {
+            return false;
+        }
+        int linked = 0;
+        Matcher a = ANCHOR.matcher(list);
+        while (a.find()) {
+            linked += visible(a.group(1));
+        }
+        return linked >= text * 0.6 && text / items < 40;
+    }
+
+    private static int visible(String html) {
+        return TAG.matcher(html).replaceAll("").replaceAll("\\s+", "").length();
+    }
+
+    private static List<Img> images(String html, URI base, int max) {
+        List<Img> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        Matcher tag = IMG_TAG.matcher(DROP.matcher(html).replaceAll(" "));
+        while (tag.find() && out.size() < max) {
+            Map<String, String> attrs = new HashMap<>();
+            Matcher a = ATTR.matcher(tag.group());
+            while (a.find()) {
+                String value = a.group(2) != null ? a.group(2) : a.group(3) != null ? a.group(3) : a.group(4);
+                attrs.putIfAbsent(a.group(1).toLowerCase(Locale.ROOT), decode(value));
+            }
+            String src = attrs.getOrDefault("data-src", attrs.getOrDefault("data-original", attrs.getOrDefault("src", "")));
+            String url = resolve(base, src);
+            if (url == null || url.toLowerCase(Locale.ROOT).contains(".svg") || NOT_CONTENT.matcher(url).find() || small(attrs) || !seen.add(url)) {
+                continue;
+            }
+            out.add(new Img(oneLine(attrs.getOrDefault("alt", "")), url));
+        }
+        return List.copyOf(out);
+    }
+
+    private static boolean small(Map<String, String> attrs) {
+        for (String key : List.of("width", "height")) {
+            String value = attrs.getOrDefault(key, "").replaceAll("[^0-9]", "");
+            if (!value.isEmpty() && value.length() < 4 && Integer.parseInt(value) < 60) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String resolve(URI base, String href) {
+        String h = href == null ? "" : href.strip();
+        String lower = h.toLowerCase(Locale.ROOT);
+        if (h.isEmpty() || h.startsWith("#") || lower.startsWith("javascript:") || lower.startsWith("mailto:") || lower.startsWith("tel:")
+                || lower.startsWith("data:")) {
+            return null;
+        }
+        try {
+            URI uri = base.resolve(h.replace(" ", "%20").replace("|", "%7C"));
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            return scheme.equals("http") || scheme.equals("https") ? uri.toString() : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     static String text(String html) {

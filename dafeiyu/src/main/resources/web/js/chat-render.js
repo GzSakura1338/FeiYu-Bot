@@ -72,7 +72,8 @@ export function toolTitle(name, args) {
   if (name === 'answer_group') return `${label}：${args.approve ? '同意' : '拒绝'} 群 ${args.group_id ?? ''}${args.user_id ? ` · QQ ${args.user_id}` : ''}`;
   if (name === 'read_group') return `${label} ${args.group_id ?? ''}`;
   if (name === 'recall' || name === 'remember') return `${label} ${args.about ?? ''}${args.text ? `：${args.text}` : ''}`;
-  if (name === 'webfetch') return `${label} ${args.url ?? ''}`;
+  if (name === 'webfetch') return `${label} ${args.url ?? ''}${args.find ? ` 找「${args.find}」` : ''}${args.offset ? ` 从第 ${args.offset} 字` : ''}`;
+  if (name === 'view_image') return `${label} ${args.image ?? ''}${args.area ? ` · 放大 ${args.area}` : ''}`;
   if (name === 'websearch' || name === 'search') return `${label}「${args.query ?? ''}」`;
   if (name === 'shell') return `${label} ${args.description || args.command || ''}`;
   if (name === 'todowrite') {
