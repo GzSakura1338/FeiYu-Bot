@@ -5,7 +5,7 @@ import { onPageChange, currentPage } from './router.js';
 
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const EFFORTS = { default: '默认', none: '关闭', low: '低', medium: '中', high: '高', max: '最高' };
-const PURPOSE_ICONS = { chat: 'forum', mind: 'neurology', compact: 'history', guard: 'shield', sticker: 'mood', reflect: 'psychology', probe: 'build' };
+const PURPOSE_ICONS = { chat: 'forum', mind: 'neurology', compact: 'history', guard: 'shield', sticker: 'mood', reflect: 'psychology', probe: 'build', subagent: 'travel_explore' };
 const DAY_MS = 86_400_000;
 const RATIOS = [0.35, 0.8, 1.6];
 

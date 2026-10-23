@@ -11,10 +11,15 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,6 +47,20 @@ public final class WebSearch {
             .build();
 
     private WebSearch() {}
+
+    private static HttpResponse<String> fetch(HttpRequest request) throws IOException, InterruptedException {
+        Duration limit = request.timeout().orElse(TIMEOUT);
+        CompletableFuture<HttpResponse<String>> pending = CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        try {
+            return pending.get(limit.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            throw new HttpTimeoutException(limit.toSeconds() + " 秒没有传完");
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof IOException io ? io : new IOException(e.getCause());
+        } finally {
+            pending.cancel(true);
+        }
+    }
 
     public static Results search(String query, int count) throws ToolFailure {
         String q = query == null ? "" : query.strip();
@@ -88,7 +107,7 @@ public final class WebSearch {
                 .header("Accept", "text/html")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .GET().build();
-        HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response = fetch(request);
         if (response.statusCode() != 200) {
             throw new IOException("HTTP " + response.statusCode());
         }
@@ -131,7 +150,7 @@ public final class WebSearch {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .build();
-        HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response = fetch(request);
         if (response.statusCode() != 200) {
             throw new IOException("HTTP " + response.statusCode());
         }
@@ -158,7 +177,7 @@ public final class WebSearch {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .build();
-        HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response = fetch(request);
         if (response.statusCode() != 200) {
             throw new IOException("HTTP " + response.statusCode());
         }

@@ -5,6 +5,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
+import dafeiyu.util.Clock;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -35,12 +36,16 @@ public final class Intercom {
 
     public record Told(String session, String intent, long at) {}
 
+    public record Reminder(long at, String what, long setAt) {}
+
     public static final String OPEN = "open";
     public static final String DONE = "done";
     public static final String DROPPED = "dropped";
     private static final String KEY = "agent.commitments";
     private static final String NOTES_KEY = "agent.intercom.notes";
     private static final String INBOX_KEY = "agent.intercom.inbox";
+    private static final String REMINDERS_KEY = "agent.intercom.reminders";
+    private static final int MAX_REMINDERS = 30;
     private static final int MAX_NOTES = 4;
     private static final int MAX_TOLD = 60;
     private static final long TOLD_MS = 30 * 60_000;
@@ -58,6 +63,7 @@ public final class Intercom {
     private int crowdedOut;
     private final Deque<Event> events = new ArrayDeque<>();
     private final List<Commitment> commitments = new ArrayList<>();
+    private final List<Reminder> reminders = new ArrayList<>();
     private final AtomicLong ids = new AtomicLong();
     private volatile Consumer<String> deliver = s -> {};
     private volatile Runnable stir = () -> {};
@@ -173,10 +179,14 @@ public final class Intercom {
     }
 
     public List<String> drain() {
+        List<Reminder> due = due(System.currentTimeMillis());
         synchronized (inbox) {
             List<String> out = new ArrayList<>(inbox);
             if (crowdedOut > 0) {
                 out.addFirst("（还有 " + crowdedOut + " 条更早的回执和汇报，来得太多没记住）");
+            }
+            for (Reminder r : due) {
+                out.addFirst("【到点了】" + r.what() + "（你" + Clock.ago(r.setAt()) + "定的提醒）");
             }
             inbox.clear();
             crowdedOut = 0;
@@ -187,7 +197,7 @@ public final class Intercom {
 
     public boolean hasNews() {
         synchronized (inbox) {
-            return !inbox.isEmpty();
+            return !inbox.isEmpty() || nextReminder() <= System.currentTimeMillis();
         }
     }
 
@@ -344,6 +354,45 @@ public final class Intercom {
                 inbox.addAll(unread);
             }
         } catch (JsonParseException ignored) {
+        }
+        try {
+            String savedReminders = settings.get(REMINDERS_KEY);
+            List<Reminder> set = savedReminders == null || savedReminders.isBlank() ? null
+                    : GSON.fromJson(savedReminders, new TypeToken<List<Reminder>>() {}.getType());
+            if (set != null) {
+                reminders.addAll(set);
+            }
+        } catch (JsonParseException ignored) {
+        }
+    }
+
+    public List<Reminder> remind(long at, String what) {
+        synchronized (reminders) {
+            reminders.removeIf(r -> r.at() == at && r.what().equals(what));
+            reminders.add(new Reminder(at, what, System.currentTimeMillis()));
+            reminders.sort(Comparator.comparingLong(Reminder::at));
+            while (reminders.size() > MAX_REMINDERS) {
+                reminders.removeLast();
+            }
+            settings.put(REMINDERS_KEY, GSON.toJson(reminders));
+            return List.copyOf(reminders);
+        }
+    }
+
+    public long nextReminder() {
+        synchronized (reminders) {
+            return reminders.isEmpty() ? Long.MAX_VALUE : reminders.getFirst().at();
+        }
+    }
+
+    private List<Reminder> due(long now) {
+        synchronized (reminders) {
+            List<Reminder> due = reminders.stream().filter(r -> r.at() <= now).toList();
+            if (!due.isEmpty()) {
+                reminders.removeAll(due);
+                settings.put(REMINDERS_KEY, GSON.toJson(reminders));
+            }
+            return due;
         }
     }
 

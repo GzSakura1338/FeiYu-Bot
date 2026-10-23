@@ -20,7 +20,7 @@ final class UsageHandler {
     private static final int WEEKS = 53;
     private static final int YEARS = 7;
     private static final Map<String, String> PURPOSES = Map.of("chat", "聊天回复", "mind", "内心", "compact", "压缩上下文", "guard", "内容审核",
-            "sticker", "表情包识图", "reflect", "整理记忆", "probe", "能力检测");
+            "sticker", "表情包识图", "reflect", "整理记忆", "probe", "能力检测", "subagent", "子 agent");
 
     private final ChatAgent agent;
     private final UsageStore usage;
@@ -92,7 +92,7 @@ final class UsageHandler {
         body.add("models", shares(usage.by("model", "", 5), s -> s));
         QqDirectory.Names names = directory.names();
         body.add("sessions", shares(usage.by("session", "session <> ''", 6), s -> s.startsWith("mind:") ? "内心"
-                : s.startsWith("web:") ? "网页测试对话" : names.of(s)));
+                : s.startsWith("web:") ? "网页测试对话" : s.startsWith("task:") ? "后台任务 #" + s.substring(5) : names.of(s)));
         return body;
     }
 

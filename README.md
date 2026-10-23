@@ -11,7 +11,7 @@
 ## 启动
 
 1. 双击 `start-dafeiyu.bat`（`launch-dafeiyu.ps1` 是同一个，只是窗口最小化），打开 http://127.0.0.1:8090/
-2. 第一次用：在「智能体」里添加模型、建人格（角色卡见 `personas/`）、填主人的 QQ 号，再打开 QQ 自动回复
+2. 第一次用：在「Agent」里添加模型、建人格（角色卡见 `personas/`）、填主人的 QQ 号，再打开 QQ 自动回复
 3. 双击 `start-napcat.bat`，用手机 QQ 扫窗口里的二维码（也在 `napcat/cache/qrcode.png`）。以后可以用 `start-napcat.bat -q QQ号` 免扫码登录
 4. 控制台概览页显示已连接就好了
 

@@ -8,6 +8,9 @@ import dafeiyu.util.Texts;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -19,6 +22,41 @@ import static dafeiyu.util.Texts.abbreviate;
 final class MindCues {
 
     private static final int MAX_CUE = 90;
+    private static final int STUCK_WINDOW = 6;
+    private static final int STUCK_HITS = 5;
+    private static final int STUCK_WORDS = 2;
+    private static final String FILLER = "零一二三四五六七八九十百千两几半的了着我你他她它在是就也都那这里上下到把被给和跟又还再很太呢吧啊呀嘛啦不没有个们得地会要想说去来过点句些么吗哪谁";
+    private static final Set<String> COMMON = Set.of("鲸鱼", "小鲸", "主人", "尾巴", "今天", "时候", "现在", "知道", "觉得", "可以", "别人", "东西",
+            "事情", "心里", "刚才", "应该", "其实", "好像", "一直", "已经", "自己", "什么", "没有", "然后", "因为", "所以", "但是", "可是", "而且",
+            "如果", "不过", "只是", "怎么", "回来", "之后", "以后", "再说", "分钟", "小时", "最后", "面前", "外头", "下午", "上午", "晚上", "早上",
+            "中午", "半夜", "群里", "这会", "会儿", "那边", "这边", "说话", "一句", "等会", "待会");
+    static List<String> stuckOn(Collection<String> thoughts) {
+        if (thoughts.size() < STUCK_WINDOW) {
+            return List.of();
+        }
+        List<String> window = new ArrayList<>(thoughts).subList(thoughts.size() - STUCK_WINDOW, thoughts.size());
+        Map<String, Integer> seen = new HashMap<>();
+        for (String thought : window) {
+            String han = thought.replaceAll("[^\\p{IsHan}]", "");
+            Set<String> words = new HashSet<>();
+            for (int i = 0; i + 1 < han.length(); i++) {
+                String w = han.substring(i, i + 2);
+                if (FILLER.indexOf(w.charAt(0)) < 0 && FILLER.indexOf(w.charAt(1)) < 0 && !COMMON.contains(w)) {
+                    words.add(w);
+                }
+            }
+            words.forEach(w -> seen.merge(w, 1, Integer::sum));
+        }
+        List<String> stuck = new ArrayList<>();
+        seen.entrySet().stream().filter(e -> e.getValue() >= STUCK_HITS)
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .forEach(e -> {
+                    if (stuck.size() < 4 && stuck.stream().noneMatch(s -> s.indexOf(e.getKey().charAt(0)) >= 0 || s.indexOf(e.getKey().charAt(1)) >= 0)) {
+                        stuck.add(e.getKey());
+                    }
+                });
+        return stuck.size() >= STUCK_WORDS ? stuck : List.of();
+    }
 
     private final ChatAgent agent;
     private final QqChatBridge bridge;
@@ -37,6 +75,7 @@ final class MindCues {
                 () -> self(personaId, null, "忽然想到自己"),
                 () -> diary(personaId),
                 () -> skill(personaId),
+                () -> learned(personaId),
                 () -> group()));
         ThreadLocalRandom random = ThreadLocalRandom.current();
         while (!sources.isEmpty()) {
@@ -57,16 +96,16 @@ final class MindCues {
     private static String body(LocalTime now) {
         int minutes = now.getHour() * 60 + now.getMinute();
         if (minutes >= 7 * 60 && minutes < 9 * 60) {
-            return pick("刚醒没多久，脑袋还有点懵，肚子在想早饭", "早上的光照进池子里，暖洋洋的");
+            return pick("刚醒没多久，脑袋还有点懵", "早上的光照进池子里，暖洋洋的", "新的一天，想想今天干点什么好玩的");
         }
         if (minutes >= 11 * 60 + 30 && minutes < 13 * 60) {
-            return pick("快到饭点了，肚子咕噜了一声", "中午了，有点想吃东西");
+            return pick("中午了，群里的人大概都去吃饭了", "中午有点犯困", "快到饭点了，肚子咕噜了一声");
         }
         if (minutes >= 14 * 60 && minutes < 16 * 60) {
             return pick("午后有点犯困，尾巴懒懒地摆着", "下午的时间过得好慢");
         }
         if (minutes >= 17 * 60 + 30 && minutes < 19 * 60 + 30) {
-            return pick("天快黑了，该吃晚饭了吧", "傍晚了，肚子有点空");
+            return pick("天快黑了，一天又快过去了", "傍晚了，外面的颜色一点点变暗", "傍晚了，大家差不多该下班放学了");
         }
         if (minutes >= 22 * 60 || minutes < 60) {
             return pick("夜深了，眼皮有点沉", "这么晚了，群里的人都睡了吗");
@@ -121,6 +160,15 @@ final class MindCues {
         }
         SkillStore.Skill s = skills.get(ThreadLocalRandom.current().nextInt(skills.size()));
         return "想起自己学会的「" + s.name() + "」，下次碰到能派上用场";
+    }
+
+    private String learned(String personaId) {
+        List<MemoryStore.Memory> known = agent.memories().list(personaId, MemoryStore.KNOWLEDGE);
+        if (known.isEmpty()) {
+            return null;
+        }
+        MemoryStore.Memory m = known.get(ThreadLocalRandom.current().nextInt(known.size()));
+        return m.label().isBlank() ? null : "想起之前查过的「" + m.label() + "」，还想多知道一点";
     }
 
     private String group() {

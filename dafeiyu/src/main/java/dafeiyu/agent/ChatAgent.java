@@ -171,6 +171,19 @@ public final class ChatAgent {
         return forwards.read(id);
     }
 
+    private volatile java.util.function.Consumer<String> subagentResults = text -> intercom().report(BackgroundTasks.MIND, text);
+
+    public void setSubagentResults(java.util.function.Consumer<String> handler) {
+        this.subagentResults = handler;
+    }
+
+    void subagentReturned(String text) {
+        try {
+            subagentResults.accept(text);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
     public interface ImageSource {
 
         byte[] load(long id) throws dafeiyu.agent.tool.ToolFailure;

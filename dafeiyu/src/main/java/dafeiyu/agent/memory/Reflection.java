@@ -86,11 +86,18 @@ public final class Reflection {
         return t;
     });
     private volatile LogBuffer log;
+    private final StyleStudy style;
 
     public Reflection(ChatAgent agent, MemoryStore memories, SkillStore skills) {
         this.agent = agent;
         this.memories = memories;
         this.skills = skills;
+        this.style = new StyleStudy(agent, memories, this::info, this::warn);
+    }
+
+    public String studyStyle(String groupId) throws AgentException {
+        StyleStudy.Learned learned = style.study(groupId);
+        return "+" + learned.added() + " ~" + learned.updated() + " -" + learned.deleted();
     }
 
     public void setLog(LogBuffer log) {
@@ -109,6 +116,7 @@ public final class Reflection {
         if (!qq(session) || !memories.auto() || agent.personas().active() == null || agent.store().active() == null) {
             return;
         }
+        style.touched(session);
         ScheduledFuture<?> old = idle.remove(session);
         if (old != null) {
             old.cancel(false);
@@ -256,6 +264,7 @@ public final class Reflection {
                 "把零散的想法归进主题，整理成一份清楚的自我认识。主题只有这几个：" + String.join("、", MemoryStore.SELF_TOPICS) + "。",
                 "- 每个主题写成一段完整的话（100 到 500 字），用第一人称；原来仍然成立的保留，重复的合并，前后矛盾的以新的为准。",
                 "- 经历、心愿和约定要写清楚日期，比如“2026年10月22日：答应给天养当村民陪他玩狼人杀”。",
+                "- 心愿和约定只写真要兑现的事；陪大家玩的过家家、做饭这类游戏里的情节（锅里剩什么、谁分到几碗）不是约定，玩过了就是经历。",
                 "- 只是某天发生的小事、不能说明你是谁的，就不用留（那些已经写在日记里了）。",
                 "- 名字后面的“#数字”不要写，和你同名的人写成“群友某某”。",
                 "",
@@ -325,7 +334,7 @@ public final class Reflection {
         return profile;
     }
 
-    private static String ask(ModelProfile profile, String session, String prompt) throws AgentException {
+    static String ask(ModelProfile profile, String session, String prompt) throws AgentException {
         ModelProtocol protocol = Protocols.get(profile.protocol());
         ChatRequest request = new ChatRequest(List.of(ChatMessage.user(prompt)), List.of(), false, "reflect:" + session, profile.maxTokens());
         ChatResult result = new ModelRetry(StreamListener.NONE, () -> false).run(() -> protocol.stream(profile, request, StreamListener.NONE));
@@ -443,6 +452,7 @@ public final class Reflection {
                 "- 主题只有：" + String.join("、", MemoryStore.SELF_TOPICS) + "。只写这次有新认识的主题，值是这个主题完整改写后的一段话"
                         + "（保留原来仍然成立的，重复的合并，矛盾的以新的为准，500 字以内）；没有新认识就给空对象 {}。",
                 "- 经历、心愿和约定要写清楚日期，比如“" + date.replaceFirst(" .*", "") + "：答应陪天养玩狼人杀”。",
+                "- 心愿和约定只写真要兑现的事；陪大家玩的过家家、做饭这类游戏里的情节（锅里剩什么、谁分到几碗）不是约定，玩过了就是经历。",
                 "- 【你现在的其他记忆】里 self 开头的零散想法，值得留的归进对应主题；它们之后会被清掉。",
                 "",
                 "其他记忆（changes）：",
@@ -635,7 +645,7 @@ public final class Reflection {
         return json.has(key) && json.get(key).isJsonArray() ? json.getAsJsonArray(key) : new JsonArray();
     }
 
-    private static JsonObject parse(String reply) throws AgentException {
+    static JsonObject parse(String reply) throws AgentException {
         int start = reply.indexOf('{');
         int end = reply.lastIndexOf('}');
         if (start < 0 || end <= start) {

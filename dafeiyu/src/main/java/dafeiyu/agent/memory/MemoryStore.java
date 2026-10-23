@@ -4,6 +4,7 @@ import dafeiyu.agent.qq.QqMessages;
 import dafeiyu.agent.safety.ContentGuard;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
+import dafeiyu.util.Texts;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,7 +18,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,9 +34,19 @@ public final class MemoryStore {
 
     public record Turn(long id, String role, String content, long createdAt, String toolCalls, String toolName, boolean toolError) {}
 
+    public record Line(long id, boolean mine, String userId, String name, String text) {}
+
+    private record Voice(long at, int[] lengths) {}
+
     public static final String SELF = "self";
     public static final String DIARY = "diary";
     public static final String KNOWLEDGE = "knowledge";
+    public static final String STYLE = "style";
+    private static final int MAX_STYLE = 80;
+    private static final int STYLE_SHOWN = 12;
+    private static final int STYLE_HERE = 5;
+    private static final long VOICE_TTL_MS = 10 * 60_000L;
+    private static final Pattern STYLE_TAG = Pattern.compile("[「【]?([^」】：:]{1,12})[」】]?\\s*[：:]\\s*(.+)");
     private static final int MAX_KNOWLEDGE = 500;
     private static final int MAX_RELEVANT_KNOWLEDGE = 5;
     private static final int SELF_BUDGET = 600;
@@ -45,11 +58,12 @@ public final class MemoryStore {
     public static final int MAX_CONTENT = 200;
     public static final int MAX_TOPIC = 800;
     public static final int MAX_DIARY = 2000;
-    private static final Pattern SCOPE = Pattern.compile("self|diary|knowledge|(user|group):\\d{5,12}");
+    private static final Pattern SCOPE = Pattern.compile("self|diary|knowledge|style|(user|group):\\d{5,12}");
     private static final Pattern DAY_LABEL = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
     private static final Pattern TAIL = Pattern.compile("#(\\d{4})(?!\\d)");
     private static final String PEER = "群友";
     private static final String AUTO_KEY = "agent.memory.auto";
+    private static final String STUDIED_KEY = "agent.memory.styleStudied.";
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("M月d日", Locale.CHINA);
     private static final DateTimeFormatter FULL_DAY = DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.CHINA);
     private static final String COLUMNS = "id, scope, label, content, source, created_at, updated_at";
@@ -60,6 +74,7 @@ public final class MemoryStore {
     private final Database db;
     private final Settings settings;
     private final ContentGuard guard;
+    private final Map<String, Voice> voices = new ConcurrentHashMap<>();
 
     public MemoryStore(Database db, ContentGuard guard) {
         this.db = db;
@@ -204,10 +219,13 @@ public final class MemoryStore {
         if (scope.equals(KNOWLEDGE)) {
             return learn(personaId, content, source);
         }
-        String name = abbreviate(QqMessages.unforgeable(nonNull(label)).replaceAll("\\s+", " ").strip(), 60);
+        Matcher tagged = scope.equals(STYLE) && nonNull(label).isBlank() ? STYLE_TAG.matcher(text) : null;
+        boolean split = tagged != null && tagged.matches();
+        String body = split ? tagged.group(2).strip() : text;
+        String name = abbreviate(QqMessages.unforgeable(split ? tagged.group(1) : nonNull(label)).replaceAll("\\s+", " ").strip(), 60);
         long id = db.transaction(c -> {
             Database.update(c, "INSERT INTO memories (persona_id, scope, label, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    personaId, scope, name, text, nonNull(source), now, now);
+                    personaId, scope, name, body, nonNull(source), now, now);
             try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("SELECT last_insert_rowid()")) {
                 return rs.next() ? rs.getLong(1) : -1L;
             }
@@ -258,6 +276,82 @@ public final class MemoryStore {
         StringBuilder out = new StringBuilder("<你查过的>\n");
         hits.forEach(m -> out.append("- 「").append(m.label()).append("」：").append(m.content()).append("\n"));
         return out.append("</你查过的>\n\n").toString();
+    }
+
+    public String style(String personaId, String session, String context) {
+        List<Memory> all = list(personaId, STYLE);
+        StringBuilder out = new StringBuilder();
+        if (!all.isEmpty()) {
+            Set<String> words = context == null || context.isBlank() ? Set.of() : Texts.bigrams(context);
+            List<Memory> shown = new ArrayList<>(all.stream().filter(m -> m.source().equals(session)).limit(STYLE_HERE).toList());
+            all.stream().filter(m -> !shown.contains(m))
+                    .sorted(Comparator.comparingDouble(m -> -Texts.overlap(Texts.bigrams(m.label() + m.content()), words)))
+                    .limit(STYLE_SHOWN - shown.size()).forEach(shown::add);
+            shown.forEach(m -> out.append("- ").append(m.label().isBlank() ? "" : "【" + m.label() + "】").append(m.content()).append('\n'));
+        }
+        int[] voice = session.startsWith("group:") ? voice(session.substring(6)) : null;
+        if (voice != null) {
+            out.append("这个群大家一句话多半在 ").append(voice[0]).append(" 个字左右")
+                    .append(voice[1] > 0 ? "，你最近一句平均 " + voice[1] + " 个字" : "").append("。\n");
+        }
+        return out.isEmpty() ? "" : "<你学到的说话方式>\n" + out + "</你学到的说话方式>\n\n";
+    }
+
+    private int[] voice(String groupId) {
+        long now = System.currentTimeMillis();
+        Voice cached = voices.get(groupId);
+        if (cached != null && now - cached.at() < VOICE_TTL_MS) {
+            return cached.lengths();
+        }
+        List<Integer> human = new ArrayList<>();
+        List<Integer> mine = new ArrayList<>();
+        for (String[] row : db.list("SELECT direction, content FROM messages WHERE message_type = 'group' AND group_id = ? ORDER BY id DESC LIMIT 400",
+                rs -> new String[] {rs.getString(1), rs.getString(2)}, groupId)) {
+            int n = spoken(row[1]);
+            if (n > 0) {
+                ("out".equals(row[0]) ? mine : human).add(n);
+            }
+        }
+        int[] lengths = human.size() < 30 ? null : new int[] {median(human), mine.size() < 10 ? 0 : median(mine)};
+        voices.put(groupId, new Voice(now, lengths));
+        return lengths;
+    }
+
+    static int spoken(String raw) {
+        String text = QqMessages.plain(raw).replaceAll("\\[[^\\]]{0,40}]", "").replaceAll("@\\S+\\s?", "").strip();
+        return text.codePointCount(0, text.length());
+    }
+
+    private static int median(List<Integer> values) {
+        List<Integer> sorted = values.stream().sorted().toList();
+        return sorted.get(sorted.size() / 2);
+    }
+
+    public List<Line> chatter(String groupId, int limit) {
+        List<Line> lines = new ArrayList<>(db.list("""
+                SELECT id, direction, user_id, sender_name, content FROM messages
+                WHERE message_type = 'group' AND group_id = ? ORDER BY id DESC LIMIT ?
+                """, rs -> new Line(rs.getLong(1), "out".equals(rs.getString(2)), nonNull(rs.getString(3)),
+                QqMessages.unforgeable(nonNull(rs.getString(4))), QqMessages.plain(rs.getString(5))), groupId, limit));
+        return lines.reversed();
+    }
+
+    public long studiedUpTo(String groupId) {
+        try {
+            return Long.parseLong(nonNull(settings.get(STUDIED_KEY + groupId)));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    public void studied(String groupId, long messageId) {
+        settings.put(STUDIED_KEY + groupId, String.valueOf(messageId));
+    }
+
+    public int heardSince(String groupId, long afterId) {
+        Integer n = db.one("SELECT COUNT(*) FROM messages WHERE message_type = 'group' AND group_id = ? AND direction = 'in' AND id > ?",
+                rs -> rs.getInt(1), groupId, afterId);
+        return n == null ? 0 : n;
     }
 
     public boolean knows(String personaId, String scope, String content) {
@@ -541,7 +635,7 @@ public final class MemoryStore {
     }
 
     private void prune(String personaId, String scope) {
-        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : scope.equals(KNOWLEDGE) ? MAX_KNOWLEDGE : 200;
+        int keep = scope.equals(DIARY) ? 400 : scope.equals(SELF) ? 60 : scope.equals(KNOWLEDGE) ? MAX_KNOWLEDGE : scope.equals(STYLE) ? MAX_STYLE : 200;
         db.update("""
                 DELETE FROM memories WHERE persona_id = ? AND scope = ? AND id NOT IN (
                     SELECT id FROM memories WHERE persona_id = ? AND scope = ? ORDER BY updated_at DESC, id DESC LIMIT ?)

@@ -16,6 +16,12 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +39,7 @@ public final class PublicWeb {
             .connectTimeout(Duration.ofSeconds(8))
             .build();
     private static final Set<String> PROXIED_HOSTS = ConcurrentHashMap.newKeySet();
+    private static final ExecutorService READERS = Executors.newVirtualThreadPerTaskExecutor();
     private static volatile HttpClient proxied;
     private static volatile long proxyCheckedAt;
 
@@ -69,7 +76,7 @@ public final class PublicWeb {
                 continue;
             }
             String type = response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT);
-            return new Response(uri, status, type, read(response, maxBytes));
+            return new Response(uri, status, type, read(response, maxBytes, timeout));
         }
         throw new ToolFailure("跳转次数太多");
     }
@@ -126,7 +133,7 @@ public final class PublicWeb {
             Process p = new ProcessBuilder("reg", "query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
                     .redirectErrorStream(true).start();
             String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.Charset.defaultCharset());
-            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            p.waitFor(5, TimeUnit.SECONDS);
             if (!Pattern.compile("ProxyEnable\\s+REG_DWORD\\s+0x1\\b").matcher(out).find()) {
                 return null;
             }
@@ -210,15 +217,25 @@ public final class PublicWeb {
         return first == 0 || first >= 224 || (first == 100 && second >= 64 && second < 128) || (first == 192 && second == 0 && (b[2] & 0xFF) == 0);
     }
 
-    private static byte[] read(HttpResponse<InputStream> response, int maxBytes) throws ToolFailure {
-        try (InputStream in = response.body()) {
-            byte[] data = in.readNBytes(maxBytes + 1);
+    private static byte[] read(HttpResponse<InputStream> response, int maxBytes, Duration timeout) throws ToolFailure {
+        InputStream in = response.body();
+        Future<byte[]> reading = READERS.submit(() -> in.readNBytes(maxBytes + 1));
+        try {
+            byte[] data = reading.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (data.length > maxBytes) {
                 throw new ToolFailure("内容太大了（超过 " + maxBytes / 1024 / 1024 + " MB）");
             }
             return data;
-        } catch (IOException e) {
-            throw new ToolFailure("读取失败：" + e.getMessage());
+        } catch (TimeoutException e) {
+            throw new ToolFailure("网页太慢了，" + timeout.toSeconds() + " 秒还没传完");
+        } catch (ExecutionException e) {
+            throw new ToolFailure("读取失败：" + e.getCause().getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolFailure("请求被取消了");
+        } finally {
+            reading.cancel(true);
+            close(response);
         }
     }
 

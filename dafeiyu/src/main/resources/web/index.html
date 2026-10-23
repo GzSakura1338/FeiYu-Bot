@@ -42,7 +42,7 @@
     </a>
     <a class="rail-item" href="#agent" data-page="agent">
       <span class="rail-indicator state-layer"><svg data-icon="lightbulb"></svg></span>
-      <span class="rail-label">智能体</span>
+      <span class="rail-label">Agent</span>
     </a>
     <a class="rail-item" href="#plugins" data-page="plugins">
       <span class="rail-indicator state-layer"><svg data-icon="extension"></svg></span>
@@ -160,10 +160,10 @@
     </div>
   </section>
 
-  <section class="page" id="page-agent" data-title="智能体" hidden>
+  <section class="page" id="page-agent" data-title="Agent" hidden>
     <div class="panel page-hero">
       <div>
-        <h1 class="display-page">智能体</h1>
+        <h1 class="display-page">Agent</h1>
         <p class="body-hero">接入兼容 OpenAI 接口的大模型，在 QQ 里回复私聊和群消息。</p>
         <p class="body-medium hero-mood empty" id="agent-mood"></p>
       </div>
@@ -192,7 +192,7 @@
       </div>
     </div>
 
-    <div class="tab-bar sub-tabs" id="agent-tabs" role="tablist" aria-label="智能体分类">
+    <div class="tab-bar sub-tabs" id="agent-tabs" role="tablist" aria-label="Agent 分类">
       <span class="tab-indicator" aria-hidden="true"></span>
       <button class="tab state-layer" role="tab" data-tab="models" aria-selected="true"><svg data-icon="memory"></svg>模型</button>
       <button class="tab state-layer" role="tab" data-tab="personas" aria-selected="false"><svg data-icon="theater_comedy"></svg>人格</button>
@@ -287,7 +287,7 @@
     <div class="agent-view" data-view="workspace" hidden>
       <div class="panel">
         <div class="panel-header"><h2 class="headline-small">工作目录</h2></div>
-        <p class="panel-desc body-medium">设置后，智能体可以像 opencode 一样在这个目录里查找、读取、新建和编辑文件，也能把文件发给对方。所有操作都限制在这个目录内，目录以外的任何位置都读不到、写不了；不提供执行命令。</p>
+        <p class="panel-desc body-medium">设置后，Agent 可以像 opencode 一样在这个目录里查找、读取、新建和编辑文件，也能把文件发给对方。所有操作都限制在这个目录内，目录以外的任何位置都读不到、写不了；不提供执行命令。</p>
         <form class="workspace-row" id="workspace-dir-form" novalidate autocomplete="off">
           <div class="text-field" data-field="dir">
             <div class="text-field-box"><input id="workspace-dir" name="dir" placeholder=" " spellcheck="false"><label for="workspace-dir">目录的完整路径</label></div>
@@ -628,69 +628,179 @@
     <div class="panel page-hero">
       <div>
         <h1 class="display-page">设置</h1>
-        <p class="body-hero">修改 NapCat 的接入方式和界面外观。</p>
+        <p class="body-hero">NapCat 接入、Agent、界面外观、归档的后台任务和版本信息。</p>
       </div>
     </div>
-    <div class="panel">
-      <div class="panel-header">
-        <h2 class="headline-small">反向 WebSocket</h2>
-        <button class="tonal-button label-large state-layer" id="ws-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+
+    <div class="tab-bar sub-tabs" id="settings-tabs" role="tablist" aria-label="设置分类">
+      <span class="tab-indicator" aria-hidden="true"></span>
+      <button class="tab state-layer" role="tab" data-tab="connection" aria-selected="true"><svg data-icon="lan"></svg>连接</button>
+      <button class="tab state-layer" role="tab" data-tab="agent" aria-selected="false"><svg data-icon="lightbulb"></svg>Agent</button>
+      <button class="tab state-layer" role="tab" data-tab="appearance" aria-selected="false"><svg data-icon="palette"></svg>外观</button>
+      <button class="tab state-layer" role="tab" data-tab="archive" aria-selected="false"><svg data-icon="inbox"></svg>归档</button>
+      <button class="tab state-layer" role="tab" data-tab="about" aria-selected="false"><svg data-icon="info"></svg>关于</button>
+    </div>
+
+    <div class="settings-view" data-view="connection">
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="headline-small">反向 WebSocket</h2>
+          <button class="tonal-button label-large state-layer" id="ws-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
+        </div>
+        <p class="panel-desc body-medium">NapCat 作为客户端连接到这里。选中的配置会立即生效；NapCat 那边要填同样的地址和 token。</p>
+        <ul class="list ws-list" id="ws-list" role="radiogroup" aria-label="使用中的反向 WebSocket"></ul>
       </div>
-      <p class="panel-desc body-medium">NapCat 作为客户端连接到这里。选中的配置会立即生效；NapCat 那边要填同样的地址和 token。</p>
-      <ul class="list ws-list" id="ws-list" role="radiogroup" aria-label="使用中的反向 WebSocket"></ul>
     </div>
-    <div class="panel">
-      <div class="panel-header"><h2 class="headline-small">外观</h2></div>
-      <ul class="list">
-        <li class="list-item settings-row">
-          <span class="list-icon"><svg data-icon="brightness_auto"></svg></span>
-          <div class="list-text">
-            <div class="list-headline body-large">主题</div>
-            <div class="list-supporting body-medium">跟随系统，或固定为浅色、深色</div>
-          </div>
-          <div class="segmented label-large" role="radiogroup" aria-label="主题" id="theme-segmented">
-            <button class="state-layer" role="radio" data-mode="auto"><svg data-icon="check" class="icon-18 chip-check"></svg>跟随系统</button>
-            <button class="state-layer" role="radio" data-mode="light"><svg data-icon="check" class="icon-18 chip-check"></svg>浅色</button>
-            <button class="state-layer" role="radio" data-mode="dark"><svg data-icon="check" class="icon-18 chip-check"></svg>深色</button>
-          </div>
-        </li>
-        <li class="list-item settings-row palette-row">
-          <span class="list-icon"><svg data-icon="palette"></svg></span>
-          <div class="list-text">
-            <div class="list-headline body-large">配色</div>
-            <div class="list-supporting body-medium">当前：<span id="palette-current"></span>，浅色深色都跟着换</div>
-          </div>
-          <div class="palette-grid" role="radiogroup" aria-label="配色" id="palette-grid"></div>
-        </li>
-      </ul>
-    </div>
-    <div class="panel">
-      <div class="panel-header">
-        <h2 class="headline-small">归档会话</h2>
-        <button class="icon-button state-layer" id="archive-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+
+    <div class="settings-view" data-view="agent" hidden>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">内心子 agent</h2></div>
+        <p class="panel-desc body-medium">内心可以把要花时间的事交给子 agent 在后台去办：查资料是搜索、读网页、看图，动手是在工作目录里做东西。做好了结果回到她的内心，由她决定记下来、分享到群里，或者回给托她办事的人。子 agent 自己不在 QQ 里说话。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="lightbulb"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">启用</div>
+              <div class="list-supporting body-medium" id="subagent-enabled-hint">关着时内心不会开子 agent</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="subagent-enabled" aria-checked="false" aria-label="启用内心子 agent"><span class="switch-handle"></span></button>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="travel_explore"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">查资料</div>
+              <div class="list-supporting body-medium">只读：搜索、读网页、看图，工作目录里的文件只能看</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="subagent-research" aria-checked="false" aria-label="允许查资料的子 agent"><span class="switch-handle"></span></button>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="build"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">动手</div>
+              <div class="list-supporting body-medium" id="subagent-build-hint">在工作目录里读写文件、跑命令（命令总在沙盒里），和后台任务一样</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="subagent-build" aria-checked="false" aria-label="允许动手的子 agent"><span class="switch-handle"></span></button>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="memory"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">用的模型</div>
+              <div class="list-supporting body-medium">可以单独选一份便宜、快的模型配置</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="子 agent 用的模型" id="subagent-model"></div>
+          </li>
+        </ul>
       </div>
-      <p class="panel-desc body-medium">结束超过 15 分钟的后台任务会自动归档到这里，不再出现在智能体的会话列表里。点一个可以查看它做事的完整过程。</p>
-      <ul class="list archive-list" id="archive-list"></ul>
-      <div class="empty-state" id="archive-empty" hidden><svg data-icon="inbox"></svg><p class="body-medium">还没有归档的会话</p></div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">限制</h2></div>
+        <p class="panel-desc body-medium">内心的子 agent 和 QQ 里发起的后台任务各算各的名额，互不挤占，超出的排队。到了时限会叫停，查资料和动手的子 agent 会先交回目前的结论。</p>
+        <ul class="list" id="subagent-limits">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="psychology"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">内心子 agent 同时最多</div>
+              <div class="list-supporting body-medium">1～10 个，超出的排队</div>
+            </div>
+            <div class="stepper" data-field="mindLimit" data-min="1" data-max="10" data-step="1" data-unit="个"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="forum"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">QQ 后台任务同时最多</div>
+              <div class="list-supporting body-medium">1～10 个，QQ 里有人托她做东西时用</div>
+            </div>
+            <div class="stepper" data-field="qqLimit" data-min="1" data-max="10" data-step="1" data-unit="个"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="travel_explore"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">查资料最长</div>
+              <div class="list-supporting body-medium">1～120 分钟，到点先交回目前查到的</div>
+            </div>
+            <div class="stepper" data-field="researchMinutes" data-min="1" data-max="120" data-step="5" data-unit="分钟"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="timer"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">动手最长</div>
+              <div class="list-supporting body-medium">1～240 分钟，到点先交回目前做到的</div>
+            </div>
+            <div class="stepper" data-field="buildMinutes" data-min="1" data-max="240" data-step="10" data-unit="分钟"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="schedule"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">内心每天最多开几个</div>
+              <div class="list-supporting body-medium" id="subagent-daily-hint">减到 0 就是不限</div>
+            </div>
+            <div class="stepper" data-field="dailyLimit" data-min="0" data-max="1000" data-step="5" data-unit="个" data-zero="不限"></div>
+          </li>
+        </ul>
+      </div>
     </div>
-    <div class="panel">
-      <div class="panel-header"><h2 class="headline-small">关于</h2></div>
-      <ul class="list">
-        <li class="list-item">
-          <span class="list-icon"><svg data-icon="info"></svg></span>
-          <div class="list-text">
-            <div class="list-headline body-large">FeiYu Bot</div>
-            <div class="list-supporting body-medium">QQ 机器人控制台，通过 NapCat（OneBot v11 反向 WebSocket）接入 QQ</div>
-          </div>
-        </li>
-        <li class="list-item">
-          <span class="list-icon"><svg data-icon="lan"></svg></span>
-          <div class="list-text">
-            <div class="list-headline body-large">NapCat 接入地址</div>
-            <div class="list-supporting body-medium" id="about-listen">—</div>
-          </div>
-        </li>
-      </ul>
+
+    <div class="settings-view" data-view="appearance" hidden>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">外观</h2></div>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="brightness_auto"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">主题</div>
+              <div class="list-supporting body-medium">跟随系统，或固定为浅色、深色</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="主题" id="theme-segmented">
+              <button class="state-layer" role="radio" data-mode="auto"><svg data-icon="check" class="icon-18 chip-check"></svg>跟随系统</button>
+              <button class="state-layer" role="radio" data-mode="light"><svg data-icon="check" class="icon-18 chip-check"></svg>浅色</button>
+              <button class="state-layer" role="radio" data-mode="dark"><svg data-icon="check" class="icon-18 chip-check"></svg>深色</button>
+            </div>
+          </li>
+          <li class="list-item settings-row palette-row">
+            <span class="list-icon"><svg data-icon="palette"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">配色</div>
+              <div class="list-supporting body-medium">当前：<span id="palette-current"></span>，浅色深色都跟着换</div>
+            </div>
+            <div class="palette-grid" role="radiogroup" aria-label="配色" id="palette-grid"></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="settings-view" data-view="archive" hidden>
+      <div class="panel archive-panel">
+        <div class="panel-header">
+          <h2 class="headline-small">归档会话</h2>
+          <span class="label-large archive-count" id="archive-count"></span>
+          <button class="icon-button state-layer" id="archive-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+        </div>
+        <p class="panel-desc body-medium">结束超过 15 分钟的后台任务会自动归档到这里，不再出现在 Agent 的会话列表里。点一个可以查看它做事的完整过程。</p>
+        <div class="session-filter label-large" role="radiogroup" aria-label="按结果筛选" id="archive-filter"></div>
+        <ul class="list archive-list" id="archive-list"></ul>
+        <div class="empty-state" id="archive-empty" hidden><svg data-icon="inbox"></svg><p class="body-medium">还没有归档的会话</p></div>
+      </div>
+    </div>
+
+    <div class="settings-view" data-view="about" hidden>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">关于</h2></div>
+        <ul class="list">
+          <li class="list-item">
+            <span class="list-icon"><svg data-icon="info"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">FeiYu Bot</div>
+              <div class="list-supporting body-medium">QQ 机器人控制台，通过 NapCat（OneBot v11 反向 WebSocket）接入 QQ</div>
+            </div>
+          </li>
+          <li class="list-item">
+            <span class="list-icon"><svg data-icon="lan"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">NapCat 接入地址</div>
+              <div class="list-supporting body-medium" id="about-listen">—</div>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 </main>

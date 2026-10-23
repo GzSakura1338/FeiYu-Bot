@@ -12,6 +12,7 @@ import dafeiyu.agent.ChatTurn;
 import dafeiyu.agent.Extensions;
 import dafeiyu.agent.ImagePart;
 import dafeiyu.agent.StreamListener;
+import dafeiyu.agent.SubagentSettings;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.model.ImageLoader;
@@ -122,6 +123,15 @@ final class AgentHandler {
             } else if (path.equals("/reset") && method.equals("POST")) {
                 agent.reset(webSession(Requests.readJson(ex, ChatRequest.class).session()));
                 HttpResponses.json(ex, "{}");
+            } else if (path.equals("/subagents") && method.equals("GET")) {
+                HttpResponses.json(ex, subagents());
+            } else if (path.equals("/subagents") && method.equals("PUT")) {
+                SubagentSettings.Config saved = agent.tasks().subagents().update(Requests.readJson(ex, SubagentSettings.Config.class));
+                agent.tasks().limitsChanged();
+                log.info("agent: subagents " + (saved.enabled() ? "ON" : "off") + " (research " + saved.research() + ", build " + saved.build()
+                        + ", mind " + saved.mindLimit() + " / qq " + saved.qqLimit() + " at once, " + saved.researchMinutes() + "/" + saved.buildMinutes()
+                        + " min, daily " + saved.dailyLimit() + ")");
+                HttpResponses.json(ex, subagents());
             } else if (path.equals("/workspace") && method.equals("GET")) {
                 HttpResponses.json(ex, workspace());
             } else if (path.equals("/workspace") && method.equals("PUT")) {
@@ -388,6 +398,22 @@ final class AgentHandler {
         extra.forEach(t -> names.add(t.name()));
         body.add("tools", gson.toJsonTree(names));
         body.add("extraTools", gson.toJsonTree(extra));
+        return body.toString();
+    }
+
+    private String subagents() {
+        JsonObject body = gson.toJsonTree(agent.tasks().subagents().config()).getAsJsonObject();
+        JsonArray profiles = new JsonArray();
+        for (ModelProfile p : store.profiles()) {
+            JsonObject item = new JsonObject();
+            item.addProperty("id", p.id());
+            item.addProperty("name", p.name());
+            item.addProperty("model", p.model());
+            profiles.add(item);
+        }
+        body.add("profiles", profiles);
+        body.addProperty("workspace", agent.workspaces().workspace() != null);
+        body.addProperty("today", agent.tasks().spawnedToday());
         return body.toString();
     }
 

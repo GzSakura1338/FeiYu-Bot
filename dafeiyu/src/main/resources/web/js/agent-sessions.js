@@ -140,8 +140,15 @@ function previewText(s) {
 
 const taskStatus = s => (s.task?.status === 'paused' ? 'paused' : s.busy ? 'running' : s.task?.status ?? 'ended');
 
+const SUBAGENT_KIND = { research: '查资料', build: '动手' };
+
+function taskSource(info) {
+  if (info?.originKind === 'mind') return `内心的子 agent${SUBAGENT_KIND[info.kind] ? ` · ${SUBAGENT_KIND[info.kind]}` : ''}`;
+  return info?.originName ? `帮${info.requester ? ` ${info.requester}` : ''}（${info.originName}）` : '';
+}
+
 function taskPreview(s) {
-  const from = s.task?.originName ? `帮${s.task.requester ? ` ${s.task.requester}` : ''}（${s.task.originName}）` : '';
+  const from = taskSource(s.task);
   const status = taskStatus(s);
   const outcome = ['running', 'queued', 'paused'].includes(status) ? '' : s.task?.result || (s.previewRole === 'assistant' ? s.preview : '');
   return [from, outcome.replace(/\s+/g, ' ')].filter(Boolean).join(' · ') || TASK_STATUS[status];
@@ -307,7 +314,8 @@ function renderHeader(s) {
   const info = s.task ?? detail?.task;
   if (task) {
     parts.push(TASK_STATUS[info?.status === 'paused' ? 'paused' : s.busy ? 'running' : info?.status ?? 'ended']);
-    if (info?.originName) parts.push(`帮${info.requester ? ` ${info.requester}` : ''}（${info.originName}）`);
+    const source = taskSource(info);
+    if (source) parts.push(source);
   } else if (!web && !mind) parts.push(s.target);
   if (detail) parts.push(`${detail.totalTurns} 条记录`);
   $('#session-sub').textContent = parts.join(' · ');

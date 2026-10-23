@@ -1,6 +1,7 @@
 package dafeiyu.agent.mind;
 
 import dafeiyu.agent.AgentException;
+import dafeiyu.agent.BackgroundTasks;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ChatResult;
@@ -40,13 +41,16 @@ public final class Mind implements QqChatBridge.Observer {
     private static final long CALLED_MS = 2_000;
     private static final long NOTICED_MS = 8_000;
     private static final int MAX_BOREDOM = 3;
-    private static final int RECENT_THOUGHTS = 4;
+    private static final int RECENT_THOUGHTS = 6;
+    private static final int RESPITE = 3;
     private static final double SAME_THOUGHT = 0.35;
     private static final int MAX_ACTING_STREAK = 3;
     private static final int LINES_PER_PLACE = 3;
     private static final int MAX_ERRANDS = 5;
     private static final int MAX_PERCEIVED = 4_000;
     private static final int MAX_PER_LINE = 400;
+    private static final int MAX_RETURNED_LINE = 2_200;
+    private static final String RETURNED = "【子 agent 回来了】";
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private static final class Place {
@@ -71,6 +75,7 @@ public final class Mind implements QqChatBridge.Observer {
     private int actingStreak;
     private int quiet;
     private int circling;
+    private int respite;
     private final Deque<String> recent = new ArrayDeque<>();
     private final MindCues cues;
 
@@ -81,7 +86,13 @@ public final class Mind implements QqChatBridge.Observer {
         this.cues = new MindCues(agent, bridge);
         bridge.setObserver(this);
         agent.setErrands(this::errand);
+        agent.setSubagentResults(this::returned);
         agent.intercom().onNews(() -> stir(System.currentTimeMillis() + CALLED_MS));
+        for (SessionDetail.Entry e : agent.session(SESSION, RECENT_THOUGHTS * 8).turns()) {
+            if (e.role().equals("assistant") && e.content() != null && !e.content().isBlank()) {
+                notice(e.content().replaceAll("\\s+", " ").strip(), true);
+            }
+        }
     }
 
     private void errand(ChatAgent.Errand errand) {
@@ -163,6 +174,17 @@ public final class Mind implements QqChatBridge.Observer {
     public void said(String where, String text) {
     }
 
+    private void returned(String text) {
+        agent.intercom().report(SESSION, text);
+        log.info("mind: a subagent came back");
+        if (blocker() == null) {
+            synchronized (bell) {
+                wake = true;
+                bell.notifyAll();
+            }
+        }
+    }
+
     @Override
     public void requested(String what) {
         synchronized (places) {
@@ -181,6 +203,9 @@ public final class Mind implements QqChatBridge.Observer {
             long pause;
             boolean blocked = false;
             try {
+                if (blocker() == null && agent.intercom().nextReminder() <= System.currentTimeMillis()) {
+                    wake = true;
+                }
                 boolean asked = wake;
                 if (blocker() != null || (!agent.store().freeWill() && !asked)) {
                     pause = PAUSED_MS;
@@ -198,7 +223,8 @@ public final class Mind implements QqChatBridge.Observer {
             synchronized (bell) {
                 try {
                     while (!wake) {
-                        long due = blocked ? until : Math.min(until, stirAt);
+                        long reminder = blocker() == null ? agent.intercom().nextReminder() : Long.MAX_VALUE;
+                        long due = Math.min(blocked ? until : Math.min(until, stirAt), reminder);
                         long left = due - System.currentTimeMillis();
                         if (left <= 0) {
                             break;
@@ -248,9 +274,17 @@ public final class Mind implements QqChatBridge.Observer {
     }
 
     private String wander(String personaId, boolean calm) {
-        boolean bored = circling >= 2;
+        List<String> stuck = respite > 0 ? List.of() : MindCues.stuckOn(recent);
+        respite = Math.max(0, respite - 1);
+        boolean bored = circling >= 2 || !stuck.isEmpty();
         if (!bored && (!calm || quiet < 2 || ThreadLocalRandom.current().nextInt(2) == 0)) {
             return null;
+        }
+        if (!stuck.isEmpty()) {
+            respite = RESPITE;
+            circling = 0;
+            log.info("mind: noticed she keeps circling " + stuck);
+            return "（这几个念头翻来覆去都是「" + String.join("」「", stuck) + "」，你自己都有点腻了。没人要你守着这些，接下来想什么、去哪儿，随你）";
         }
         String cue = cues.next(personaId, String.join(" ", recent));
         if (cue == null) {
@@ -308,7 +342,7 @@ public final class Mind implements QqChatBridge.Observer {
         StringBuilder out = new StringBuilder();
         int written = 0;
         for (String line : lines) {
-            String item = abbreviate(line, MAX_PER_LINE);
+            String item = abbreviate(line, line.startsWith(RETURNED) ? MAX_RETURNED_LINE : MAX_PER_LINE);
             if (out.length() + item.length() > MAX_PERCEIVED) {
                 break;
             }
@@ -345,12 +379,22 @@ public final class Mind implements QqChatBridge.Observer {
             }
             memories += hung.append("</心里挂着的事>\n\n");
         }
+        List<BackgroundTasks.Task> working = agent.tasks().subagentsAtWork();
+        if (!working.isEmpty()) {
+            StringBuilder busy = new StringBuilder("<子 agent 在做>\n");
+            for (BackgroundTasks.Task t : working) {
+                busy.append("- #").append(t.id()).append("「").append(t.title()).append("」（").append(BackgroundTasks.label(t.type())).append("，")
+                        .append(BackgroundTasks.QUEUED.equals(t.status()) ? "在排队" : BackgroundTasks.PAUSED.equals(t.status()) ? "暂停着"
+                                : Clock.ago(t.startedAt()) + "开始的，在做").append("）\n");
+            }
+            memories += busy.append("</子 agent 在做>\n\n");
+        }
         String requests = bridge.requests().describe();
         if (!requests.isEmpty()) {
             memories += "<等你处理的申请>\n" + requests + "\n（用 answer_friend / answer_group 同意或拒绝，处理完就不在这里了）\n</等你处理的申请>\n\n";
         }
         return memories + "（现在是 " + Clock.now() + "。最近一次和人聊天是 "
-                + (last <= 0 ? "很久以前" : Clock.ago(last)) + "；今天主动去群里说过 " + bridge.proactiveToday() + " 次。）\n顺着刚才的思绪接着往下想；想做的、该办的，这一轮就用工具去做。";
+                + (last <= 0 ? "很久以前" : Clock.ago(last)) + "；今天主动去群里说过 " + bridge.proactiveToday() + " 次。）\n接着想吧，想什么都由你；想做的、该办的，这一轮就用工具去做。";
     }
 
     private String blocker() {

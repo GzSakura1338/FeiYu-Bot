@@ -27,7 +27,7 @@ function renderItem(m, fresh) {
   const text = el('div', 'list-text');
   const headline = el('div', 'list-headline body-large');
   headline.append(el('span', null, m.senderName || m.userId), el('span', 'where body-small', whereLabel(m)));
-  if (m.direction === 'out') headline.append(el('span', 'out-tag label-small', '智能体回复'));
+  if (m.direction === 'out') headline.append(el('span', 'out-tag label-small', 'Agent 回复'));
   text.append(headline, el('div', 'list-supporting body-medium', plainContent(m.content)));
   item.append(createAvatar(m.userId, m.senderName, 'avatar title-medium'), text,
               el('span', 'list-trailing label-small', timeLabel(m.time)));

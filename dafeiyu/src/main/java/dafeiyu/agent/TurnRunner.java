@@ -142,6 +142,7 @@ public final class TurnRunner {
     private final List<ImagePart> shown = new ArrayList<>();
     private int views;
     private long heardId;
+    private boolean revised;
     private boolean userSaved;
     private ChatMessage marker;
     private long startedAt;
@@ -157,7 +158,7 @@ public final class TurnRunner {
         this.turn = turn;
         this.listener = listener;
         this.cancelled = cancelled;
-        this.profile = agent.store().active();
+        this.profile = subagent() ? subagentProfile(agent) : agent.store().active();
         if (profile == null) {
             throw new AgentException(Kind.LOCAL, "no model selected: add a model on the agent page first");
         }
@@ -165,7 +166,7 @@ public final class TurnRunner {
         this.limits = ModelLimits.resolve(profile);
         this.measuredBy = profile.id() + "/" + profile.model();
         this.effort = agent.store().reasoningEffort();
-        this.persona = agent.personas().active();
+        this.persona = subagent() ? null : agent.personas().active();
         this.mood = agent.mood();
         this.guard = agent.guard();
         this.stickers = agent.stickers();
@@ -175,7 +176,7 @@ public final class TurnRunner {
         WorkspaceStore workspaces = agent.workspaces();
         this.workspace = workspaces.workspace();
         this.network = workspaces.config().shellNetwork();
-        this.direct = workspaces.directShell(turn.qqUser(), owners);
+        this.direct = !subagent() && workspaces.directShell(turn.qqUser(), owners);
         this.requestTools = turn.tools() == null && qqSession() && capabilities.toolCall(profile)
                 && ("console".equals(turn.source()) || turn.qqUser() != null && owners.contains(turn.qqUser())) ? agent.requestTools() : null;
         if (turn.tools() != null) {
@@ -283,8 +284,13 @@ public final class TurnRunner {
             if (calls.isEmpty() && (ambient() || innerVoice()) && silent(content) && !acts) {
                 return silence(result, started);
             }
+            if (calls.isEmpty() && !lastStep && overtaken()) {
+                reconsider(result.content());
+                step++;
+                continue;
+            }
             boolean blocked = false;
-            if (calls.isEmpty() && !turn.mind() && !content.isBlank()) {
+            if (calls.isEmpty() && !turn.mind() && !subagent() && !content.isBlank()) {
                 ContentGuard.Verdict verdict = guard.review(profile, reviewContext(), content);
                 if (verdict != null) {
                     blocked = true;
@@ -372,13 +378,14 @@ public final class TurnRunner {
             prepared = Prompt.prefixLastUser(prepared, mood.note(persona.id(), turn.session(), lastSpoke)
                     + presentPeople()
                     + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners), context)
+                    + memories.style(persona.id(), turn.session(), context)
                     + skills
                     + (catalog.isEmpty() ? "" : "<你的表情包>\n" + catalog + "</你的表情包>\n\n"));
         }
         if (!systemRole) {
             prepared = Prompt.withInstructions(prepared, system);
         }
-        return new ChatRequest(prepared, tools, lastStep, turn.session(), profile.maxTokens(), effort);
+        return new ChatRequest(prepared, tools, lastStep, turn.session(), profile.maxTokens(), effort, subagent() ? BackgroundTasks.SUBAGENT : "");
     }
 
     private boolean ambient() {
@@ -530,6 +537,16 @@ public final class TurnRunner {
 
     private boolean qqSession() {
         return turn.session().startsWith("group:") || turn.session().startsWith("private:");
+    }
+
+    private boolean subagent() {
+        return BackgroundTasks.SUBAGENT.equals(turn.source());
+    }
+
+    private static ModelProfile subagentProfile(ChatAgent agent) {
+        String id = agent.tasks().subagents().config().profileId();
+        ModelProfile chosen = id.isEmpty() ? null : agent.store().get(id);
+        return chosen != null ? chosen : agent.store().active();
     }
 
     private boolean innerVoice() {
@@ -807,6 +824,26 @@ public final class TurnRunner {
         }
     }
 
+    private boolean overtaken() {
+        if (revised || !innerVoice() || !interjectable() || turn.session().startsWith("task:")) {
+            return false;
+        }
+        arrive(memory.heardSince(turn.session(), heardId));
+        return arrived.size() >= (ambient() ? 2 : 1);
+    }
+
+    private void reconsider(String draft) {
+        revised = true;
+        StringBuilder text = new StringBuilder("（你刚写好、还没发出去的回复是：「").append(draft.strip())
+                .append("」。可就在你想的时候，又来了新消息：");
+        arrived.forEach(h -> text.append('\n').append(h.content()));
+        text.append("\n现在一起回一次：原来那句还合适就照发或者改一改，已经不合适了就按现在的情况重新说，或者只写 ").append(SILENCE)
+                .append("。别一条条分开回，也别把同一个意思说两遍。）");
+        live.add(ChatMessage.user(text.toString()));
+        agent.interjected(turn.session(), List.copyOf(arrived));
+        arrived.clear();
+    }
+
     private void interject() {
         if (!interjectable()) {
             return;
@@ -867,7 +904,7 @@ public final class TurnRunner {
     }
 
     private void buildSystem() {
-        system = turn.mind() ? Prompt.mind(persona) : Prompt.system(persona, workspace, enabled, qqSession());
+        system = turn.mind() ? Prompt.mind(persona, agent.tasks().subagents().config().enabled()) : Prompt.system(persona, workspace, enabled, qqSession());
         String learned = persona == null ? "" : agent.skills().prompt(persona.id());
         if (!learned.isEmpty()) {
             system = system.isEmpty() ? learned : system + "\n\n" + learned;

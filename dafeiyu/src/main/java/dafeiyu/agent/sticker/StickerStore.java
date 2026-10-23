@@ -34,7 +34,8 @@ public final class StickerStore {
     static final String READY = "ready";
     static final String FAILED = "failed";
     static final String UNSAFE = "unsafe";
-    static final Pattern TAG = Pattern.compile("\\[表情包[:：]\\s*#?(\\d{1,9})\\s*]");
+    static final Pattern TAG = Pattern.compile(
+            "[\\[<【［＜]\\s*表情包\\s*[:：#]\\s*#?\\s*(\\d{1,9})[^\\]>】］＞\\n]{0,40}[\\]>】］＞](?:\\s*[<＜]\\s*/\\s*表情包\\s*[>＞])?");
     public static final int MAX_PER_MESSAGE = 3;
     private static final long RECENT_SENT_MS = 2 * 3_600_000L;
     private static final String COLUMNS = "id, hash, source, url, file, mime, description, status, hidden, seen_count, sent_count, first_seen, last_seen, last_sent";

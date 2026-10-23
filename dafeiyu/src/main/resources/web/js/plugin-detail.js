@@ -185,7 +185,7 @@ function options(detail) {
     rows.push(row);
   }
   if (detail.toolList?.length) {
-    rows.push(switchItem('forum', 'QQ 聊天里也能用工具', '默认只在智能体里用，打开后她在 QQ 里聊天时也能调用', detail.qqTools, async value => {
+    rows.push(switchItem('forum', 'QQ 聊天里也能用工具', '默认只在 Agent 里用，打开后她在 QQ 里聊天时也能调用', detail.qqTools, async value => {
       await request('PUT', `/${detail.id}/options`, { qqTools: value });
     }));
   }

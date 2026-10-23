@@ -91,6 +91,9 @@ final class QqDirectory {
                  java.util.function.UnaryOperator<String> stranger) {
 
         String of(String session) {
+            if (session.startsWith("mind:")) {
+                return "内心";
+            }
             if (session.startsWith("group:")) {
                 String id = session.substring(6);
                 return groups.getOrDefault(id, "群 " + id);

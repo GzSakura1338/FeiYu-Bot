@@ -32,6 +32,7 @@ export const MIND_TOOLS = {
   tell_group: { icon: 'send', label: '交给群里去说' },
   tell_private: { icon: 'person', label: '交给私聊去说' },
   settle: { icon: 'check_circle', label: '了结一件事' },
+  remind: { icon: 'schedule', label: '定个提醒' },
   find_person: { icon: 'manage_search', label: '找人' },
   poke: { icon: 'mood', label: '拍一拍' },
   remember: { icon: 'note_add', label: '记下来' },
@@ -39,6 +40,8 @@ export const MIND_TOOLS = {
   answer_friend: { icon: 'person', label: '处理好友申请' },
   answer_group: { icon: 'groups', label: '处理进群' },
   view_image: { icon: 'visibility', label: '看图' },
+  subagent: { icon: 'build', label: '交给子 agent' },
+  steer_task: { icon: 'build', label: '管后台任务' },
 };
 
 const ACCESS_HINT = {
@@ -104,7 +107,7 @@ function renderStatus() {
   } else if (state.dir) {
     box.append(createIcon('check_circle', 'icon-18'), el('span', null, `已启用：${state.dir}`));
   } else {
-    box.append(createIcon('info', 'icon-18'), el('span', null, '未设置，智能体只能普通聊天'));
+    box.append(createIcon('info', 'icon-18'), el('span', null, '未设置，Agent 只能普通聊天'));
   }
 }
 

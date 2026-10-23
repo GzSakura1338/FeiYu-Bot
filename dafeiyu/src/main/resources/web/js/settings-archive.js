@@ -5,7 +5,10 @@ import { onPageChange } from './router.js';
 import { showSnackbar } from './snackbar.js';
 import { isArchivedTask, openSession, taskStatusKey, taskStatusLabel, taskSummary } from './agent-sessions.js';
 
+const ORDER = ['done', 'failed', 'interrupted', 'ended'];
 let timer = 0;
+let archived = [];
+let filter = 'all';
 
 function row(s) {
   const item = el('li', 'list-item archive-item state-layer');
@@ -28,8 +31,37 @@ function row(s) {
   return item;
 }
 
+function chip(key, text) {
+  const button = el('button', 'state-layer', text);
+  button.type = 'button';
+  button.setAttribute('role', 'radio');
+  button.setAttribute('aria-checked', String(filter === key));
+  button.addEventListener('click', () => {
+    filter = key;
+    render();
+  });
+  return button;
+}
+
+function render() {
+  const groups = new Map();
+  for (const s of archived) {
+    const key = taskStatusKey(s);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+  if (!groups.has(filter)) filter = 'all';
+  const rank = key => (ORDER.includes(key) ? ORDER.indexOf(key) : ORDER.length);
+  const keys = [...groups.keys()].sort((a, b) => rank(a) - rank(b));
+  const box = $('#archive-filter');
+  box.replaceChildren(chip('all', `全部 ${archived.length}`), ...keys.map(k => chip(k, `${taskStatusLabel(groups.get(k)[0])} ${groups.get(k).length}`)));
+  box.hidden = archived.length === 0;
+  $('#archive-count').textContent = archived.length ? `${archived.length} 个` : '';
+  $('#archive-list').replaceChildren(...(filter === 'all' ? archived : groups.get(filter)).map(row));
+  $('#archive-empty').hidden = archived.length > 0;
+}
+
 async function load() {
-  let archived = [];
   try {
     const res = await fetch('/api/agent/sessions', { cache: 'no-store' });
     const data = await res.json();
@@ -40,8 +72,7 @@ async function load() {
   } catch (err) {
     showSnackbar(`读取归档会话失败：${err.message}`, 'error');
   }
-  $('#archive-list').replaceChildren(...archived.map(row));
-  $('#archive-empty').hidden = archived.length > 0;
+  render();
 }
 
 export function initSettingsArchive() {

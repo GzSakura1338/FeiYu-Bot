@@ -7,7 +7,7 @@ import { ago, formatTime } from './format.js';
 import { onAgentViewChange } from './agent-page.js';
 
 const GROUPS = [
-  { title: '她自己', test: s => s.kind === 'self' || s.kind === 'diary' || s.kind === 'knowledge' || s.kind === 'skill' },
+  { title: '她自己', test: s => s.kind === 'self' || s.kind === 'diary' || s.kind === 'knowledge' || s.kind === 'style' || s.kind === 'skill' },
   { title: '主人', test: s => s.owner },
   { title: '认识的人', test: s => s.kind === 'user' && !s.owner },
   { title: '群', test: s => s.kind === 'group' },
@@ -16,6 +16,7 @@ const HINTS = {
   self: '她对自己的认识，按性格、喜好、习惯、经历、心愿和约定整理，零散的想法回顾时会并进去',
   diary: '每天一篇，回顾时把当天的事合进去，聊天时会想起最近两天',
   knowledge: '她遇到不懂的词上网查明白后记下的，一条一个词；聊天里再有人提到这个词，就会想起来，不用再查',
+  style: '她在群里跟大家聊天慢慢学来的说话方式：一句话多长、怎么接梗吐槽、常用说法，还有她自己哪里说得不像真人；每个群攒够一百多条新消息就学一次，聊天时会想起来',
   skill: '她在聊天里学会的本事：不会的、被人教会的、自己摸索出来的，回顾时自动总结，以后聊天照着做',
   user: '她记得的关于这个人的事，聊天时对方在场就会想起来',
   group: '这个群的梗和氛围，在这个群聊天时会想起来',
@@ -47,7 +48,7 @@ function scopeAvatar(s, className = 'avatar') {
     img.alt = '';
     node.append(img);
   } else {
-    node.append(createIcon({ diary: 'auto_stories', knowledge: 'lightbulb', skill: 'build' }[s.kind] ?? 'psychology', 'icon-18'));
+    node.append(createIcon({ diary: 'auto_stories', knowledge: 'lightbulb', style: 'forum', skill: 'build' }[s.kind] ?? 'psychology', 'icon-18'));
   }
   return node;
 }
@@ -125,6 +126,7 @@ function renderHeader() {
   $('#memory-input').placeholder = {
     diary: '替她往今天的日记里补一段，Enter 保存',
     knowledge: '教她一个词：写成「词」：意思，Enter 保存',
+    style: '教她一种说法：写成「什么时候」：怎么说，Enter 保存',
     skill: '教她一个技能：第一行写名字，Shift+Enter 换行写怎么做，Enter 保存',
   }[s.kind] ?? '手动加一条记忆，Enter 保存';
   $('#memory-download-all').hidden = s.kind !== 'skill' || !items.length;
@@ -259,6 +261,7 @@ function renderItems() {
   const empty = {
     diary: '还没有日记，回顾一次就会写',
     knowledge: '还没查过什么词。聊天里遇到不懂的，她会上网查明白再记到这里',
+    style: '还没学到。群里聊得多了，她会自己从群友那里学怎么说话',
     skill: '还没学会什么技能。聊天里遇到不会的事、被人教会了，回顾时就会总结成技能',
   }[selected] ?? '这里还没有记忆';
   list.replaceChildren(...(items.length

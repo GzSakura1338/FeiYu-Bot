@@ -27,7 +27,7 @@ public final class UsageStore {
         String key = request.cacheKey() == null ? "" : request.cacheKey();
         String purpose = purpose(request.purpose(), key);
         String session = key.startsWith("reflect:") ? key.substring(8)
-                : purpose.equals("chat") || purpose.equals("mind") || purpose.equals("compact") ? key : "";
+                : purpose.equals("chat") || purpose.equals("mind") || purpose.equals("compact") || purpose.equals("subagent") ? key : "";
         long now = System.currentTimeMillis();
         db.update("""
                 INSERT INTO token_usage (at, day, purpose, session, model, effort, prompt_tokens, completion_tokens, cached_tokens, latency_ms)

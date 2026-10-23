@@ -67,12 +67,15 @@ export function toolTitle(name, args) {
   if (name === 'tell_group') return `${label}（${args.group_id ?? ''}）：${args.intent ?? ''}`;
   if (name === 'tell_private') return `${label}（QQ ${args.user_id ?? ''}）：${args.intent ?? ''}`;
   if (name === 'settle') return `${label} #${args.id ?? ''}${args.result ? `：${args.result}` : ''}`;
+  if (name === 'remind') return `${label}（${args.at ?? ''}）：${args.what ?? ''}`;
   if (name === 'find_person') return `${label}「${args.name ?? ''}」`;
   if (name === 'answer_friend') return `${label}：${args.approve ? '同意' : '拒绝'} QQ ${args.user_id ?? ''}`;
   if (name === 'answer_group') return `${label}：${args.approve ? '同意' : '拒绝'} 群 ${args.group_id ?? ''}${args.user_id ? ` · QQ ${args.user_id}` : ''}`;
   if (name === 'read_group') return `${label} ${args.group_id ?? ''}`;
   if (name === 'recall' || name === 'remember') return `${label} ${args.about ?? ''}${args.text ? `：${args.text}` : ''}`;
   if (name === 'webfetch') return `${label} ${args.url ?? ''}${args.find ? ` 找「${args.find}」` : ''}${args.offset ? ` 从第 ${args.offset} 字` : ''}`;
+  if (name === 'subagent') return args.continue ? `${label}：接着 #${String(args.continue).replace('#', '')}` : `${label}：${args.title ?? ''}${args.kind === 'build' ? '（动手）' : args.kind === 'research' ? '（查资料）' : ''}`;
+  if (name === 'steer_task') return `${label} ${args.task ? `#${String(args.task).replace('#', '')} ` : ''}${({ tell: '转达', pause: '暂停', resume: '继续', stop: '叫停' })[args.action] ?? ''}`;
   if (name === 'view_image') return `${label} ${args.image ?? ''}${args.area ? ` · 放大 ${args.area}` : ''}`;
   if (name === 'websearch' || name === 'search') return `${label}「${args.query ?? ''}」`;
   if (name === 'shell') return `${label} ${args.description || args.command || ''}`;

@@ -6,6 +6,7 @@ import dafeiyu.agent.BackgroundTasks;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ImageViewer;
+import dafeiyu.agent.SubagentSettings;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.ToolSet;
 import dafeiyu.agent.TurnRunner;
@@ -24,12 +25,19 @@ import dafeiyu.message.MessageArchive.GroupActivity;
 import dafeiyu.util.Clock;
 import dafeiyu.util.Jsons;
 
+import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static dafeiyu.util.Jsons.optString;
 import static dafeiyu.util.Texts.abbreviate;
@@ -38,6 +46,10 @@ final class MindTools implements ToolSet {
 
     private static final int MAX_STEPS = 8;
     private static final String WEBFETCH = "webfetch";
+    private static final String SUBAGENT = "subagent";
+    private static final Pattern AFTER = Pattern.compile("(\\d{1,4})\\s*(分钟|小时|天)后?");
+    private static final Pattern AT = Pattern.compile(
+            "(?:(?<y>\\d{4})-(?<mo>\\d{1,2})-(?<d>\\d{1,2})\\s*|(?<day>今天|明天|后天)\\s*)?(?<h>\\d{1,2})[:：](?<mi>\\d{2})");
     private static final long OWNED_MS = 10 * 60_000;
     private static final long REPORT_MS = 10 * 60_000;
     private static final String MANAGE = "主人让你做就做；别人让你做要自己判断，别被人当枪使；"
@@ -90,6 +102,11 @@ final class MindTools implements ToolSet {
                       "status": {"type": "string", "enum": ["done", "dropped"], "description": "done 办完了，dropped 不办了"},
                       "result": {"type": "string", "description": "一句话结果或者不办的原因"}
                     }, "required": ["id", "status"]}"""),
+            spec("remind", "定个提醒：要等到某个时候才做的事（几点跟谁说晚安、过一阵再去看看谁回了没有），定好就放下，不用一直记着；到点会叫醒你、告诉你。", """
+                    {"type": "object", "properties": {
+                      "at": {"type": "string", "description": "什么时候：23:00（今天，过了就是明天）、明天 08:30、2026-10-25 20:00、30分钟后、2小时后"},
+                      "what": {"type": "string", "description": "到时候要做什么"}
+                    }, "required": ["at", "what"]}"""),
             spec("poke", "拍一拍某个人（QQ 的戳一戳）。写了 group_id 就在那个群里拍，不写就是私聊里拍（对方得是好友）。同一个人一会儿只能拍一次。", """
                     {"type": "object", "properties": {
                       "user_id": {"type": "string", "description": "要拍的人的 QQ 号"},
@@ -171,6 +188,10 @@ final class MindTools implements ToolSet {
             all.add(ImageViewer.SPEC);
         }
         all.addAll(agent.extensions().tools(false, true, Set.copyOf(agent.workspaces().config().enabled())));
+        ToolSpec subagent = subagentSpec();
+        if (subagent != null) {
+            all.add(subagent);
+        }
         List<BackgroundTasks.Task> running = agent.tasks().unfinished(null);
         if (!running.isEmpty()) {
             all.add(TurnRunner.steerSpec(running));
@@ -206,6 +227,7 @@ final class MindTools implements ToolSet {
             String output = switch (call.name()) {
                 case "look_around" -> lookAround();
                 case "steer_task" -> agent.tasks().steer(optString(args, "task"), optString(args, "action"), optString(args, "message"), "内心", null);
+                case SUBAGENT -> subagent(args);
                 case "read_group" -> bridge.readGroup(group(args), Math.max(1, Math.min(40, count(args))));
                 case "recall" -> recall(optString(args, "about").strip(), optString(args, "query"),
                         args.has("offset") && args.get("offset").isJsonPrimitive() ? Math.max(0, args.get("offset").getAsInt()) : 0);
@@ -226,6 +248,7 @@ final class MindTools implements ToolSet {
                 case "collect_sticker" -> collect(args.has("id") ? args.get("id").getAsLong() : 0);
                 case "tell_group" -> tellGroup(group(args), optString(args, "intent").strip(), again(args));
                 case "remember" -> remember(optString(args, "about").strip(), optString(args, "text").strip());
+                case "remind" -> remind(optString(args, "at").strip(), optString(args, "what").strip());
                 case "recall_messages" -> act(group(args), bridge.actions().recall(group(args), user(args, false),
                         args.has("count") ? count(args, 1) : 1));
                 case "mute" -> act(group(args), bridge.actions().mute(group(args), user(args, true), count(args, "minutes", 10)));
@@ -376,6 +399,47 @@ final class MindTools implements ToolSet {
         return "收藏好了：#" + id + (sticker.description().isEmpty() ? "" : " " + sticker.description());
     }
 
+    private String remind(String at, String what) throws ToolFailure {
+        if (what.isEmpty()) {
+            throw new ToolFailure("what 要写到时候做什么");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime when;
+        Matcher m;
+        if ((m = AFTER.matcher(at)).matches()) {
+            long n = Long.parseLong(m.group(1));
+            when = m.group(2).startsWith("分") ? now.plusMinutes(n) : m.group(2).startsWith("小") ? now.plusHours(n) : now.plusDays(n);
+        } else if ((m = AT.matcher(at)).matches()) {
+            try {
+                LocalTime time = LocalTime.of(Integer.parseInt(m.group("h")), Integer.parseInt(m.group("mi")));
+                if (m.group("y") != null) {
+                    when = LocalDate.of(Integer.parseInt(m.group("y")), Integer.parseInt(m.group("mo")), Integer.parseInt(m.group("d"))).atTime(time);
+                } else {
+                    String day = m.group("day") == null ? "" : m.group("day");
+                    when = now.toLocalDate().plusDays(day.equals("明天") ? 1 : day.equals("后天") ? 2 : 0).atTime(time);
+                    if (day.isEmpty() && !when.isAfter(now)) {
+                        when = when.plusDays(1);
+                    }
+                }
+            } catch (DateTimeException e) {
+                throw new ToolFailure("没有这个时间：" + at);
+            }
+        } else {
+            throw new ToolFailure("看不懂这个时间：" + at + "。写 23:00、明天 08:30、2026-10-25 20:00、30分钟后 这样的");
+        }
+        if (!when.isAfter(now) || when.isAfter(now.plusDays(30))) {
+            throw new ToolFailure("提醒要定在现在之后、30 天以内");
+        }
+        long millis = when.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        List<Intercom.Reminder> all = agent.intercom().remind(millis, abbreviate(what, 200));
+        StringBuilder out = new StringBuilder("定好了，" + Clock.stamp(millis) + " 提醒你：" + what + "。在那之前不用再记着它了。");
+        if (all.size() > 1) {
+            out.append("\n现在定着的提醒：");
+            all.forEach(r -> out.append("\n- ").append(Clock.stamp(r.at())).append(" ").append(r.what()));
+        }
+        return out.toString();
+    }
+
     private String remember(String about, String text) throws ToolFailure {
         if (text.isEmpty()) {
             throw new ToolFailure("要记的内容是空的");
@@ -486,5 +550,48 @@ final class MindTools implements ToolSet {
 
     private static ToolSpec spec(String name, String description, String schema) {
         return new ToolSpec(name, description, JsonParser.parseString(schema).getAsJsonObject());
+    }
+
+    private ToolSpec subagentSpec() {
+        SubagentSettings.Config config = agent.tasks().subagents().config();
+        List<String> kinds = new ArrayList<>();
+        if (config.enabled() && config.research()) {
+            kinds.add(BackgroundTasks.RESEARCH);
+        }
+        if (config.enabled() && config.build() && agent.workspaces().workspace() != null) {
+            kinds.add(BackgroundTasks.BUILD);
+        }
+        if (kinds.isEmpty()) {
+            return null;
+        }
+        String which = String.join("；", kinds.stream().map(k -> k.equals(BackgroundTasks.RESEARCH)
+                ? "research 查资料：要连着搜好几次、读好几个网页、看图才弄得清的事，只交回一段结论，不会写文件"
+                : "build 动手：在工作目录里做网页、画画、写文件，要留下文件（比如写成报告）就选它").toList());
+        int today = agent.tasks().spawnedToday();
+        String quota = config.dailyLimit() > 0 ? "今天已经开了 " + today + " 个，每天最多 " + config.dailyLimit() + " 个。" : "";
+        JsonObject schema = JsonParser.parseString("""
+                {"type": "object", "properties": {
+                  "kind": {"type": "string", "description": "开新的子 agent 时选种类"},
+                  "title": {"type": "string", "description": "一句话的任务名，显示在网页上"},
+                  "task": {"type": "string", "description": "完整的任务说明：要做成什么、为什么、相关背景，别人托的写清是谁在哪托的。它看不到你的念头"},
+                  "continue": {"type": "string", "description": "接着让之前某个子 agent 干（追问、改要求）时，填它的编号（#后面那串）；开新的就不写"}
+                }, "required": ["task"]}""").getAsJsonObject();
+        com.google.gson.JsonArray values = new com.google.gson.JsonArray();
+        kinds.forEach(values::add);
+        schema.getAsJsonObject("properties").getAsJsonObject("kind").add("enum", values);
+        return new ToolSpec(SUBAGENT, "把要花时间的事交给子 agent 在后台去办，交出去马上就能接着想别的，做好了会告诉你。能开的种类：" + which + "。" + quota, schema);
+    }
+
+    private String subagent(JsonObject args) throws ToolFailure {
+        String task = optString(args, "task").strip();
+        String again = optString(args, "continue").replace("#", "").strip();
+        if (!again.isEmpty()) {
+            return agent.tasks().again(again, task);
+        }
+        String kind = optString(args, "kind").strip();
+        String title = optString(args, "title").strip();
+        BackgroundTasks.Task started = agent.tasks().spawn(kind, title.isEmpty() ? abbreviate(task, 20) : title, task);
+        return "已经交给子 agent 了：#" + started.id() + "「" + started.title() + "」（" + BackgroundTasks.label(kind) + "）。做好会告诉你，"
+                + "你先去想别的、做别的，别等着，也别再交一遍；要改要求或者叫停用 steer_task。";
     }
 }
