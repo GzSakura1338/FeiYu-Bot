@@ -6,13 +6,17 @@ import { createAvatar, createGroupAvatar } from './avatar.js';
 import { ago, formatTime } from './format.js';
 import { createReply, noteChips, reasoningBlock, renderContext, renderSaid, toolCard, settleToolCard, splitInner } from './chat-render.js';
 import { onAgentViewChange, renderMood } from './agent-page.js';
+import { navigate } from './router.js';
 import { COMMANDS, attachCommandHints, commandNote, helpText, parseCommand, runCommand } from './commands.js';
 import { attachmentCount, clearAttachments, initAttachments, streamTurn, takeAttachments, userBubble } from './web-chat.js';
 import { QUIET, isMind, loadMindStatus, mindEntry, mindMoment, showMindBar } from './agent-mind.js';
 import { attachmentNodes, isPoke, parseAttachments, pokeNote, stripPlaceholders } from './msg-attachments.js';
 import { stickToBottom } from './stick-bottom.js';
 
-const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '内心' };
+const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '内心', task: '后台任务' };
+const TASK_STATUS = { queued: '排队中', running: '在做', paused: '暂停了', done: '做好了', failed: '没做成', interrupted: '中断了', ended: '已结束' };
+const TASKS_OPEN_KEY = 'sessions.tasksOpen';
+const ARCHIVE_AFTER_MS = 15 * 60_000;
 const TIME_MARK = /^【\d{1,2}月\d{1,2}日 [^】\n]{1,20}】$/;
 const MIND_EMPTY = '她的念头还没开始转。打开页头的「自由活动」就会一直想下去';
 const MAX_MIND_NODES = 400;
@@ -27,6 +31,7 @@ const WEB_EMPTY = '在这里试聊几句，可以粘贴或添加图片测试看�
 
 let sessions = [];
 let filter = 'all';
+let tasksOpen = localStorage.getItem(TASKS_OPEN_KEY) === '1';
 let selected = null;
 let detail = null;
 let shown = PAGE;
@@ -103,13 +108,15 @@ function sessionAvatar(s, className = 'avatar') {
   if (s.kind === 'group') return createGroupAvatar(s.target, s.name, className);
   if (s.kind === 'private') return createAvatar(s.target, s.name, className);
   const mind = s.kind === 'mind';
-  const node = el('span', `${className} avatar-icon${mind ? ' avatar-mind' : ''}`);
-  node.append(createIcon(mind ? 'neurology' : 'forum', 'icon-18'));
+  const task = s.kind === 'task';
+  const node = el('span', `${className} avatar-icon${mind ? ' avatar-mind' : task ? ' avatar-task' : ''}`);
+  node.append(createIcon(mind ? 'neurology' : task ? 'build' : 'forum', 'icon-18'));
   return node;
 }
 
 function visible(s) {
   if (s.kind === 'mind') return filter === 'all' || (filter === 'busy' && s.busy);
+  if (s.kind === 'task') return filter === 'all' || (filter === 'busy' && s.busy);
   if (filter === 'busy') return s.busy;
   if (filter === 'group' || filter === 'private' || filter === 'web') return s.kind === filter;
   return true;
@@ -123,6 +130,7 @@ function previewText(s) {
     const wander = text.replace(QUIET, '').trim();
     return QUIET.test(text) || !text ? wander || '外面没什么动静' : `感觉到：${text}`;
   }
+  if (s.kind === 'task') return taskPreview(s);
   if (!s.preview) return s.busy ? '正在回复…' : '暂无记录';
   if (s.preview.trim() === SEEN_MARK) return '';
   const text = meText(splitInner(s.preview).said.replace(/\s+/g, ' '));
@@ -130,38 +138,129 @@ function previewText(s) {
   return s.kind === 'web' ? `机器人：${text}` : `${selfName()}：${text}`;
 }
 
+const taskStatus = s => (s.task?.status === 'paused' ? 'paused' : s.busy ? 'running' : s.task?.status ?? 'ended');
+
+function taskPreview(s) {
+  const from = s.task?.originName ? `帮${s.task.requester ? ` ${s.task.requester}` : ''}（${s.task.originName}）` : '';
+  const status = taskStatus(s);
+  const outcome = ['running', 'queued', 'paused'].includes(status) ? '' : s.task?.result || (s.previewRole === 'assistant' ? s.preview : '');
+  return [from, outcome.replace(/\s+/g, ' ')].filter(Boolean).join(' · ') || TASK_STATUS[status];
+}
+
+function onActivate(item, action) {
+  item.tabIndex = 0;
+  item.addEventListener('click', action);
+  item.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      action();
+    }
+  });
+}
+
+function sessionItem(s) {
+  const mind = s.kind === 'mind';
+  const task = s.kind === 'task';
+  const item = el('li', `session-item state-layer${mind ? ' is-mind' : ''}${task ? ' is-sub' : ''}`);
+  item.setAttribute('role', 'option');
+  item.setAttribute('aria-selected', String(s.session === selected));
+  const text = el('div', 'session-item-text');
+  const head = el('div', 'session-item-head');
+  head.append(el('span', 'title-small session-item-name', s.name));
+  if (task) {
+    const status = taskStatus(s);
+    if (status !== 'running') head.append(el('span', `kind-chip label-small task-${status}`, TASK_STATUS[status]));
+  } else if (!mind) {
+    head.append(el('span', `kind-chip label-small kind-${s.kind}`, KIND_LABEL[s.kind] ?? s.kind));
+  }
+  if (s.busy && !(task && taskStatus(s) === 'paused')) {
+    const busy = el('span', 'busy-chip label-small');
+    busy.append(el('span', 'busy-dot'), el('span', null, mind ? '在想' : task ? '在做' : '回复中'));
+    head.append(busy);
+  }
+  head.append(el('span', 'label-small session-item-time', s.lastActive ? ago(s.lastActive) : ''));
+  text.append(head, el('div', 'body-small session-item-preview', previewText(s)));
+  item.append(sessionAvatar(s, task ? 'avatar avatar-sm' : 'avatar'), text);
+  onActivate(item, () => select(s.session));
+  return item;
+}
+
+function taskGroup(tasks) {
+  const item = el('li', 'session-item session-group state-layer');
+  item.setAttribute('role', 'option');
+  item.setAttribute('aria-expanded', String(tasksOpen));
+  item.setAttribute('aria-selected', 'false');
+  const text = el('div', 'session-item-text');
+  const head = el('div', 'session-item-head');
+  head.append(el('span', 'title-small session-item-name', '后台任务'), el('span', 'kind-chip label-small kind-task', String(tasks.length)));
+  const working = tasks.filter(s => taskStatus(s) === 'running').length;
+  if (working) {
+    const busy = el('span', 'busy-chip label-small');
+    busy.append(el('span', 'busy-dot'), el('span', null, `${working} 个在做`));
+    head.append(busy);
+  }
+  const latest = Math.max(...tasks.map(s => s.lastActive ?? 0));
+  head.append(el('span', 'label-small session-item-time', latest ? ago(latest) : ''));
+  const queued = tasks.filter(s => taskStatus(s) === 'queued').length;
+  const summary = working || queued
+    ? [working && `${working} 个在做`, queued && `${queued} 个排队`].filter(Boolean).join('，')
+    : `最近：${tasks[0].name}`;
+  text.append(head, el('div', 'body-small session-item-preview', summary));
+  const chevron = createIcon('chevron_right', 'icon-18 session-group-chevron');
+  item.append(sessionAvatar({ kind: 'task' }), text, chevron);
+  const sub = fold(tasksOpen, tasks.map(sessionItem));
+  onActivate(item, () => {
+    tasksOpen = !tasksOpen;
+    localStorage.setItem(TASKS_OPEN_KEY, tasksOpen ? '1' : '0');
+    toggleFold(item, sub, tasksOpen);
+  });
+  return [item, sub];
+}
+
+export function isArchivedTask(s) {
+  if (s.kind !== 'task') return false;
+  const status = taskStatus(s);
+  return !['running', 'queued', 'paused'].includes(status) && Date.now() - (s.lastActive ?? 0) > ARCHIVE_AFTER_MS;
+}
+
+export const taskStatusLabel = s => TASK_STATUS[taskStatus(s)];
+export const taskStatusKey = taskStatus;
+export const taskSummary = taskPreview;
+
+export function openSession(session) {
+  navigate('agent', 'sessions');
+  start();
+  select(session);
+}
+
+function fold(open, children) {
+  const sub = el('li', `session-subgroup${open ? ' open' : ''}`);
+  sub.setAttribute('role', 'presentation');
+  sub.inert = !open;
+  const inner = el('ul', 'session-subgroup-list');
+  inner.setAttribute('role', 'group');
+  inner.append(...children);
+  sub.append(inner);
+  return sub;
+}
+
+function toggleFold(header, sub, open) {
+  header.setAttribute('aria-expanded', String(open));
+  sub.classList.toggle('open', open);
+  sub.inert = !open;
+}
+
 function renderList() {
   const list = $('#session-list');
   const shown = sessions.filter(visible);
   $('#session-list-empty').hidden = shown.length > 0;
-  list.replaceChildren(...shown.map(s => {
-    const mind = s.kind === 'mind';
-    const item = el('li', `session-item state-layer${mind ? ' is-mind' : ''}`);
-    item.setAttribute('role', 'option');
-    item.setAttribute('aria-selected', String(s.session === selected));
-    item.tabIndex = 0;
-    const text = el('div', 'session-item-text');
-    const head = el('div', 'session-item-head');
-    head.append(el('span', 'title-small session-item-name', s.name));
-    if (!mind) head.append(el('span', `kind-chip label-small kind-${s.kind}`, KIND_LABEL[s.kind] ?? s.kind));
-    if (s.busy) {
-      const busy = el('span', 'busy-chip label-small');
-      busy.append(el('span', 'busy-dot'), el('span', null, mind ? '在想' : '回复中'));
-      head.append(busy);
-    }
-    head.append(el('span', 'label-small session-item-time', s.lastActive ? ago(s.lastActive) : ''));
-    text.append(head, el('div', 'body-small session-item-preview', previewText(s)));
-    item.append(sessionAvatar(s), text);
-    const open = () => select(s.session);
-    item.addEventListener('click', open);
-    item.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        open();
-      }
-    });
-    return item;
-  }));
+  const tasks = shown.filter(s => s.kind === 'task' && (!isArchivedTask(s) || s.session === selected))
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
+  const others = shown.filter(s => s.kind !== 'task');
+  const nodes = others.filter(s => s.kind === 'mind').map(sessionItem);
+  if (tasks.length) nodes.push(...taskGroup(tasks));
+  nodes.push(...others.filter(s => s.kind !== 'mind').map(sessionItem));
+  list.replaceChildren(...nodes);
 }
 
 async function loadList() {
@@ -196,6 +295,7 @@ function scheduleList() {
 function renderHeader(s) {
   const web = s.kind === 'web';
   const mind = s.kind === 'mind';
+  const task = s.kind === 'task';
   const avatar = $('#session-avatar');
   const key = `${s.kind}:${s.target}`;
   if (avatar.dataset.key !== key) {
@@ -204,7 +304,11 @@ function renderHeader(s) {
   }
   $('#session-name').textContent = s.name;
   const parts = [web ? '网页测试对话' : mind ? '她脑子里一直在转的念头' : KIND_LABEL[s.kind] ?? s.kind];
-  if (!web && !mind) parts.push(s.target);
+  const info = s.task ?? detail?.task;
+  if (task) {
+    parts.push(TASK_STATUS[info?.status === 'paused' ? 'paused' : s.busy ? 'running' : info?.status ?? 'ended']);
+    if (info?.originName) parts.push(`帮${info.requester ? ` ${info.requester}` : ''}（${info.originName}）`);
+  } else if (!web && !mind) parts.push(s.target);
   if (detail) parts.push(`${detail.totalTurns} 条记录`);
   $('#session-sub').textContent = parts.join(' · ');
   if (!mind && detail?.session === s.session) renderContext($('#session-stats'), detail);
@@ -213,7 +317,7 @@ function renderHeader(s) {
   $('#session-deliver').hidden = web;
   $('#session-chips').hidden = !web;
   $('#chat-attach').hidden = !web;
-  $('#session-form').hidden = mind;
+  $('#session-form').hidden = mind || task;
   $('#session-timeline').classList.toggle('is-web', web);
   $('#session-timeline').classList.toggle('is-mind', mind);
   const clear = $('#session-clear');
@@ -259,6 +363,15 @@ function parseUser(content, kind) {
 function userEntries(content, time, s, rawAttachments = '') {
   if (TIME_MARK.test(content.trim())) return [el('div', 'chat-divider label-small', content.trim().slice(1, -1))];
   if (s.kind === 'mind') return [mindMoment(content, time)];
+  if (s.kind === 'task') {
+    const row = el('div', 'msg msg-console new');
+    const label = el('div', 'msg-label label-small');
+    const first = content.startsWith('你在后台帮');
+    label.append(createIcon(first ? 'build' : 'send', 'icon-18'), el('span', null, first ? '交代的任务' : '新的指示'),
+      el('span', 'msg-time', time ? formatTime(time) : ''));
+    row.append(label, el('div', 'bubble bubble-console body-large', content));
+    return [row];
+  }
   const attachments = parseAttachments(rawAttachments);
   if (s.kind !== 'web' && isPoke(content, attachments)) return [pokeNote(content, time, formatTime)];
   if (s.kind === 'web') {
@@ -452,6 +565,10 @@ async function loadDetail() {
 
 async function select(session) {
   if (isWeb(selected) !== isWeb(session)) clearAttachments();
+  if (session.startsWith('task:') && !tasksOpen) {
+    tasksOpen = true;
+    localStorage.setItem(TASKS_OPEN_KEY, '1');
+  }
   selected = session;
   detail = null;
   shown = PAGE;
@@ -465,7 +582,7 @@ async function select(session) {
   renderHeader(currentSession());
   await loadDetail();
   updateSend();
-  if (!isMind(session)) $('#session-input').focus();
+  if (!isMind(session) && !session.startsWith('task:')) $('#session-input').focus();
 }
 
 function newChat() {
@@ -603,7 +720,7 @@ function connect() {
 function updateSend() {
   const text = $('#session-input').value.trim();
   const web = isWeb(selected);
-  $('#session-send').disabled = !selected || isMind(selected) || (!text && !(web && attachmentCount()));
+  $('#session-send').disabled = !selected || isMind(selected) || selected.startsWith('task:') || (!text && !(web && attachmentCount()));
 }
 
 function note(node) {

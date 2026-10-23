@@ -83,6 +83,13 @@ public final class TurnRunner {
                       "title": {"type": "string", "description": "一句话的任务名，比如“网页版狼人杀”"},
                       "instructions": {"type": "string", "description": "完整的要求：要做成什么样、给谁用、有什么细节，改已有文件就写清楚文件路径和要改什么"}
                     }, "required": ["title", "instructions"]}""").getAsJsonObject());
+    static final String STEER_TASK = "steer_task";
+    private static final String STEER_SCHEMA = """
+            {"type": "object", "properties": {
+              "task": {"type": "string", "description": "任务编号（#后面那串）或任务名里的词；只有一个在做时可以不写"},
+              "action": {"type": "string", "enum": ["tell", "pause", "resume", "stop"], "description": "tell 转达新的要求、方向或补充；pause 暂停；resume 继续；stop 叫停不做了"},
+              "message": {"type": "string", "description": "tell 时要转达的话，写清楚要改成什么、补充什么"}
+            }, "required": ["action"]}""";
     private static final Set<String> HANDS_ON = Set.of("write", "edit", "patch", "move", "delete", "shell");
     private static final java.util.regex.Pattern SENT_FILE = java.util.regex.Pattern.compile("文件：([^。；\\n]+)");
     private static final int CONTEXT_LINES = 16;
@@ -115,6 +122,8 @@ public final class TurnRunner {
     private final List<String> owners;
     private final Workspace workspace;
     private final boolean network;
+    private final boolean direct;
+    private final ToolSet requestTools;
     private List<String> enabled;
     private List<ToolSpec> tools;
     private final int maxSteps;
@@ -162,6 +171,9 @@ public final class TurnRunner {
         WorkspaceStore workspaces = agent.workspaces();
         this.workspace = workspaces.workspace();
         this.network = workspaces.config().shellNetwork();
+        this.direct = workspaces.directShell(turn.qqUser(), owners);
+        this.requestTools = turn.tools() == null && qqSession() && capabilities.toolCall(profile)
+                && ("console".equals(turn.source()) || turn.qqUser() != null && owners.contains(turn.qqUser())) ? agent.requestTools() : null;
         if (turn.tools() != null) {
             this.tools = capabilities.toolCall(profile) ? turn.tools().specs() : List.of();
             this.enabled = tools.stream().map(ToolSpec::name).toList();
@@ -171,9 +183,13 @@ public final class TurnRunner {
             List<String> builtin = workspace == null ? List.of()
                     : chosen.stream().filter(Toolbox::exists).filter(n -> turn.files() != null || !n.equals("send_file"))
                     .filter(n -> !qqSession() || !HANDS_ON.contains(n)).toList();
-            List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin), network));
+            List<ToolSpec> all = new ArrayList<>(Toolbox.specs(Set.copyOf(builtin), network, direct));
             if (qqSession() && allowed && workspace != null && chosen.stream().anyMatch(HANDS_ON::contains)) {
                 all.add(START_TASK_SPEC);
+            }
+            List<BackgroundTasks.Task> running = qqSession() ? agent.tasks().unfinished(turn.session()) : List.of();
+            if (!running.isEmpty() && capabilities.toolCall(profile)) {
+                all.add(steerSpec(running));
             }
             if (allowed) {
                 all.addAll(agent.extensions().tools(qqSession(), false, chosen));
@@ -189,6 +205,9 @@ public final class TurnRunner {
                         all.add(SKILL_SPEC);
                     }
                 }
+            }
+            if (requestTools != null) {
+                all.addAll(requestTools.specs());
             }
             this.tools = List.copyOf(all);
             this.enabled = tools.stream().map(ToolSpec::name).toList();
@@ -213,6 +232,7 @@ public final class TurnRunner {
         int step = 1;
         while (true) {
             checkCancelled();
+            holdWhilePaused();
             if (step > 1) {
                 interject();
             }
@@ -572,6 +592,18 @@ public final class TurnRunner {
         }
     }
 
+    private void holdWhilePaused() throws AgentException {
+        while (agent.tasks().paused(turn.session())) {
+            checkCancelled();
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw AgentException.cancelled();
+            }
+        }
+    }
+
     private ChatMessage runTool(ToolCall call) {
         if (cancelled.getAsBoolean()) {
             return ChatMessage.tool(call, "Tool call cancelled: the turn was stopped from the console.", true);
@@ -582,8 +614,11 @@ public final class TurnRunner {
                 : call.name().equals(RECALL) && enabled.contains(RECALL) ? recallTool(call)
                 : call.name().equals(SKILL) && enabled.contains(SKILL) ? skillTool(call)
                 : call.name().equals(START_TASK) && enabled.contains(START_TASK) ? startTask(call)
+                : call.name().equals(STEER_TASK) && enabled.contains(STEER_TASK) ? steerTask(call)
+                : requestTools != null && enabled.contains(call.name()) && requestTools.specs().stream().anyMatch(s -> s.name().equals(call.name()))
+                ? requestTools.run(call)
                 : agent.extensions().owns(call.name()) && enabled.contains(call.name()) ? agent.extensions().run(call, turn.session())
-                : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files(), network));
+                : Toolbox.run(call, Set.copyOf(enabled), new ToolContext(workspace, turn.files(), network, direct));
         listener.onToolResult(call, outcome.output(), outcome.error());
         if (call.name().equals("send_file") && !outcome.error()) {
             JsonObject sent = Jsons.parseObject(call.arguments());
@@ -682,6 +717,25 @@ public final class TurnRunner {
                 + "别在这里自己再动手做一遍。", false);
     }
 
+    public static ToolSpec steerSpec(List<BackgroundTasks.Task> running) {
+        return new ToolSpec(STEER_TASK, "管后台正在做的活：转达新的要求或方向、暂停、继续、叫停。对方中途改主意、补充细节、说先别做了，"
+                + "就用它告诉后台，不要再开一个新任务。现在后台的：" + BackgroundTasks.describe(running),
+                com.google.gson.JsonParser.parseString(STEER_SCHEMA).getAsJsonObject());
+    }
+
+    private Toolbox.Outcome steerTask(ToolCall call) {
+        JsonObject args = Jsons.parseObject(call.arguments());
+        if (args == null) {
+            return new Toolbox.Outcome("参数不对", true);
+        }
+        try {
+            return new Toolbox.Outcome(agent.tasks().steer(Jsons.optString(args, "task"), Jsons.optString(args, "action"),
+                    Jsons.optString(args, "message"), "聊天那边的" + requester(), turn.session()), false);
+        } catch (ToolFailure e) {
+            return new Toolbox.Outcome(e.getMessage(), true);
+        }
+    }
+
     private Toolbox.Outcome skillTool(ToolCall call) {
         JsonObject args = Jsons.parseObject(call.arguments());
         String name = args == null ? "" : Jsons.optString(args, "name");
@@ -740,7 +794,9 @@ public final class TurnRunner {
         if (arrived.isEmpty()) {
             return;
         }
-        StringBuilder text = new StringBuilder("（你在忙的时候又来了新消息。先看看要不要据此调整正在做的事，有人纠正你、改了要求就照新的来）");
+        StringBuilder text = new StringBuilder(turn.session().startsWith("task:")
+                ? "（交代这件事的一方发来了新的指示。照新的指示调整正在做的事：改了要求就按新的做，补充了细节就加进去）"
+                : "（你在忙的时候又来了新消息。先看看要不要据此调整正在做的事，有人纠正你、改了要求就照新的来）");
         arrived.forEach(h -> text.append('\n').append(h.content()));
         live.add(ChatMessage.user(text.toString()));
         agent.interjected(turn.session(), List.copyOf(arrived));

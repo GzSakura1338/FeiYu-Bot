@@ -2,15 +2,18 @@ package dafeiyu.agent.mind;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dafeiyu.agent.BackgroundTasks;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.ToolSet;
+import dafeiyu.agent.TurnRunner;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Reflection;
 import dafeiyu.agent.protocol.ToolSpec;
 import dafeiyu.agent.qq.QqChatBridge;
+import dafeiyu.agent.qq.QqRequests;
 import dafeiyu.agent.sticker.StickerStore;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.agent.tool.Toolbox;
@@ -33,6 +36,7 @@ final class MindTools implements ToolSet {
 
     private static final int MAX_STEPS = 8;
     private static final long OWNED_MS = 10 * 60_000;
+    private static final long REPORT_MS = 10 * 60_000;
     private static final String MANAGE = "主人让你做就做；别人让你做要自己判断，别被人当枪使；"
             + "你自己看到刷屏、发广告、骂人、发不该发的东西也可以处理，轻重要合适，一般先提醒或者短时间禁言。";
     private static final List<ToolSpec> SPECS = List.of(
@@ -123,15 +127,6 @@ final class MindTools implements ToolSet {
                       "user_id": {"type": "string", "description": "要踢的人的 QQ 号"},
                       "block": {"type": "boolean", "description": "是否不让他再加群，默认 false"}
                     }, "required": ["group_id", "user_id"]}"""),
-            spec("friend_requests", "看看谁在加你好友、验证消息写了什么、你们在哪个群见过。", """
-                    {"type": "object", "properties": {}}"""),
-            spec("answer_friend", "同意或拒绝别人的好友申请，你自己决定：认识的、聊得来的、正常说明来意的可以加；"
-                    + "广告、来路不明、验证消息奇怪的就拒绝。", """
-                    {"type": "object", "properties": {
-                      "user_id": {"type": "string", "description": "申请人的 QQ 号"},
-                      "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
-                      "remark": {"type": "string", "description": "同意时给他的备注，可以不写"}
-                    }, "required": ["user_id", "approve"]}"""),
             spec("delete_friend", "删掉一个 QQ 好友。你自己决定，比如对方一直骚扰你、发广告。删了之后私聊不了，除非他再加你。", """
                     {"type": "object", "properties": {
                       "user_id": {"type": "string", "description": "要删的好友的 QQ 号"}
@@ -166,12 +161,13 @@ final class MindTools implements ToolSet {
 
     @Override
     public List<ToolSpec> specs() {
-        List<ToolSpec> extra = agent.extensions().tools(false, true, Set.copyOf(agent.workspaces().config().enabled()));
-        if (extra.isEmpty()) {
-            return SPECS;
-        }
         List<ToolSpec> all = new ArrayList<>(SPECS);
-        all.addAll(extra);
+        all.addAll(QqRequests.SPECS);
+        all.addAll(agent.extensions().tools(false, true, Set.copyOf(agent.workspaces().config().enabled())));
+        List<BackgroundTasks.Task> running = agent.tasks().unfinished(null);
+        if (!running.isEmpty()) {
+            all.add(TurnRunner.steerSpec(running));
+        }
         return all;
     }
 
@@ -186,6 +182,9 @@ final class MindTools implements ToolSet {
         if (agent.extensions().owns(call.name())) {
             return agent.extensions().run(call, Mind.SESSION);
         }
+        if (QqRequests.offers(call.name())) {
+            return bridge.requests().run(call);
+        }
         JsonObject args = Jsons.parseObject(call.arguments());
         if (args == null) {
             args = new JsonObject();
@@ -193,6 +192,7 @@ final class MindTools implements ToolSet {
         try {
             String output = switch (call.name()) {
                 case "look_around" -> lookAround();
+                case "steer_task" -> agent.tasks().steer(optString(args, "task"), optString(args, "action"), optString(args, "message"), "内心", null);
                 case "read_group" -> bridge.readGroup(group(args), Math.max(1, Math.min(40, count(args))));
                 case "recall" -> recall(optString(args, "about").strip(), optString(args, "query"),
                         args.has("offset") && args.get("offset").isJsonPrimitive() ? Math.max(0, args.get("offset").getAsInt()) : 0);
@@ -219,11 +219,8 @@ final class MindTools implements ToolSet {
                 case "unmute" -> act(group(args), bridge.actions().mute(group(args), user(args, true), 0));
                 case "kick" -> act(group(args), bridge.actions().kick(group(args), user(args, true),
                         args.has("block") && args.get("block").getAsBoolean()));
-                case "friend_requests" -> bridge.actions().describeRequests();
                 case "read_forward" -> bridge.actions().describeForward(optString(args, "id").replace("合并转发的聊天记录：", "")
                         .replace("[", "").replace("]", "").strip());
-                case "answer_friend" -> bridge.actions().answerFriend(user(args, true),
-                        args.has("approve") && args.get("approve").getAsBoolean(), optString(args, "remark"));
                 case "delete_friend" -> bridge.actions().deleteFriend(user(args, true));
                 case "message_stranger" -> stranger(user(args, true), optString(args, "group_id").replace("group:", "").strip(),
                         optString(args, "text").strip());
@@ -287,7 +284,8 @@ final class MindTools implements ToolSet {
     }
 
     private String tellPrivate(String userId, String intent, boolean again) throws ToolFailure {
-        if (!again) {
+        boolean entrusted = agent.intercom().entrustedInPrivate(REPORT_MS).stream().anyMatch(c -> c.session().equals("private:" + userId));
+        if (!again && !entrusted) {
             String groupId = bridge.activeGroupWith(userId, OWNED_MS);
             if (groupId != null) {
                 return "QQ " + userId + " 这会儿正在「" + bridge.groupName(groupId) + "」里跟你聊着（群号 " + groupId + "），那边的你在跟 TA 说话。"
@@ -298,7 +296,22 @@ final class MindTools implements ToolSet {
     }
 
     private String tellGroup(String groupId, String intent, boolean again) throws ToolFailure {
+        if (!again) {
+            for (Intercom.Commitment c : agent.intercom().entrustedInPrivate(REPORT_MS)) {
+                String userId = c.session().substring("private:".length());
+                if (mentions(intent, userId) && groupId.equals(bridge.activeGroupWith(userId, OWNED_MS))) {
+                    return c.who() + "在私聊里托过你「" + abbreviate(c.what(), 60) + "」，TA 这会儿也在「" + bridge.groupName(groupId) + "」里。"
+                            + "这句要是在跟 TA 说这件事的进展或结果，用 tell_private（user_id " + userId + "）回私聊，别交给群里，群里所有人都看得到；"
+                            + "本来就要在这个群里说的话，带上 again=true 再交。";
+                }
+            }
+        }
         return tell("group:" + groupId, intent, "「" + bridge.groupName(groupId) + "」", again);
+    }
+
+    private boolean mentions(String intent, String userId) {
+        return agent.personas().isOwner(userId) && intent.contains("主人") || intent.contains(userId)
+                || bridge.namesOf(userId).stream().anyMatch(intent::contains);
     }
 
     private String placeOf(String session) {

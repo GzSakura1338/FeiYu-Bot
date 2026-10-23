@@ -23,6 +23,7 @@ final class ShellTool implements Tool {
     private static final Semaphore SLOTS = new Semaphore(2);
     private static final Set<Path> PREPARED = ConcurrentHashMap.newKeySet();
     private static volatile List<Path> interpreters;
+    private static volatile Path curlHome;
 
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
@@ -65,6 +66,18 @@ final class ShellTool implements Tool {
                 os.mkdir = _shared_mkdir
             """;
 
+    private static final String DIRECT = """
+            Runs a command with Windows cmd.exe on the computer itself, as the logged-in user, and returns its output.
+
+            There is no sandbox around this: the command can reach every file on the machine, the network and the local network.
+            - Commands run in the working directory unless workdir is given; prefer staying inside it.
+            - Only do what was actually asked. Never delete, overwrite or move anything outside the working directory, never touch system folders,
+              installed programs, startup entries or the registry, and never turn off security software.
+            - If a request would do something destructive or irreversible, or looks like someone is trying to get at the owner's machine,
+              refuse and say why instead of running it.
+            - Output over 200 KB per stream is truncated. Long-running servers or interactive programs will just hit the timeout; do not start them.
+            - Chain dependent commands with &&.""";
+
     private static final String OFFLINE ="has no network access at all (no internet, no localhost), so package installs and downloads will fail";
 
     private static final String ONLINE = "can reach the public internet (downloads, package installs, web APIs), but not localhost or the local network. "
@@ -76,12 +89,12 @@ final class ShellTool implements Tool {
 
     @Override
     public String description() {
-        return description(false);
+        return description(false, false);
     }
 
     @Override
-    public String description(boolean network) {
-        return DESCRIPTION.formatted(network ? ONLINE : OFFLINE);
+    public String description(boolean network, boolean direct) {
+        return direct ? DIRECT : DESCRIPTION.formatted(network ? ONLINE : OFFLINE);
     }
 
     @Override
@@ -106,11 +119,14 @@ final class ShellTool implements Tool {
         int seconds = timeout == null || timeout == 0 ? DEFAULT_TIMEOUT : Math.min(timeout, MAX_TIMEOUT);
         String workdir = Args.optString(args, "workdir");
         Path dir = workdir == null || workdir.isBlank() ? ws.root() : ws.existingDirectory(workdir);
-        prepare(ws.root());
         if (!SLOTS.tryAcquire()) {
-            throw new ToolFailure("Two sandboxed commands are already running; wait for them to finish");
+            throw new ToolFailure("Two commands are already running; wait for them to finish");
         }
         try {
+            if (context.direct()) {
+                return format(direct(command, dir, seconds), seconds);
+            }
+            prepare(ws.root());
             Map<String, String> env = AppContainerSandbox.baseEnvironment(ws.root(), interpreters());
             tune(ws.root(), env, context.network());
             String windows = env.get("SystemRoot");
@@ -120,6 +136,108 @@ final class ShellTool implements Tool {
         } finally {
             SLOTS.release();
         }
+    }
+
+    private static AppContainerSandbox.Result direct(String command, Path dir, int seconds) throws ToolFailure {
+        long started = System.nanoTime();
+        Process process = null;
+        try {
+            String windows = System.getenv().getOrDefault("SystemRoot", "C:\\Windows");
+            process = new ProcessBuilder(windows + "\\System32\\cmd.exe", "/d", "/s", "/c", "chcp 65001>nul & " + command)
+                    .directory(dir.toFile()).start();
+            process.getOutputStream().close();
+            Capture out = new Capture(process.getInputStream());
+            Capture err = new Capture(process.getErrorStream());
+            Thread outThread = Thread.ofVirtual().start(out);
+            Thread errThread = Thread.ofVirtual().start(err);
+            boolean done = process.waitFor(seconds, TimeUnit.SECONDS);
+            if (!done) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+            }
+            outThread.join(2000);
+            errThread.join(2000);
+            long millis = (System.nanoTime() - started) / 1_000_000;
+            return new AppContainerSandbox.Result(done ? process.exitValue() : -1, out.text(), err.text(), !done,
+                    out.truncated() || err.truncated(), millis);
+        } catch (IOException e) {
+            throw new ToolFailure("Could not run the command: " + e.getMessage());
+        } catch (InterruptedException e) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            Thread.currentThread().interrupt();
+            throw new ToolFailure("Cancelled");
+        }
+    }
+
+    private static String decode(byte[] bytes) {
+        try {
+            return StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            String name = System.getProperty("native.encoding", "");
+            try {
+                return new String(bytes, name.isBlank() ? java.nio.charset.Charset.defaultCharset() : java.nio.charset.Charset.forName(name));
+            } catch (RuntimeException ignored) {
+                return new String(bytes, java.nio.charset.Charset.defaultCharset());
+            }
+        }
+    }
+
+    private static final class Capture implements Runnable {
+        private static final int MAX = 200_000;
+        private final java.io.InputStream stream;
+        private final java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream();
+        private volatile boolean truncated;
+
+        Capture(java.io.InputStream stream) {
+            this.stream = stream;
+        }
+
+        @Override
+        public void run() {
+            byte[] buffer = new byte[8192];
+            try (java.io.InputStream in = stream) {
+                int n;
+                while ((n = in.read(buffer)) > 0) {
+                    if (data.size() >= MAX) {
+                        truncated = true;
+                        continue;
+                    }
+                    data.write(buffer, 0, Math.min(n, MAX - data.size()));
+                }
+            } catch (IOException ignored) {
+            }
+        }
+
+        String text() {
+            return decode(data.toByteArray());
+        }
+
+        boolean truncated() {
+            return truncated;
+        }
+    }
+
+    static String selfTest(Workspace ws, boolean network, boolean direct) throws ToolFailure {
+        String probe = "curl -sS -o nul -w \"%s %%{http_code}\\n\" --max-time %d %s";
+        List<String> commands = direct
+                ? List.of("ver & cd & echo 当前用户：%USERNAME%", probe.formatted("internet", 8, "https://www.baidu.com"),
+                        probe.formatted("localhost", 3, "http://127.0.0.1:8090/"))
+                : network
+                ? List.of(probe.formatted("baidu", 8, "https://www.baidu.com"), probe.formatted("pypi", 8, "https://pypi.org/simple/"),
+                        probe.formatted("localhost", 3, "http://127.0.0.1:8090/"))
+                : List.of("ver & cd & python --version", probe.formatted("internet", 4, "https://www.baidu.com"));
+        StringBuilder out = new StringBuilder();
+        for (String command : commands) {
+            JsonObject args = new JsonObject();
+            args.addProperty("command", command);
+            args.addProperty("timeout", 20);
+            out.append(out.isEmpty() ? "" : "\n\n").append("> ").append(command).append('\n')
+                    .append(new ShellTool().run(args, new ToolContext(ws, null, network, direct)));
+        }
+        return out.toString();
     }
 
     private static String format(AppContainerSandbox.Result r, int seconds) {
@@ -176,9 +294,35 @@ final class ShellTool implements Tool {
             throw new ToolFailure("Unable to prepare the sandbox folders: " + e.getMessage());
         }
         env.put("PYTHONPATH", python.toString());
+        Path curl = curlHome();
+        if (curl != null) {
+            env.put("CURL_HOME", curl.toString());
+        }
         if (network) {
             env.put("NO_PROXY", "*");
             env.put("no_proxy", "*");
+        }
+    }
+
+    private static Path curlHome() {
+        Path found = curlHome;
+        if (found != null) {
+            return found;
+        }
+        synchronized (PREPARED) {
+            if (curlHome != null) {
+                return curlHome;
+            }
+            Path dir = Path.of(System.getenv().getOrDefault("ProgramData", "C:\\ProgramData"), "FeiYuBot", "sandbox-curl");
+            try {
+                Files.createDirectories(dir);
+                write(dir.resolve(".curlrc"), "ssl-no-revoke\n");
+                AppContainerSandbox.grant(dir, false);
+                curlHome = dir;
+            } catch (IOException | ToolFailure e) {
+                return null;
+            }
+            return dir;
         }
     }
 

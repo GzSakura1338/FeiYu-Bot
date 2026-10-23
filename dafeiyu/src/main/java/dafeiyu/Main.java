@@ -57,7 +57,7 @@ public final class Main {
         agent.reflection().setLog(log);
         agent.reflection().start();
         agent.stickers().setLog(log);
-        QqChatBridge bridge = new QqChatBridge(agent, napcat, archive, log);
+        QqChatBridge bridge = new QqChatBridge(agent, napcat, archive, db, log);
         bridge.startLife();
         Path dataDir = db.file().toAbsolutePath().getParent();
         PluginStore pluginStore = new PluginStore(db);

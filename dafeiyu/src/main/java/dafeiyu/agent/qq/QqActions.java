@@ -15,7 +15,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static dafeiyu.agent.qq.QqMessages.unforgeable;
 import static dafeiyu.util.Jsons.optObject;
@@ -24,26 +23,22 @@ import static dafeiyu.util.Texts.abbreviate;
 
 public final class QqActions {
 
-    public record FriendRequest(String userId, String nickname, String comment, String flag, long at) {}
-
     public record ForwardLine(String name, String userId, long time, String text, List<String> images, String attachments) {}
 
     private static final int MAX_FORWARD_LINES = 200;
     private static final int MAX_FORWARD_TEXT = 8000;
-    private static final int MAX_FORWARD_CACHE = 100;
+    private static final int MAX_FORWARD_CACHE = 500;
     private final Map<String, List<ForwardLine>> forwards = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>());
 
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_MUTE_MINUTES = 30 * 24 * 60;
     private static final int MAX_RECALL = 10;
-    private static final long REQUEST_TTL_MS = 3 * 86_400_000L;
 
     private final ChatAgent agent;
     private final MessageArchive archive;
     private final QqOutbox outbox;
     private final QqContacts contacts;
     private final LogBuffer log;
-    private final Map<String, FriendRequest> requests = new ConcurrentHashMap<>();
 
     QqActions(ChatAgent agent, MessageArchive archive, QqOutbox outbox, QqContacts contacts, LogBuffer log) {
         this.agent = agent;
@@ -118,66 +113,6 @@ public final class QqActions {
         return "把" + name + "踢出了「" + contacts.groupName(groupId) + "」" + (block ? "，以后也加不进来了" : "");
     }
 
-    public void friendRequested(JsonObject event) {
-        String userId = optString(event, "user_id");
-        String flag = optString(event, "flag");
-        if (userId.isEmpty() || flag.isEmpty()) {
-            return;
-        }
-        String nickname = "";
-        try {
-            JsonObject params = new JsonObject();
-            params.addProperty("user_id", number(userId));
-            JsonObject data = optObject(outbox.call("get_stranger_info", params, TIMEOUT), "data");
-            nickname = data == null ? "" : unforgeable(optString(data, "nickname"));
-        } catch (ToolFailure | RuntimeException ignored) {
-        }
-        requests.put(userId, new FriendRequest(userId, nickname, abbreviate(optString(event, "comment").strip(), 200), flag,
-                System.currentTimeMillis()));
-        log.info("agent: friend request from " + userId);
-    }
-
-    public List<FriendRequest> friendRequests() {
-        long now = System.currentTimeMillis();
-        requests.values().removeIf(r -> now - r.at() > REQUEST_TTL_MS);
-        return requests.values().stream().sorted((a, b) -> Long.compare(a.at(), b.at())).toList();
-    }
-
-    public String describeRequests() {
-        List<FriendRequest> list = friendRequests();
-        if (list.isEmpty()) {
-            return "现在没有人加你好友";
-        }
-        List<String> lines = new ArrayList<>();
-        for (FriendRequest r : list) {
-            lines.add("- " + (r.nickname().isEmpty() ? "QQ " + r.userId() : r.nickname() + "（QQ " + r.userId() + "）") + "，"
-                    + Clock.ago(r.at()) + "，验证消息：" + (r.comment().isEmpty() ? "（没写）" : r.comment()) + seenIn(r.userId()));
-        }
-        return String.join("\n", lines);
-    }
-
-    public String answerFriend(String userId, boolean approve, String remark) throws ToolFailure {
-        FriendRequest r = friendRequests().stream().filter(x -> x.userId().equals(userId)).findFirst().orElse(null);
-        if (r == null) {
-            throw new ToolFailure("QQ " + userId + " 没有在加你好友（或者申请已经过期了）");
-        }
-        JsonObject params = new JsonObject();
-        params.addProperty("flag", r.flag());
-        params.addProperty("approve", approve);
-        if (approve && remark != null && !remark.isBlank()) {
-            params.addProperty("remark", abbreviate(remark.strip(), 30));
-        }
-        outbox.call("set_friend_add_request", params, TIMEOUT);
-        requests.remove(userId);
-        contacts.forgetFriends();
-        if (approve) {
-            outbox.forgetTempGroup(userId);
-        }
-        String name = r.nickname().isEmpty() ? "QQ " + userId : r.nickname();
-        log.info("agent: friend request from " + userId + (approve ? " approved" : " rejected"));
-        return approve ? "通过了" + name + "的好友申请，现在可以私聊了" : "拒绝了" + name + "的好友申请";
-    }
-
     public String deleteFriend(String userId) throws ToolFailure {
         if (agent.personas().owners().contains(userId)) {
             throw new ToolFailure("这是你的主人，不能删");
@@ -228,17 +163,81 @@ public final class QqActions {
         JsonObject params = new JsonObject();
         params.addProperty("message_id", key);
         params.addProperty("id", key);
-        JsonObject data;
+        JsonObject response;
         try {
-            data = optObject(outbox.call("get_forward_msg", params, Duration.ofSeconds(20)), "data");
+            response = outbox.call("get_forward_msg", params, Duration.ofSeconds(20));
         } catch (ToolFailure e) {
-            throw new ToolFailure("读不到这段合并转发（编号不对或者已经过期了）：" + e.getMessage());
+            log.warn("agent: get_forward_msg " + key + " failed: " + e.getMessage());
+            throw new ToolFailure("读不到这段合并转发（" + (e.getMessage().contains("内层") ? "它套在另一段合并转发里，先读外面那段" : "已经过期了，QQ 只能读刚发不久的") + "）");
         }
-        JsonArray nodes = data == null ? null : data.has("messages") && data.get("messages").isJsonArray() ? data.getAsJsonArray("messages")
-                : data.has("message") && data.get("message").isJsonArray() ? data.getAsJsonArray("message") : null;
+        JsonArray nodes = nodes(response == null ? null : response.get("data"));
         if (nodes == null || nodes.isEmpty()) {
-            throw new ToolFailure("读不到这段合并转发（可能已经过期了）");
+            log.warn("agent: get_forward_msg " + key + " returned no messages: " + abbreviate(String.valueOf(response), 600));
+            throw new ToolFailure("读不到这段合并转发（QQ 没把内容给过来）");
         }
+        return remember(key, lines(nodes));
+    }
+
+    private static JsonArray nodes(JsonElement data) {
+        if (data == null || data.isJsonNull()) {
+            return null;
+        }
+        if (data.isJsonArray()) {
+            return data.getAsJsonArray();
+        }
+        JsonObject object = data.getAsJsonObject();
+        for (String name : List.of("messages", "message", "content", "nodes")) {
+            if (object.has(name) && object.get(name).isJsonArray()) {
+                return object.getAsJsonArray(name);
+            }
+        }
+        return null;
+    }
+
+    private List<ForwardLine> remember(String key, List<ForwardLine> lines) {
+        while (forwards.size() >= MAX_FORWARD_CACHE) {
+            forwards.remove(forwards.keySet().iterator().next());
+        }
+        forwards.put(key, List.copyOf(lines));
+        return lines;
+    }
+
+    public void prefetch(JsonObject event) {
+        JsonElement message = event.get("message");
+        if (message == null || !message.isJsonArray()) {
+            return;
+        }
+        for (JsonElement segment : message.getAsJsonArray()) {
+            JsonObject seg = segment.isJsonObject() ? segment.getAsJsonObject() : null;
+            JsonObject data = seg == null ? null : optObject(seg, "data");
+            String id = data == null ? "" : optString(data, "id");
+            if (seg != null && "forward".equals(optString(seg, "type")) && !id.isBlank() && !forwards.containsKey(id)) {
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        forward(id);
+                    } catch (ToolFailure ignored) {
+                    }
+                });
+            }
+        }
+    }
+
+    private void cacheNested(JsonObject event) {
+        JsonElement message = event.get("message");
+        if (message == null || !message.isJsonArray()) {
+            return;
+        }
+        for (JsonElement segment : message.getAsJsonArray()) {
+            JsonObject data = segment.isJsonObject() ? optObject(segment.getAsJsonObject(), "data") : null;
+            String id = data == null ? "" : optString(data, "id");
+            JsonArray inner = data == null ? null : nodes(data);
+            if ("forward".equals(optString(segment.getAsJsonObject(), "type")) && !id.isBlank() && inner != null && !inner.isEmpty()) {
+                remember(id, lines(inner));
+            }
+        }
+    }
+
+    private List<ForwardLine> lines(JsonArray nodes) {
         String self = outbox.selfId();
         List<ForwardLine> lines = new ArrayList<>();
         for (JsonElement e : nodes) {
@@ -255,11 +254,8 @@ public final class QqActions {
             QqMessages.Incoming in = QqMessages.parse(event, self, (qq, nick) -> nick.isBlank() ? qq : nick, null);
             long time = event.has("time") ? event.get("time").getAsLong() * 1000 : 0;
             lines.add(new ForwardLine(unforgeable(name.isBlank() ? "QQ " + userId : name), userId, time, in.text(), in.imageUrls(), in.attachments()));
+            cacheNested(event);
         }
-        while (forwards.size() >= MAX_FORWARD_CACHE) {
-            forwards.remove(forwards.keySet().iterator().next());
-        }
-        forwards.put(key, List.copyOf(lines));
         return lines;
     }
 
@@ -296,11 +292,6 @@ public final class QqActions {
             }
         }
         return null;
-    }
-
-    private String seenIn(String userId) {
-        String group = sharedGroup(userId);
-        return group == null ? "；你们没在同一个群里见过" : "；在「" + contacts.groupName(group) + "」里见过";
     }
 
     private void requireManager(String groupId) throws ToolFailure {
@@ -352,7 +343,7 @@ public final class QqActions {
         return unforgeable(archive.groupSenders(groupId).getOrDefault(userId, "QQ " + userId));
     }
 
-    private void note(String groupId, String text) {
+    void note(String groupId, String text) {
         try {
             agent.record("group:" + groupId, ChatMessage.assistant(text, ""));
         } catch (RuntimeException ignored) {

@@ -88,8 +88,7 @@ public final class Mind implements QqChatBridge.Observer {
         Intercom.Commitment c = agent.intercom().commit(errand.session(), errand.who(), errand.task());
         synchronized (places) {
             errands.add("【有人托你办事】#" + c.id() + " " + errand.who() + "在" + where(errand.session()) + "托你：" + abbreviate(errand.task(), 200)
-                    + "（你已经在那边答应了。办完用 tell_" + (errand.session().startsWith("group:") ? "group" : "private")
-                    + " 回那边说一声，再 settle #" + c.id() + "）");
+                    + "（你已经在那边答应了。办完" + replyRoute(errand.session()) + "，再 settle #" + c.id() + "）");
             while (errands.size() > MAX_ERRANDS) {
                 errands.removeFirst();
             }
@@ -106,6 +105,13 @@ public final class Mind implements QqChatBridge.Observer {
             return "「" + bridge.groupName(session.substring(6)) + "」（群号 " + session.substring(6) + "）";
         }
         return "私聊里";
+    }
+
+    private static String replyRoute(String session) {
+        if (session.startsWith("private:")) {
+            return "用 tell_private（user_id " + session.substring(8) + "）回私聊说一声，进展和结果都只在私聊说，别交给群里";
+        }
+        return session.startsWith("group:") ? "用 tell_group（group_id " + session.substring(6) + "）回那边说一声" : "回那边说一声";
     }
 
     public void start() {
@@ -155,6 +161,19 @@ public final class Mind implements QqChatBridge.Observer {
 
     @Override
     public void said(String where, String text) {
+    }
+
+    @Override
+    public void requested(String what) {
+        synchronized (places) {
+            own.add("【新的申请】" + what);
+        }
+        if (blocker() == null) {
+            synchronized (bell) {
+                wake = true;
+                bell.notifyAll();
+            }
+        }
     }
 
     private void loop() {
@@ -320,9 +339,15 @@ public final class Mind implements QqChatBridge.Observer {
             StringBuilder hung = new StringBuilder("<心里挂着的事>\n");
             for (Intercom.Commitment c : open.subList(Math.max(0, open.size() - 8), open.size())) {
                 hung.append("- #").append(c.id()).append(" ").append(c.who()).append("在").append(where(c.session())).append("托的：")
-                        .append(c.what()).append("（").append(Clock.ago(c.createdAt())).append("）\n");
+                        .append(c.what()).append("（").append(Clock.ago(c.createdAt()))
+                        .append(c.session().startsWith("private:") ? "；要说进展用 tell_private（user_id " + c.session().substring(8) + "），别在群里提" : "")
+                        .append("）\n");
             }
             memories += hung.append("</心里挂着的事>\n\n");
+        }
+        String requests = bridge.requests().describe();
+        if (!requests.isEmpty()) {
+            memories += "<等你处理的申请>\n" + requests + "\n（用 answer_friend / answer_group 同意或拒绝，处理完就不在这里了）\n</等你处理的申请>\n\n";
         }
         return memories + "（现在是 " + Clock.now() + "。最近一次和人聊天是 "
                 + (last <= 0 ? "很久以前" : Clock.ago(last)) + "；今天主动去群里说过 " + bridge.proactiveToday() + " 次。）\n顺着刚才的思绪接着往下想；想做的、该办的，这一轮就用工具去做。";

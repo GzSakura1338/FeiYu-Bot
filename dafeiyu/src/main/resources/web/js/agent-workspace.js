@@ -16,7 +16,7 @@ export const TOOLS = {
   todowrite: { icon: 'check', label: '任务清单', desc: '步骤多的活先列清单，做完一项勾一项' },
   websearch: { icon: 'travel_explore', label: '网络检索', desc: '上网搜索新闻、资料、教程和不认识的词，中文走必应、英文走 Exa，需要细节时再打开网页读' },
   webfetch: { icon: 'link', label: '读网页', desc: '打开公网网页转成文字来读；本机和内网地址一律拒绝' },
-  shell: { icon: 'terminal', label: '沙盒执行', desc: '在 Windows 应用容器沙盒里跑命令（cmd / python）：只能读写工作目录、默认断网、限时限内存，默认关闭' },
+  shell: { icon: 'terminal', label: 'Shell 命令', desc: '让她在工作目录里跑命令（cmd / python / node），默认关闭' },
   send_file: { icon: 'upload_file', label: '发送文件', desc: '把目录里的文件发给对方，图片直接显示' },
 };
 
@@ -35,6 +35,9 @@ export const MIND_TOOLS = {
   find_person: { icon: 'manage_search', label: '找人' },
   poke: { icon: 'mood', label: '拍一拍' },
   remember: { icon: 'note_add', label: '记下来' },
+  requests: { icon: 'person', label: '看看申请' },
+  answer_friend: { icon: 'person', label: '处理好友申请' },
+  answer_group: { icon: 'groups', label: '处理进群' },
 };
 
 const ACCESS_HINT = {
@@ -43,9 +46,20 @@ const ACCESS_HINT = {
   ALL: '所有能给机器人发消息的人都可以让它读写文件，有风险',
 };
 
+const SHELL_ON = { icon: 'terminal', label: '沙盒执行', desc: '开启后她能跑命令，默认都在 Windows 应用容器沙盒里：只能读写工作目录，限时、限内存、限进程数，断网' };
 const NETWORK = { icon: 'travel_explore', label: '沙盒联网', desc: '让沙盒里的命令能上公网：下载文件、pip / npm 装包、调接口；本机和局域网仍然连不上' };
+const DIRECT = { icon: 'shield', label: '沙盒外执行', desc: '不套沙盒，直接以你的身份在电脑上跑命令，整台机器的文件都能碰。只给信得过的人开' };
+const TESTS = {
+  sandbox: { body: { network: false }, hint: '在沙盒里跑 ver、cd、python --version，再试着上网（没开联网时应该连不上）' },
+  network: { body: { network: true }, hint: '打开联网跑一遍：百度和 PyPI 应该是 200，本机地址应该连不上（000）' },
+  direct: { body: { direct: true }, hint: '在沙盒外跑一遍：能看到真实用户名和主目录条目数，公网和本机都应该通' },
+};
+const testOpen = new Set();
+const testResult = new Map();
 
-let state = { dir: '', enabled: [], qqAccess: 'OFF', qqUsers: [], shellNetwork: false, tools: [], problem: null };
+let state = {
+  dir: '', enabled: [], qqAccess: 'OFF', qqUsers: [], shellNetwork: false, shellDirect: false, directUsers: [], tools: [], problem: null,
+};
 
 async function request(method, body) {
   const res = await fetch('/api/agent/workspace', {
@@ -62,14 +76,17 @@ async function request(method, body) {
 const parseUsers = text => text.split(/[\s,，、;；]+/).map(s => s.trim()).filter(Boolean);
 
 function config(patch = {}) {
-  return { dir: state.dir, enabled: state.enabled, qqAccess: state.qqAccess, qqUsers: state.qqUsers, shellNetwork: state.shellNetwork, ...patch };
+  return {
+    dir: state.dir, enabled: state.enabled, qqAccess: state.qqAccess, qqUsers: state.qqUsers,
+    shellNetwork: state.shellNetwork, shellDirect: state.shellDirect, directUsers: state.directUsers, ...patch,
+  };
 }
 
 async function save(patch, success) {
   try {
     state = await request('PUT', config(patch));
     showSnackbar(success, 'success');
-    render({ dir: 'dir' in patch, users: 'qqUsers' in patch });
+    render({ dir: 'dir' in patch, users: 'qqUsers' in patch || 'directUsers' in patch });
     if ('dir' in patch) refreshWorkspaceFiles();
   } catch (err) {
     showSnackbar(`保存失败：${err.message}`, 'error');
@@ -97,21 +114,99 @@ function renderTools() {
     label: t.label,
     desc: `${t.description}${t.qq ? '' : '（QQ 里没开，在插件页打开）'}`,
   }]));
-  list.replaceChildren(...state.tools.flatMap(name => {
+  list.replaceChildren(...state.tools.filter(name => name !== 'shell').map(name => {
     const meta = TOOLS[name] ?? extra[name] ?? { icon: 'build', label: name, desc: '' };
     const on = state.enabled.includes(name);
-    const item = toolItem(meta, name, on, () => {
+    return toolItem(meta, name, on, () => {
       const enabled = on ? state.enabled.filter(n => n !== name) : [...state.enabled, name];
       save({ enabled }, `已${on ? '关闭' : '开启'}「${meta.label}」`);
     });
-    if (name !== 'shell' || !on) return [item];
-    const online = state.shellNetwork;
-    const network = toolItem(NETWORK, null, online, () => {
-      save({ shellNetwork: !online }, `已${online ? '关闭' : '开启'}「${NETWORK.label}」`);
-    });
-    network.classList.add('tool-sub');
-    return [item, network];
   }));
+  renderShell();
+}
+
+function renderShell() {
+  const list = $('#workspace-shell');
+  if (!state.tools.includes('shell')) {
+    list.replaceChildren();
+    $('#shell-direct-form').hidden = true;
+    $('#shell-direct-warning').hidden = true;
+    return;
+  }
+  const on = state.enabled.includes('shell');
+  const rows = testable(toolItem(SHELL_ON, 'shell', on, () => {
+    const enabled = on ? state.enabled.filter(n => n !== 'shell') : [...state.enabled, 'shell'];
+    save({ enabled }, `已${on ? '关闭' : '开启'}「${SHELL_ON.label}」`);
+  }), 'sandbox', !on);
+  if (on) {
+    const online = state.shellNetwork;
+    rows.push(...testable(sub(toolItem(NETWORK, null, online, () => {
+      save({ shellNetwork: !online }, `已${online ? '关闭' : '开启'}「${NETWORK.label}」`);
+    })), 'network', !online));
+    const direct = state.shellDirect;
+    rows.push(...testable(sub(toolItem(DIRECT, null, direct, () => {
+      save({ shellDirect: !direct }, direct ? '已关闭「沙盒外执行」' : '已开启「沙盒外执行」，只有主人和名单里的人能用');
+    })), 'direct', !direct));
+  }
+  list.replaceChildren(...rows);
+  const warn = $('#shell-direct-warning');
+  warn.hidden = !(on && state.shellDirect);
+  if (!warn.hidden) {
+    warn.replaceChildren(createIcon('warning', 'icon-18'),
+      el('span', null, '沙盒外执行开着：主人和下面名单里的人，可以让她在你电脑上直接跑命令，碰到整台机器的文件'));
+  }
+  $('#shell-direct-form').hidden = !(on && state.shellDirect);
+}
+
+function sub(item) {
+  item.classList.add('tool-sub');
+  return item;
+}
+
+function testable(item, kind, disabled = false) {
+  const panel = el('li', `tool-test${testOpen.has(kind) ? ' open' : ''}`);
+  panel.inert = !testOpen.has(kind);
+  const inner = el('div', 'tool-test-inner');
+  const run = el('button', 'tonal-button label-large state-layer', '运行测试');
+  run.type = 'button';
+  run.disabled = disabled;
+  const output = el('pre', 'tool-test-output body-small', testResult.get(kind) ?? TESTS[kind].hint);
+  run.addEventListener('click', async () => {
+    run.disabled = true;
+    output.textContent = '测试中…';
+    try {
+      const res = await fetch('/api/agent/workspace/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(TESTS[kind].body),
+      });
+      const data = await res.json();
+      output.textContent = data.output ?? data.error ?? `HTTP ${res.status}`;
+    } catch (err) {
+      output.textContent = `测试失败：${err.message}`;
+    }
+    testResult.set(kind, output.textContent);
+    run.disabled = disabled;
+  });
+  inner.append(run, output);
+  panel.append(inner);
+  const expand = el('button', 'icon-button state-layer tool-test-toggle');
+  expand.type = 'button';
+  expand.title = expand.ariaLabel = '展开测试';
+  expand.setAttribute('aria-expanded', String(testOpen.has(kind)));
+  expand.append(createIcon('chevron_right'));
+  expand.addEventListener('click', () => {
+    const open = !testOpen.has(kind);
+    if (open) testOpen.add(kind);
+    else testOpen.delete(kind);
+    expand.setAttribute('aria-expanded', String(open));
+    panel.classList.toggle('open', open);
+    panel.inert = !open;
+  });
+  const toggle = item.querySelector('.switch');
+  if (toggle) toggle.before(expand);
+  else item.append(expand);
+  return [item, panel];
 }
 
 function toolItem(meta, name, on, onToggle) {
@@ -123,6 +218,8 @@ function toolItem(meta, name, on, onToggle) {
   headline.append(el('span', null, meta.label));
   if (name) headline.append(el('code', 'tool-name label-small', name));
   text.append(headline, el('div', 'list-supporting body-medium', meta.desc));
+  item.append(icon, text);
+  if (!onToggle) return item;
   const toggle = el('button', 'switch');
   toggle.type = 'button';
   toggle.setAttribute('role', 'switch');
@@ -133,7 +230,7 @@ function toolItem(meta, name, on, onToggle) {
     toggle.setAttribute('aria-checked', String(!on));
     onToggle();
   });
-  item.append(icon, text, toggle);
+  item.append(toggle);
   return item;
 }
 
@@ -148,11 +245,13 @@ function renderAccess() {
 function syncDirty() {
   $('#workspace-dir-save').disabled = $('#workspace-dir').value.trim() === state.dir;
   $('#workspace-users-save').disabled = parseUsers($('#workspace-users').value).join(',') === state.qqUsers.join(',');
+  $('#shell-direct-save').disabled = parseUsers($('#shell-direct-users').value).join(',') === (state.directUsers ?? []).join(',');
 }
 
 function render(reset = { dir: true, users: true }) {
   if (reset.dir) $('#workspace-dir').value = state.dir;
   if (reset.users) $('#workspace-users').value = state.qqUsers.join(', ');
+  if (reset.users) $('#shell-direct-users').value = (state.directUsers ?? []).join(', ');
   renderStatus();
   renderTools();
   renderAccess();
@@ -180,6 +279,11 @@ export function initAgentWorkspace() {
   $('#workspace-users-form').addEventListener('submit', async e => {
     e.preventDefault();
     await save({ qqUsers: parseUsers($('#workspace-users').value) }, '已保存允许的 QQ 号');
+  });
+  $('#shell-direct-form').addEventListener('input', syncDirty);
+  $('#shell-direct-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    await save({ directUsers: parseUsers($('#shell-direct-users').value) }, '已保存可以跑沙盒外命令的 QQ 号');
   });
   for (const button of $$('#workspace-access button')) {
     button.addEventListener('click', () => {

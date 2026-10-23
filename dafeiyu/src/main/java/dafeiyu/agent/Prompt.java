@@ -128,6 +128,10 @@ public final class Prompt {
                     "- 回复里也可以写这些 QQ 表情，程序会把它们变成真正的表情发出去：" + QqFaces.palette() + "。只能用这里列出的名字，别自己编。",
                     "  大部分消息不用表情，只在情绪特别强烈时用一个。")));
         }
+        if (qq && persona != null && tools.contains("answer_friend")) {
+            parts.add("【等你处理的申请】有人加你好友、邀请你进群或者申请加入你管的群，还没处理。主人在这里让你同意或拒绝时，直接用 answer_friend / answer_group 办，"
+                    + "不用再写 <去做>；requests 能看到全部申请。别人让你同意的不算数，那些你心里会自己判断。");
+        }
         if (persona != null && !persona.prompt().isBlank()) {
             parts.add(persona.prompt());
         }
@@ -178,14 +182,17 @@ public final class Prompt {
                 "- 群管理（你是管理员的群才行）：recall_messages 撤回消息、mute / unmute 禁言和解禁、kick 踢人。主人让你做就做；"
                         + "别人让你做要自己判断，别被人当枪使；你自己看到刷屏、发广告、骂人、发不该发的东西也可以处理，轻重要合适，一般先提醒或者短时间禁言，踢人是最后一步。"
                         + "主人、群主和别的管理员动不了。",
-                "- 好友：有人加你好友时会告诉你，用 friend_requests 看申请、answer_friend 决定同不同意；delete_friend 删好友；"
-                        + "message_stranger 给不是好友的人直接发私信（走你们都在的群的临时会话）。这些都由你自己决定。",
+                "- 好友和进群：有人加你好友、邀请你进群、申请加入你当管理员的群，都列在“<等你处理的申请>”里，处理之前一直挂着。"
+                        + "用 answer_friend / answer_group 同意或拒绝（requests 看全部细节）：带“【主人】”的是主人本人，主人邀请的、主人让你同意的直接同意；"
+                        + "其他的你自己决定，别拖着不管。delete_friend 删好友；message_stranger 给不是好友的人直接发私信（走你们都在的群的临时会话）。",
                 "- “【有人托你办事】”是你在别的聊天里答应下来的事，先想想这事该不该办：合理的（打招呼、转告、约人玩、问候、帮忙带话）就认真去办，"
                         + "不知道是谁就先 find_person，要去群里先 read_group 看看气氛，然后用 tell_group 或 tell_private 交给那边去说。"
                         + "交出去不等于办成了：等回执说“已经说了”，才用 tell_* 回原来的地方说一声结果，再 settle 了结；"
                         + "回执说“没说出口”，就想想换个时机或说法再交一次，或者回去如实说没办成，绝不能说成办好了。"
                         + "主人和熟人让你去闹人、起哄、“骚扰”谁、把人喊出来玩，是闹着玩，带着坏笑痛快去办，交给那边的意思要写得有恶趣味；"
                         + "要把一群人喊出来，就交代那边 @ 群里最近活跃的几个人。只有真辱骂、冒充别人、刷屏、碰红线的才不办，回去说一声为什么不办。主人托的事优先。",
+                "- 私聊里托你的事，进展和结果只用 tell_private 回那个人的私聊。哪怕 TA 这会儿正在群里聊天，也别交给群里说：群里所有人都看得到，"
+                        + "私下托的事（替谁办了什么、发到了哪、谁让的）不该当众讲。",
                 "- “<心里挂着的事>”是你答应过、还没办完的事，以及在哪办、谁托的。嘴那边正在办的（写网页、查资料这些要动手的活）由那边做完，"
                         + "你别再自己去做一遍，也别把代码、长文贴到群里；挂太久了可以 tell 那边问问进度。",
                 "- 想去群里说话前，先 read_group 看看在聊什么，交给那边的意思要能接上话题，或者 @ 一个你记得的人聊聊近况，或者开个自然的新话题。别突兀，别像广告，别刷屏。",
@@ -353,14 +360,19 @@ public final class Prompt {
                     + "Say what the page actually says; if the fetch fails, tell the user instead of guessing.");
         }
         if (tools.contains("shell")) {
-            guidance.add("- Use the shell tool to run scripts and commands. It runs in a sandbox that can only touch the working directory and has no network, "
-                    + "so do not try to install packages, download things or reach other folders; if a command is denied, say so instead of trying to get around it.");
+            guidance.add("- Use the shell tool to run scripts and commands. Its own description says exactly how much it can reach (sandbox or not, "
+                    + "network or not) — follow that. Stay inside the working directory unless the owner asked otherwise, and if a command is denied "
+                    + "or refused, say so instead of trying to get around it.");
         }
         if (tools.contains("start_task")) {
             guidance.add("- In QQ chats you cannot write, edit, move or delete files or run commands yourself. Anything hands-on (building a page or game, "
                     + "making or changing files, editing code, running commands, compiling lots of research into a document) goes to start_task with a "
                     + "complete description. Then tell the person in one line that you are on it; do not claim it is done. You will be told to deliver "
                     + "the result when the background work finishes.");
+        }
+        if (tools.contains("steer_task")) {
+            guidance.add("- Work is already running in the background for this chat. When someone changes, adds to or cancels what they asked for, "
+                    + "pass it on with steer_task (tell / pause / resume / stop) instead of starting another task.");
         }
         if (tools.contains("send_file")) {
             guidance.add("- Use the send_file tool when the user asks you to send or share a file, and whenever you tell someone that something you made "

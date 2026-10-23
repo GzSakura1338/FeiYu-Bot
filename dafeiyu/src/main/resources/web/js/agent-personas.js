@@ -3,7 +3,6 @@ import { createIcon } from './icons.js';
 import { openDialog, closeDialog, confirmDialog } from './dialog.js';
 import { showSnackbar } from './snackbar.js';
 import { openMenu, closeMenu, isMenuOpen } from './menu.js';
-
 const PROMPT_MAX = 20000;
 const AVATAR_SIZE = 256;
 const FIELDS = ['name', 'prompt'];
@@ -94,8 +93,7 @@ function iconButton(icon, label, onClick) {
 function render() {
   $('#persona-grid').replaceChildren(card(null), ...state.personas.map(card));
   const active = activePersona();
-  $('#chat-persona span').textContent = active ? active.name : '不使用人格';
-  if (document.activeElement !== $('#owners-input')) $('#owners-input').value = (state.owners ?? []).join(', ');
+  $('#chat-persona span').textContent = active ? active.name : '不使用人格';  if (document.activeElement !== $('#owners-input')) $('#owners-input').value = (state.owners ?? []).join(', ');
   syncOwners();
 }
 

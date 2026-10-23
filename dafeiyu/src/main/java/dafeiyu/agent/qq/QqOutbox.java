@@ -12,16 +12,12 @@ import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.onebot.NapCatService;
 
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -57,7 +53,6 @@ final class QqOutbox {
 
     static final int MAX_REPLY_LENGTH = 3000;
     private static final long MAX_INLINE_IMAGE = 10L * 1024 * 1024;
-    private static final int MIN_STICKER_SIDE = 64;
     private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(3);
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
@@ -221,12 +216,6 @@ final class QqOutbox {
 
     void sendSticker(Target target, StickerStore.Sticker sticker) throws ToolFailure {
         Path file = agent.stickers().store().path(sticker);
-        int[] size = imageSize(file);
-        if (size != null && Math.max(size[0], size[1]) < MIN_STICKER_SIDE) {
-            agent.stickers().store().setHidden(sticker.id(), true);
-            log.warn("agent: sticker #" + sticker.id() + " is only " + size[0] + "x" + size[1] + ", hidden it");
-            throw new ToolFailure("表情包 #" + sticker.id() + " 只有 " + size[0] + "×" + size[1] + " 像素，发到 QQ 上看不清，已经把它隐藏了");
-        }
         JsonObject data = new JsonObject();
         data.addProperty("file", "base64://" + Base64.getEncoder().encodeToString(read(file, sticker.file())));
         data.addProperty("sub_type", 1);
@@ -343,27 +332,6 @@ final class QqOutbox {
                     nickname == null ? "大肥鱼" : nickname, messageId, text);
         } catch (RuntimeException e) {
             log.warn("agent: saving reply to database failed: " + e.getMessage());
-        }
-    }
-
-    private static int[] imageSize(Path file) {
-        try (ImageInputStream in = ImageIO.createImageInputStream(file.toFile())) {
-            if (in == null) {
-                return null;
-            }
-            Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
-            if (!readers.hasNext()) {
-                return null;
-            }
-            ImageReader reader = readers.next();
-            try {
-                reader.setInput(in);
-                return new int[] {reader.getWidth(0), reader.getHeight(0)};
-            } finally {
-                reader.dispose();
-            }
-        } catch (IOException | RuntimeException e) {
-            return null;
         }
     }
 

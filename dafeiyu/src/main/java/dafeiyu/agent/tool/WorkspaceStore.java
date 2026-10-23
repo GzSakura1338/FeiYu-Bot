@@ -6,6 +6,7 @@ import dafeiyu.db.Settings;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,10 +17,13 @@ public final class WorkspaceStore {
 
     public enum QqAccess { OFF, LIST, ALL }
 
-    public record Config(String dir, List<String> enabled, QqAccess qqAccess, List<String> qqUsers, boolean shellNetwork) {}
+    public record Config(String dir, List<String> enabled, QqAccess qqAccess, List<String> qqUsers, boolean shellNetwork,
+                         boolean shellDirect, List<String> directUsers) {}
 
     private static final String DIR_KEY = "agent.workdir";
     private static final String NETWORK_KEY = "agent.tools.shellNetwork";
+    private static final String DIRECT_KEY = "agent.tools.shellDirect";
+    private static final String DIRECT_USERS_KEY = "agent.tools.shellDirectUsers";
     private static final String DISABLED_KEY = "agent.tools.disabled";
     private static final String QQ_ACCESS_KEY = "agent.tools.qqAccess";
     private static final String QQ_USERS_KEY = "agent.tools.qqUsers";
@@ -57,7 +61,8 @@ public final class WorkspaceStore {
             access = QqAccess.OFF;
         }
         return new Config(value(DIR_KEY, ""), enabled, access, List.copyOf(split(settings.get(QQ_USERS_KEY))),
-                "true".equals(settings.get(NETWORK_KEY)));
+                "true".equals(settings.get(NETWORK_KEY)), "true".equals(settings.get(DIRECT_KEY)),
+                List.copyOf(split(settings.get(DIRECT_USERS_KEY))));
     }
 
     public synchronized Config update(Config next) {
@@ -74,15 +79,7 @@ public final class WorkspaceStore {
         }
         Set<String> disabled = new LinkedHashSet<>(known.stream().filter(n -> !enabled.contains(n)).toList());
         split(settings.get(DISABLED_KEY)).stream().filter(n -> !known.contains(n)).forEach(disabled::add);
-        List<String> users = next.qqUsers() == null ? List.of() : next.qqUsers().stream().map(String::strip).filter(s -> !s.isEmpty()).distinct().toList();
-        for (String user : users) {
-            if (!user.matches("\\d{5,12}")) {
-                throw new IllegalArgumentException("QQ 号格式不对：" + user);
-            }
-        }
-        if (users.size() > MAX_QQ_USERS) {
-            throw new IllegalArgumentException("QQ 号最多 " + MAX_QQ_USERS + " 个");
-        }
+        List<String> users = qqNumbers(next.qqUsers());
         QqAccess access = next.qqAccess() == null ? QqAccess.OFF : next.qqAccess();
         settings.put(DIR_KEY, dir);
         settings.put(DISABLED_KEY, String.join(",", disabled));
@@ -90,6 +87,8 @@ public final class WorkspaceStore {
         settings.put(QQ_ACCESS_KEY, access.name());
         settings.put(QQ_USERS_KEY, String.join(",", users));
         settings.put(NETWORK_KEY, String.valueOf(next.shellNetwork()));
+        settings.put(DIRECT_KEY, String.valueOf(next.shellDirect()));
+        settings.put(DIRECT_USERS_KEY, String.join(",", qqNumbers(next.directUsers())));
         return config();
     }
 
@@ -116,6 +115,27 @@ public final class WorkspaceStore {
         } catch (IllegalArgumentException e) {
             return e.getMessage();
         }
+    }
+
+    private static List<String> qqNumbers(List<String> raw) {
+        List<String> users = raw == null ? List.of() : raw.stream().map(String::strip).filter(s -> !s.isEmpty()).distinct().toList();
+        for (String user : users) {
+            if (!user.matches("\\d{5,12}")) {
+                throw new IllegalArgumentException("QQ 号格式不对：" + user);
+            }
+        }
+        if (users.size() > MAX_QQ_USERS) {
+            throw new IllegalArgumentException("QQ 号最多 " + MAX_QQ_USERS + " 个");
+        }
+        return users;
+    }
+
+    public boolean directShell(String qqUser, Collection<String> owners) {
+        Config config = config();
+        if (!config.shellDirect()) {
+            return false;
+        }
+        return qqUser == null || qqUser.isBlank() || owners.contains(qqUser) || config.directUsers().contains(qqUser);
     }
 
     public boolean allows(String qqUser) {

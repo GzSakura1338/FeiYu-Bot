@@ -68,6 +68,8 @@ export function toolTitle(name, args) {
   if (name === 'tell_private') return `${label}（QQ ${args.user_id ?? ''}）：${args.intent ?? ''}`;
   if (name === 'settle') return `${label} #${args.id ?? ''}${args.result ? `：${args.result}` : ''}`;
   if (name === 'find_person') return `${label}「${args.name ?? ''}」`;
+  if (name === 'answer_friend') return `${label}：${args.approve ? '同意' : '拒绝'} QQ ${args.user_id ?? ''}`;
+  if (name === 'answer_group') return `${label}：${args.approve ? '同意' : '拒绝'} 群 ${args.group_id ?? ''}${args.user_id ? ` · QQ ${args.user_id}` : ''}`;
   if (name === 'read_group') return `${label} ${args.group_id ?? ''}`;
   if (name === 'recall' || name === 'remember') return `${label} ${args.about ?? ''}${args.text ? `：${args.text}` : ''}`;
   if (name === 'webfetch') return `${label} ${args.url ?? ''}`;
@@ -116,9 +118,13 @@ const PROMISE = /<承诺>([\s\S]*?)(?:<\/承诺>|$)/g;
 const DONE = /<完成>([\s\S]*?)(?:<\/完成>|$)/g;
 const POKE = /<拍一拍\s*\/>|<拍一拍>([\s\S]*?)(?:<\/拍一拍>|$)/g;
 
+const TAG = /[<＜]\s*(\/?)\s*(內心|内心|記住|记住|承諾|承诺|去做|完成|拍一拍)([^>＞]*)[>＞]/g;
+const SIMPLIFIED = { 內心: '内心', 記住: '记住', 承諾: '承诺' };
+const normalize = text => text.replace(TAG, (_, slash, name, rest) => `<${slash}${SIMPLIFIED[name] ?? name}${rest.trimEnd()}>`);
+
 export function splitInner(raw) {
   const notes = [];
-  const text = raw.replace(ERRAND, (_, body) => {
+  const text = normalize(raw).replace(ERRAND, (_, body) => {
     if (body.trim()) notes.push({ errand: true, text: body.trim() });
     return '';
   }).replace(PROMISE, (_, body) => {
@@ -183,25 +189,46 @@ export function renderSaid(said, className = 'bubble bubble-assistant body-large
   return fillSaid(el('div', className), said);
 }
 
+function followInner(body, set) {
+  let lastTop = 0;
+  let touchY = 0;
+  body.addEventListener('wheel', e => {
+    if (e.deltaY < 0) set(false);
+  }, { passive: true });
+  body.addEventListener('touchstart', e => {
+    touchY = e.touches[0]?.clientY ?? 0;
+  }, { passive: true });
+  body.addEventListener('touchmove', e => {
+    const y = e.touches[0]?.clientY ?? touchY;
+    if (y > touchY + 2) set(false);
+    touchY = y;
+  }, { passive: true });
+  body.addEventListener('scroll', () => {
+    const down = body.scrollTop > lastTop;
+    lastTop = body.scrollTop;
+    if (down && body.scrollHeight - body.scrollTop - body.clientHeight < 4) set(true);
+  }, { passive: true });
+}
+
 export function createReply(list, attach) {
   const wrap = el('div', 'reply new');
   attach(wrap);
-  const nearBottom = () => list.scrollTop + list.clientHeight >= list.scrollHeight - 48;
+  const nearBottom = () => !list.stickyBottom && list.scrollTop + list.clientHeight >= list.scrollHeight - 48;
   const scrollDown = () => {
     if (nearBottom()) list.scrollTop = list.scrollHeight;
   };
   let pendingReasoning = '';
   let pendingText = false;
   let frame = 0;
+  let thinkingFollow = true;
   const flush = () => {
     frame = 0;
     if (!pendingReasoning && !pendingText) return;
     const follow = nearBottom();
     if (pendingReasoning && thinking) {
       const body = $('.thinking-text', thinking);
-      const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
       body.append(pendingReasoning);
-      if (atBottom) body.scrollTop = body.scrollHeight;
+      if (thinkingFollow) body.scrollTop = body.scrollHeight;
     }
     pendingReasoning = '';
     if (pendingText) {
@@ -289,7 +316,12 @@ export function createReply(list, attach) {
         thinking.open = true;
         const summary = el('summary', 'thinking-summary label-large');
         summary.append(createIcon('lightbulb_fill', 'icon-18'), el('span', 'thinking-label', '思考中…'));
-        thinking.append(summary, el('div', 'thinking-text body-medium'));
+        const body = el('div', 'thinking-text body-medium');
+        followInner(body, value => {
+          thinkingFollow = value;
+        });
+        thinking.append(summary, body);
+        thinkingFollow = true;
         thinkStart = performance.now();
         hideTyping();
         add(thinking);

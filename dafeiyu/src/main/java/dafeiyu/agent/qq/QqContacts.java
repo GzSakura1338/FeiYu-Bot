@@ -119,6 +119,10 @@ final class QqContacts {
         friendsAt = 0;
     }
 
+    void forgetGroups() {
+        groupsAt = 0;
+    }
+
     boolean canMessage(String userId) {
         return friends().containsKey(userId) || agent.session("private:" + userId, 0).totalTurns() > 0;
     }

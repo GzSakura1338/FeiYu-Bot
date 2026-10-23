@@ -42,59 +42,108 @@ function renderStatus() {
   renderContext($('#session-stats'), status, true);
   chips.push(chip('neurology', `这次开机想了 ${status.thoughts} 个念头`));
   chips.push(chip('send', `今天主动去群里说了 ${status.spokeToday} 次`));
-  $('#mind-status').replaceChildren(...chips);
-  renderHung();
+  const bar = $('#mind-status');
+  const todo = todoChip();
+  for (const node of [...bar.children]) if (node !== todo) node.remove();
+  if (todo.parentElement !== bar) bar.append(todo);
+  todo.before(...chips);
+  if (todoMenu?.matches(':popover-open')) fillTodo();
   for (const b of $$('#mind-pace button')) b.setAttribute('aria-checked', String(b.dataset.pace === status.pace));
   if (status.mood) renderMood(status.mood);
 }
 
 const placeOf = session => (session?.startsWith('group:') ? `群 ${session.slice(6)}` : session?.startsWith('private:') ? '私聊' : session ?? '');
 
-function hungItem(icon, text, meta, tone = '') {
-  const item = el('li', `mind-hung-item ${tone}`);
-  item.append(createIcon(icon, 'icon-18'), el('span', 'mind-hung-text', text), el('span', 'mind-hung-meta label-small', meta));
-  return item;
-}
+let todoMenu = null;
+let todoButton = null;
+let todoClosedAt = 0;
 
-let closedOpen = false;
-
-function closedFold(count) {
-  const item = el('li', 'mind-hung-item mind-hung-fold state-layer');
-  item.tabIndex = 0;
-  item.setAttribute('role', 'button');
-  item.setAttribute('aria-expanded', String(closedOpen));
-  item.append(createIcon('check_circle', 'icon-18'), el('span', 'mind-hung-text', `办完的事 ${count} 件`),
-    createIcon('arrow_drop_down', 'icon-18 mind-hung-chevron'));
-  const toggle = () => {
-    closedOpen = !closedOpen;
-    renderHung();
-  };
-  item.addEventListener('click', toggle);
-  item.addEventListener('keydown', e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
-  return item;
-}
-
-function renderHung() {
-  const list = $('#mind-hung');
+function todoLists() {
   const notes = status.notes ?? [];
   const commitments = status.commitments ?? [];
   const open = commitments.filter(c => c.status === 'open');
   const closed = commitments.filter(c => c.status !== 'open').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10);
-  const items = [
-    ...notes.map(n => hungItem('send', `交给${placeOf(n.session)}去说：${n.intent}`, `等那边说 · ${formatTime(n.at)}`, 'tone-note')),
-    ...open.map(c => hungItem('schedule', `#${c.id} ${c.what}`, `${c.who} · ${placeOf(c.session)} · ${formatTime(c.createdAt)}`)),
-  ];
-  if (closed.length) {
-    items.push(closedFold(closed.length));
-    if (closedOpen) {
-      items.push(...closed.map(c => hungItem(c.status === 'done' ? 'check_circle' : 'close', `#${c.id} ${c.what}${c.result ? ` → ${c.result}` : ''}`,
-        `${c.status === 'done' ? '办完了' : '不办了'} · ${formatTime(c.updatedAt)}`, 'tone-closed')));
-    }
+  return { notes, open, closed };
+}
+
+function todoChip() {
+  if (!todoButton) {
+    todoButton = el('button', 'mind-chip mind-chip-button label-large state-layer');
+    todoButton.type = 'button';
+    todoButton.id = 'mind-todo-chip';
+    todoButton.setAttribute('aria-haspopup', 'true');
+    todoButton.setAttribute('aria-expanded', 'false');
+    todoButton.addEventListener('click', () => toggleTodo(todoButton));
   }
-  const focused = document.activeElement?.classList.contains('mind-hung-fold');
-  list.hidden = !items.length;
-  list.replaceChildren(...items);
-  if (focused) $('.mind-hung-fold', list)?.focus();
+  const { notes, open, closed } = todoLists();
+  const pending = notes.length + open.length;
+  todoButton.hidden = !notes.length && !open.length && !closed.length;
+  todoButton.classList.toggle('has-todo', pending > 0);
+  const text = pending ? `要办的事 ${pending} 件` : '要办的事都办完了';
+  if (todoButton.dataset.text !== text) {
+    todoButton.dataset.text = text;
+    todoButton.replaceChildren(createIcon(pending ? 'schedule' : 'check_circle', 'icon-18'), el('span', null, text),
+      createIcon('arrow_drop_down', 'icon-18 mind-chip-arrow'));
+  }
+  return todoButton;
+}
+
+function todoRow(icon, text, meta, tone = '') {
+  const row = el('div', `menu-item mind-todo-row ${tone}`);
+  const body = el('div', 'mind-todo-text');
+  body.append(el('div', null, text), el('div', 'mind-todo-meta', meta));
+  row.append(createIcon(icon, 'icon-18'), body);
+  return row;
+}
+
+function fillTodo() {
+  const { notes, open, closed } = todoLists();
+  const rows = [
+    ...open.map(c => todoRow('schedule', `#${c.id} ${c.what}`, `${c.who} · ${placeOf(c.session)} · ${formatTime(c.createdAt)}`)),
+    ...notes.map(n => todoRow('send', `交给${placeOf(n.session)}去说：${n.intent}`, `等那边说 · ${formatTime(n.at)}`, 'tone-note')),
+  ];
+  if (!rows.length) rows.push(el('div', 'menu-empty body-medium', '现在没有要办的事'));
+  if (closed.length) {
+    rows.push(el('div', 'mind-todo-section', '最近办完的'));
+    rows.push(...closed.map(c => todoRow(c.status === 'done' ? 'check_circle' : 'close', `#${c.id} ${c.what}${c.result ? ` → ${c.result}` : ''}`,
+      `${c.status === 'done' ? '办完了' : '不办了'} · ${formatTime(c.updatedAt)}`, c.status === 'done' ? 'tone-closed' : 'tone-closed tone-dropped')));
+  }
+  todoMenu.replaceChildren(...rows);
+}
+
+function placeTodo(anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const width = todoMenu.offsetWidth;
+  todoMenu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
+  const below = innerHeight - rect.bottom - 8;
+  if (below < Math.min(todoMenu.scrollHeight, 240) && rect.top > below) {
+    todoMenu.style.top = '';
+    todoMenu.style.bottom = `${innerHeight - rect.top + 4}px`;
+    todoMenu.style.transformOrigin = 'bottom';
+  } else {
+    todoMenu.style.bottom = '';
+    todoMenu.style.top = `${rect.bottom + 4}px`;
+    todoMenu.style.transformOrigin = 'top';
+  }
+}
+
+function toggleTodo(anchor) {
+  if (!todoMenu) {
+    todoMenu = el('div', 'menu mind-todo-menu');
+    todoMenu.popover = 'auto';
+    todoMenu.addEventListener('beforetoggle', e => {
+      const open = e.newState === 'open';
+      if (!open) todoClosedAt = performance.now();
+      todoButton?.classList.toggle('open', open);
+      todoButton?.setAttribute('aria-expanded', String(open));
+    });
+    document.body.append(todoMenu);
+  }
+  if (todoMenu.matches(':popover-open')) return todoMenu.hidePopover();
+  if (performance.now() - todoClosedAt < 250) return;
+  fillTodo();
+  todoMenu.showPopover();
+  placeTodo(anchor);
 }
 
 export async function loadMindStatus() {

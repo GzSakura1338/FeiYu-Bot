@@ -43,6 +43,8 @@ final class AgentHandler {
 
     private record EffortRequest(String effort) {}
 
+    private record SandboxTestRequest(Boolean network, Boolean direct) {}
+
     private record ModelsRequest(String protocol, String baseUrl, String apiKey, String profileId) {}
 
     private record ChatRequest(String session, String message, List<String> images) {}
@@ -124,6 +126,22 @@ final class AgentHandler {
                 HttpResponses.json(ex, workspace());
             } else if (path.equals("/workspace") && method.equals("PUT")) {
                 updateWorkspace(ex);
+            } else if (path.equals("/workspace/test") && method.equals("POST")) {
+                SandboxTestRequest test = Requests.readJson(ex, SandboxTestRequest.class);
+                boolean network = Boolean.TRUE.equals(test.network());
+                boolean direct = Boolean.TRUE.equals(test.direct());
+                JsonObject body = new JsonObject();
+                try {
+                    if (direct && !agent.workspaces().config().shellDirect()) {
+                        throw new ToolFailure("「沙盒外执行」还没打开");
+                    }
+                    body.addProperty("output", Toolbox.sandboxTest(agent.workspaces().workspace(), network, direct));
+                    body.addProperty("ok", true);
+                } catch (ToolFailure e) {
+                    body.addProperty("output", e.getMessage());
+                    body.addProperty("ok", false);
+                }
+                HttpResponses.json(ex, body.toString());
             } else {
                 HttpResponses.json(ex, 404, error("没有这个接口"));
             }
@@ -378,7 +396,8 @@ final class AgentHandler {
         WorkspaceStore.Config saved = agent.workspaces().update(next);
         log.info("agent: workspace " + (saved.dir().isEmpty() ? "cleared" : "set to " + saved.dir())
                 + ", tools " + String.join(",", saved.enabled()) + ", QQ access " + saved.qqAccess()
-                + ", shell network " + (saved.shellNetwork() ? "on" : "off"));
+                + ", shell network " + (saved.shellNetwork() ? "on" : "off")
+                + ", shell outside sandbox " + (saved.shellDirect() ? "ON for owners + " + saved.directUsers().size() + " QQ user(s)" : "off"));
         HttpResponses.json(ex, workspace());
     }
 

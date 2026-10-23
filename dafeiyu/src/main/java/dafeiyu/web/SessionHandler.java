@@ -6,10 +6,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import dafeiyu.agent.AgentException;
+import dafeiyu.agent.BackgroundTasks;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.SessionDetail;
 import dafeiyu.agent.SessionMonitor;
 import dafeiyu.agent.SessionSummary;
+import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.Reflection;
 import dafeiyu.agent.mind.Mind;
 import dafeiyu.agent.model.ModelProfile;
@@ -34,7 +36,7 @@ import java.util.regex.Pattern;
 final class SessionHandler {
 
     private static final String PREFIX = "/api/agent/sessions";
-    private static final Pattern SESSION = Pattern.compile("(group|private):\\d{1,15}|web:[A-Za-z0-9_-]{1,40}|mind:self");
+    private static final Pattern SESSION = Pattern.compile("(group|private):\\d{1,15}|web:[A-Za-z0-9_-]{1,40}|task:[0-9a-z]{1,16}|mind:self");
     private static final int DETAIL_LIMIT = 300;
     private static final int MAX_MESSAGE_LENGTH = 4000;
 
@@ -141,6 +143,11 @@ final class SessionHandler {
                 sessions.add(item(s, names, busy.contains(s.session())));
             }
         }
+        for (BackgroundTasks.Task task : agent.tasks().list()) {
+            if (!known.contains(task.session()) && !busy.contains(task.session())) {
+                sessions.add(item(new SessionSummary(task.session(), 0, task.startedAt(), 0, 0, false, "", "", task.title()), names, false));
+            }
+        }
         JsonObject body = new JsonObject();
         body.add("sessions", sessions);
         body.add("active", active);
@@ -153,10 +160,44 @@ final class SessionHandler {
         String kind = s.session().substring(0, s.session().indexOf(':'));
         item.addProperty("kind", kind);
         item.addProperty("target", s.session().substring(s.session().indexOf(':') + 1));
+        String title = kind.equals("task") ? taskTitle(s.session(), s.title()) : "";
         item.addProperty("name", name(s.session(), kind.equals("web") ? (s.title().isBlank() ? "新对话" : s.title())
-                : kind.equals("task") ? "后台任务：" + s.title().replaceFirst("^你在后台帮.*?做一件事：「(.*?)」.*$", "$1") : names.of(s.session())));
+                : kind.equals("task") ? title : names.of(s.session())));
         item.addProperty("busy", busy);
+        if (kind.equals("task")) {
+            item.add("task", taskInfo(s.session(), title, names, busy));
+        }
         return item;
+    }
+
+    private String taskTitle(String session, String fallback) {
+        BackgroundTasks.Task task = agent.tasks().get(session);
+        return task != null ? task.title() : fallback.replaceFirst("(?s)^你在后台帮.*?做一件事：「([^」]*)」?.*$", "$1");
+    }
+
+    private JsonObject taskInfo(String session, String title, QqDirectory.Names names, boolean busy) {
+        BackgroundTasks.Task task = agent.tasks().get(session);
+        if (task == null) {
+            JsonObject info = new JsonObject();
+            info.addProperty("status", busy ? BackgroundTasks.RUNNING : "ended");
+            String key = "后台在做：" + title.replaceFirst("…$", "");
+            agent.intercom().commitments().stream().filter(c -> c.what().startsWith(key)).reduce((a, b) -> b).ifPresent(c -> {
+                info.addProperty("requester", c.who());
+                info.addProperty("originName", names.of(c.session()));
+                if (!busy) {
+                    info.addProperty("status", Intercom.DONE.equals(c.status()) ? BackgroundTasks.DONE
+                            : Intercom.DROPPED.equals(c.status()) ? BackgroundTasks.FAILED : BackgroundTasks.INTERRUPTED);
+                }
+            });
+            return info;
+        }
+        JsonObject info = gson.toJsonTree(task).getAsJsonObject();
+        if (busy && !task.status().equals(BackgroundTasks.RUNNING) && !task.status().equals(BackgroundTasks.PAUSED)) {
+            info.addProperty("status", BackgroundTasks.RUNNING);
+        }
+        info.addProperty("originName", names.of(task.origin()));
+        info.addProperty("originKind", task.origin().substring(0, Math.max(0, task.origin().indexOf(':'))));
+        return info;
     }
 
     private static long queryNumber(String query, String key, long fallback) {
@@ -179,7 +220,13 @@ final class SessionHandler {
         int limit = (int) Math.max(1, Math.min(DETAIL_LIMIT, queryNumber(query, "limit", DETAIL_LIMIT)));
         SessionDetail detail = agent.session(session, limit, queryNumber(query, "before", Long.MAX_VALUE));
         JsonObject body = gson.toJsonTree(detail).getAsJsonObject();
-        body.addProperty("name", name(session, session.startsWith("web:") ? "新对话" : directory.names().of(session)));
+        boolean task = session.startsWith("task:");
+        String title = task ? taskTitle(session, agent.sessions().stream().filter(s -> s.session().equals(session))
+                .map(SessionSummary::title).findFirst().orElse("后台任务")) : "";
+        body.addProperty("name", name(session, session.startsWith("web:") ? "新对话" : task ? title : directory.names().of(session)));
+        if (task) {
+            body.add("task", taskInfo(session, title, directory.names(), agent.busy(session)));
+        }
         body.addProperty("kind", session.substring(0, session.indexOf(':')));
         body.addProperty("target", session.substring(session.indexOf(':') + 1));
         if (session.startsWith("group:")) {
@@ -202,6 +249,9 @@ final class SessionHandler {
     private void send(HttpExchange ex, String session) throws IOException {
         if (session.equals(Mind.SESSION)) {
             throw new IllegalArgumentException("内心里不能发消息");
+        }
+        if (session.startsWith("task:")) {
+            throw new IllegalArgumentException("后台任务里不能发消息");
         }
         SendRequest req = Requests.readJson(ex, SendRequest.class);
         String message = req.message() == null ? "" : req.message().strip();

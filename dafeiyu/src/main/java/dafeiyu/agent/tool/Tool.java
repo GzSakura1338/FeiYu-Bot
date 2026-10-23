@@ -8,7 +8,7 @@ interface Tool {
 
     String description();
 
-    default String description(boolean network) {
+    default String description(boolean network, boolean direct) {
         return description();
     }
 

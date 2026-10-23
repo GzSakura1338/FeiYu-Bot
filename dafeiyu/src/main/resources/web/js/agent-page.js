@@ -3,6 +3,7 @@ import { initTabBar } from './tabs.js';
 import { navigate, onSubPageChange } from './router.js';
 import { ago } from './format.js';
 import { viewTransition } from './motion.js';
+import { menuSelect } from './select-menu.js';
 
 const VIEWS = ['models', 'personas', 'workspace', 'sessions', 'memory', 'stickers'];
 const listeners = [];
@@ -36,6 +37,7 @@ function show(view) {
 
 export function initAgentPage() {
   tabs = initTabBar($('#agent-tabs'), view => navigate('agent', view));
+  for (const group of $$('#page-agent .settings-row .segmented')) menuSelect(group);
   let last = 'models';
   onSubPageChange((page, sub) => {
     if (page !== 'agent') return;

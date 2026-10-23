@@ -22,6 +22,7 @@ import dafeiyu.agent.qq.QqOutbox.Target;
 import dafeiyu.agent.reply.Markup;
 import dafeiyu.agent.sticker.StickerStore;
 import dafeiyu.agent.tool.ToolFailure;
+import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.onebot.NapCatService;
@@ -53,6 +54,7 @@ public final class QqChatBridge {
     private static final int MAX_IMAGES = 4;
     private static final String OWNER_TAG = "【主人】";
     private static final String POKE_TAG = "【拍一拍】";
+    private static final long OWN_POKE_ECHO_MS = 20_000;
     private static final long POKE_GAP_MS = 20_000;
     private static final String CONSOLE_TAG = "【控制台】";
     private static final long RESUME_WINDOW_MS = 10 * 60_000L;
@@ -77,6 +79,8 @@ public final class QqChatBridge {
         void heard(String where, String who, String text, boolean toMe);
 
         void said(String where, String text);
+
+        void requested(String what);
     }
 
     private static final class Inbox {
@@ -103,6 +107,7 @@ public final class QqChatBridge {
     private final QqContacts contacts;
     private final QqBackfill backfill;
     private final QqActions actions;
+    private final QqRequests requests;
     private volatile Observer observer;
     private volatile MessageGate gate = MessageGate.NONE;
     private volatile long lastActivity = System.currentTimeMillis();
@@ -114,7 +119,7 @@ public final class QqChatBridge {
         return t;
     });
 
-    public QqChatBridge(ChatAgent agent, NapCatService napcat, MessageArchive archive, LogBuffer log) {
+    public QqChatBridge(ChatAgent agent, NapCatService napcat, MessageArchive archive, Database db, LogBuffer log) {
         this.agent = agent;
         this.napcat = napcat;
         this.archive = archive;
@@ -123,6 +128,14 @@ public final class QqChatBridge {
         this.contacts = new QqContacts(agent, napcat, archive, outbox, log);
         this.backfill = new QqBackfill(agent, archive, outbox, log);
         this.actions = new QqActions(agent, archive, outbox, contacts, log);
+        this.requests = new QqRequests(agent, db, outbox, contacts, actions, log);
+        requests.setOnNew(r -> {
+            Observer o = observer;
+            if (o != null) {
+                o.requested(requests.line(r));
+            }
+        });
+        agent.setRequestTools(requests::forOwner);
         agent.setForwardReader(actions::describeForward);
         agent.setPoker((session, userId) -> {
             try {
@@ -299,6 +312,10 @@ public final class QqChatBridge {
         return actions;
     }
 
+    public QqRequests requests() {
+        return requests;
+    }
+
     public void onEvent(JsonObject event) {
         if (optString(event, "post_type").equals("notice") && optString(event, "sub_type").equals("poke")) {
             onPoke(event);
@@ -308,14 +325,20 @@ public final class QqChatBridge {
             contacts.forgetMember(optString(event, "group_id"), optString(event, "user_id"));
             return;
         }
-        if (optString(event, "post_type").equals("request") && optString(event, "request_type").equals("friend")) {
-            executor.submit(() -> {
-                actions.friendRequested(event);
-                String userId = optString(event, "user_id");
-                String comment = optString(event, "comment").strip();
-                observeHeard("private:" + userId, "QQ " + userId + " 想加你好友（验证消息：" + (comment.isEmpty() ? "没写" : abbreviate(comment, 60))
-                        + "），用 friend_requests 看看、answer_friend 决定", comment, true);
-            });
+        if (optString(event, "post_type").equals("notice") && optString(event, "notice_type").equals("friend_add")) {
+            requests.friendAdded(optString(event, "user_id"));
+            contacts.forgetFriends();
+            return;
+        }
+        if (optString(event, "post_type").equals("notice") && optString(event, "notice_type").equals("group_increase")) {
+            requests.joined(optString(event, "group_id"), optString(event, "user_id"));
+            if (optString(event, "user_id").equals(outbox.selfId())) {
+                contacts.forgetGroups();
+            }
+            return;
+        }
+        if (optString(event, "post_type").equals("request")) {
+            executor.submit(() -> requests.received(event));
             return;
         }
         if (optString(event, "post_type").equals("message")) {
@@ -333,6 +356,7 @@ public final class QqChatBridge {
 
     public void onConnected() {
         resumeInterrupted();
+        executor.submit(requests::backfill);
         backfill.run(this::ingest);
         agent.intercom().sessionsWithNotes().forEach(this::deliverNotes);
     }
@@ -378,6 +402,7 @@ public final class QqChatBridge {
         if (messageType.equals("group")) {
             latestInGroup.put(optString(event, "group_id"), optString(event, "message_id"));
         }
+        actions.prefetch(event);
         boolean replying = agent.store().qqReply();
         MessageGate plugins = gate;
         if (!replying && plugins == MessageGate.NONE) {
@@ -435,7 +460,8 @@ public final class QqChatBridge {
             return;
         }
         String selfId = optString(event, "self_id");
-        String userId = optString(event, "user_id");
+        String sender = optString(event, "sender_id");
+        String userId = sender.isEmpty() || sender.equals("0") ? optString(event, "user_id") : sender;
         String targetId = optString(event, "target_id");
         if (userId.isEmpty() || userId.equals(selfId)) {
             return;
@@ -454,6 +480,10 @@ public final class QqChatBridge {
         String action = words.isEmpty() ? "拍了拍" : unforgeable(words.getFirst());
         String suffix = words.size() > 1 ? unforgeable(String.join("", words.subList(1, words.size()))) : "";
         boolean me = targetId.equals(selfId);
+        Long pokedByMe = pokedAt.get(targetId);
+        if (!me && pokedByMe != null && System.currentTimeMillis() - pokedByMe < OWN_POKE_ECHO_MS) {
+            return;
+        }
         boolean owner = agent.personas().isOwner(userId);
         JsonArray attachments = new JsonArray();
         JsonObject poke = new JsonObject();
@@ -461,8 +491,9 @@ public final class QqChatBridge {
         attachments.add(poke);
         String groupId = optString(event, "group_id");
         if (groupId.isEmpty() || groupId.equals("0")) {
-            String line = (owner ? OWNER_TAG : "") + POKE_TAG + (owner ? "主人" : "对方") + " " + action + " 你" + suffix;
-            observeHeard("private:" + userId, owner ? "主人" : "对方", action + " 你" + suffix, true);
+            String whom = me ? " 你" : " 自己";
+            String line = (owner ? OWNER_TAG : "") + POKE_TAG + (owner ? "主人" : "对方") + " " + action + whom + suffix;
+            observeHeard("private:" + userId, owner ? "主人" : "对方", action + whom + suffix, true);
             onPrivate(Target.direct(userId, selfId, ""), line, List.of(), attachments.toString(), true);
             return;
         }
@@ -937,8 +968,17 @@ public final class QqChatBridge {
         }
         Target target = session.startsWith("group:") ? Target.group(session.substring(6), userId, outbox.selfId(), "")
                 : Target.direct(userId, outbox.selfId(), "");
-        outbox.poke(target, userId);
         pokedAt.put(userId, now);
+        try {
+            outbox.poke(target, userId);
+        } catch (ToolFailure e) {
+            if (last == null) {
+                pokedAt.remove(userId);
+            } else {
+                pokedAt.put(userId, last);
+            }
+            throw e;
+        }
         lastActivity = now;
         log.info("agent [" + target.where() + "] poked " + userId);
         return target.group() ? unforgeable(archive.groupSenders(target.groupId()).getOrDefault(userId, "QQ " + userId)) : "对方";
@@ -1059,6 +1099,18 @@ public final class QqChatBridge {
 
     public String activeGroupWith(String userId, long withinMs) {
         return archive.activeGroupWith(userId, System.currentTimeMillis() - withinMs);
+    }
+
+    public List<String> namesOf(String userId) {
+        List<String> names = new ArrayList<>();
+        String friend = contacts.friends().get(userId);
+        String seen = archive.lastKnownName(userId);
+        for (String name : new String[] {friend, seen == null ? null : unforgeable(seen)}) {
+            if (name != null && name.strip().length() >= 2 && !names.contains(name.strip())) {
+                names.add(name.strip());
+            }
+        }
+        return names;
     }
 
     public Map<String, String> groupNames() {

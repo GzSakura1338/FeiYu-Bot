@@ -191,7 +191,7 @@ public final class ConversationMemory {
                        (SELECT role FROM conversation_turns c WHERE c.session = k.session AND c.role <> 'tool' AND c.content <> ''
                         AND c.content <> '（以上是你刚才看过的）' ORDER BY c.id DESC LIMIT 1) AS preview_role,
                        (SELECT content FROM conversation_turns c WHERE c.session = k.session AND c.role = 'user' AND c.content <> ''
-                        ORDER BY c.id LIMIT 1) AS title
+                        AND NOT (c.content LIKE '【%】' AND instr(c.content, char(10)) = 0) ORDER BY c.id LIMIT 1) AS title
                 FROM keys k
                 LEFT JOIN stats t ON t.session = k.session
                 LEFT JOIN conversation_sessions s ON s.session = k.session

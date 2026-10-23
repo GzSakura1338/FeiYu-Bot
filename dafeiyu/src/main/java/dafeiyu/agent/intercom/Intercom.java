@@ -242,6 +242,13 @@ public final class Intercom {
         }
     }
 
+    public List<Commitment> entrustedInPrivate(long withinMs) {
+        long now = System.currentTimeMillis();
+        synchronized (commitments) {
+            return commitments.stream().filter(c -> c.session().startsWith("private:") && (c.open() || now - c.updatedAt() <= withinMs)).toList();
+        }
+    }
+
     public List<Commitment> commitments() {
         synchronized (commitments) {
             return List.copyOf(commitments);

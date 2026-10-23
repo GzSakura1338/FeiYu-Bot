@@ -223,12 +223,12 @@
               <div class="list-supporting body-medium" id="effort-hint">跟随模型默认</div>
             </div>
             <div class="segmented label-large" role="radiogroup" aria-label="思考强度" id="effort-choice">
-              <button class="state-layer" role="radio" data-effort="default"><svg data-icon="check" class="icon-18 chip-check"></svg>默认</button>
-              <button class="state-layer" role="radio" data-effort="none"><svg data-icon="check" class="icon-18 chip-check"></svg>关闭</button>
-              <button class="state-layer" role="radio" data-effort="low"><svg data-icon="check" class="icon-18 chip-check"></svg>低</button>
-              <button class="state-layer" role="radio" data-effort="medium"><svg data-icon="check" class="icon-18 chip-check"></svg>中</button>
-              <button class="state-layer" role="radio" data-effort="high"><svg data-icon="check" class="icon-18 chip-check"></svg>高</button>
-              <button class="state-layer" role="radio" data-effort="max"><svg data-icon="check" class="icon-18 chip-check"></svg>最高</button>
+              <button class="state-layer" role="radio" data-effort="default" data-hint="跟随模型"><svg data-icon="check" class="icon-18 chip-check"></svg>默认</button>
+              <button class="state-layer" role="radio" data-effort="none" data-hint="直接回，最快"><svg data-icon="check" class="icon-18 chip-check"></svg>关闭</button>
+              <button class="state-layer" role="radio" data-effort="low" data-hint="稍微想一下"><svg data-icon="check" class="icon-18 chip-check"></svg>低</button>
+              <button class="state-layer" role="radio" data-effort="medium" data-hint="正常思考"><svg data-icon="check" class="icon-18 chip-check"></svg>中</button>
+              <button class="state-layer" role="radio" data-effort="high" data-hint="慢一些"><svg data-icon="check" class="icon-18 chip-check"></svg>高</button>
+              <button class="state-layer" role="radio" data-effort="max" data-hint="最慢最费 token"><svg data-icon="check" class="icon-18 chip-check"></svg>最高</button>
             </div>
           </li>
         </ul>
@@ -244,7 +244,7 @@
               <div class="list-supporting body-medium" id="pacing-pieces-hint"></div>
             </div>
             <div class="segmented label-large" role="radiogroup" aria-label="最多分几条" id="pacing-pieces">
-              <button class="state-layer" role="radio" data-pieces="1"><svg data-icon="check" class="icon-18 chip-check"></svg>不拆</button>
+              <button class="state-layer" role="radio" data-pieces="1" data-hint="整段发出"><svg data-icon="check" class="icon-18 chip-check"></svg>不拆</button>
               <button class="state-layer" role="radio" data-pieces="2"><svg data-icon="check" class="icon-18 chip-check"></svg>2</button>
               <button class="state-layer" role="radio" data-pieces="3"><svg data-icon="check" class="icon-18 chip-check"></svg>3</button>
               <button class="state-layer" role="radio" data-pieces="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4</button>
@@ -317,6 +317,20 @@
       </div>
 
       <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">命令行执行</h2></div>
+        <p class="panel-desc body-medium">让她能跑命令（cmd / python / node）。默认关着；打开后默认在 Windows 应用容器沙盒里跑，只能读写工作目录。每项都可以展开自测一下。</p>
+        <ul class="list" id="workspace-shell"></ul>
+        <div class="workspace-status body-medium" id="shell-direct-warning" data-tone="error" hidden></div>
+        <form class="workspace-row" id="shell-direct-form" novalidate autocomplete="off" hidden>
+          <div class="text-field" data-field="directUsers">
+            <div class="text-field-box"><input id="shell-direct-users" name="directUsers" placeholder=" " spellcheck="false" inputmode="numeric"><label for="shell-direct-users">还允许哪些 QQ 号</label></div>
+            <span class="supporting body-small" data-hint="主人始终可以；多个用逗号或空格分开，留空就只有主人"></span>
+          </div>
+          <button type="submit" class="filled-button filled-button-medium state-layer" id="shell-direct-save" disabled>保存</button>
+        </form>
+      </div>
+
+      <div class="panel">
         <div class="panel-header"><h2 class="headline-small">QQ 里谁可以用</h2></div>
         <p class="panel-desc body-medium">网页测试对话始终可以使用工具。QQ 里能给机器人发消息的人都可能让它改文件，请只开放给信任的人；群里按发消息的人判断。</p>
         <ul class="list">
@@ -327,9 +341,9 @@
               <div class="list-supporting body-medium" id="workspace-access-hint">只有网页测试对话可以使用工具</div>
             </div>
             <div class="segmented label-large" role="radiogroup" aria-label="QQ 使用权限" id="workspace-access">
-              <button class="state-layer" role="radio" data-access="OFF"><svg data-icon="check" class="icon-18 chip-check"></svg>不允许</button>
-              <button class="state-layer" role="radio" data-access="LIST"><svg data-icon="check" class="icon-18 chip-check"></svg>指定 QQ 号</button>
-              <button class="state-layer" role="radio" data-access="ALL"><svg data-icon="check" class="icon-18 chip-check"></svg>所有人</button>
+              <button class="state-layer" role="radio" data-access="OFF" data-hint="只有网页测试"><svg data-icon="check" class="icon-18 chip-check"></svg>不允许</button>
+              <button class="state-layer" role="radio" data-access="LIST" data-hint="名单里的人"><svg data-icon="check" class="icon-18 chip-check"></svg>指定 QQ 号</button>
+              <button class="state-layer" role="radio" data-access="ALL" data-hint="有风险"><svg data-icon="check" class="icon-18 chip-check"></svg>所有人</button>
             </div>
           </li>
         </ul>
@@ -381,7 +395,6 @@
             <div class="mind-status session-stats body-medium" id="session-stats"></div>
             <div class="mind-bar" id="mind-bar" hidden>
               <div class="mind-status body-medium" id="mind-status"></div>
-              <ul class="mind-hung body-medium" id="mind-hung" hidden></ul>
               <div class="session-filter label-large mind-pace" role="radiogroup" aria-label="思考节奏" id="mind-pace">
                 <span class="mind-pace-label">思考节奏</span>
                 <button class="state-layer" role="radio" data-pace="fast" aria-checked="false">快（约 15 秒一个念头）</button>
@@ -650,6 +663,15 @@
           <div class="palette-grid" role="radiogroup" aria-label="配色" id="palette-grid"></div>
         </li>
       </ul>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2 class="headline-small">归档会话</h2>
+        <button class="icon-button state-layer" id="archive-refresh" title="刷新" aria-label="刷新"><svg data-icon="refresh"></svg></button>
+      </div>
+      <p class="panel-desc body-medium">结束超过 15 分钟的后台任务会自动归档到这里，不再出现在智能体的会话列表里。点一个可以查看它做事的完整过程。</p>
+      <ul class="list archive-list" id="archive-list"></ul>
+      <div class="empty-state" id="archive-empty" hidden><svg data-icon="inbox"></svg><p class="body-medium">还没有归档的会话</p></div>
     </div>
     <div class="panel">
       <div class="panel-header"><h2 class="headline-small">关于</h2></div>

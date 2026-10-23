@@ -28,14 +28,21 @@ public final class Toolbox {
     }
 
     public static List<ToolSpec> specs(Set<String> enabled) {
-        return specs(enabled, false);
+        return specs(enabled, false, false);
     }
 
-    public static List<ToolSpec> specs(Set<String> enabled, boolean network) {
+    public static List<ToolSpec> specs(Set<String> enabled, boolean network, boolean direct) {
         return ALL.stream()
                 .filter(t -> enabled.contains(t.name()))
-                .map(t -> new ToolSpec(t.name(), t.description(network), t.parameters().deepCopy()))
+                .map(t -> new ToolSpec(t.name(), t.description(network, direct), t.parameters().deepCopy()))
                 .toList();
+    }
+
+    public static String sandboxTest(Workspace workspace, boolean network, boolean direct) throws ToolFailure {
+        if (workspace == null) {
+            throw new ToolFailure("还没有设置工作目录");
+        }
+        return ShellTool.selfTest(workspace, network, direct);
     }
 
     public static Outcome run(ToolCall call, Set<String> enabled, ToolContext context) {

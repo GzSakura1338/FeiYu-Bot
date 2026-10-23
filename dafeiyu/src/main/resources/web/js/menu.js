@@ -35,6 +35,7 @@ function place(anchor) {
   const rect = anchor.getBoundingClientRect();
   menu.style.minWidth = `${rect.width}px`;
   menu.style.left = `${rect.left}px`;
+  if (rect.left + menu.offsetWidth > innerWidth - 8) menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
   const below = innerHeight - rect.bottom - 8;
   const height = Math.min(menu.scrollHeight, 320);
   if (below < height && rect.top > below) {

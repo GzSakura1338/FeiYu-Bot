@@ -69,7 +69,7 @@ public final class ChatAgent {
         this.stickers = new StickerKeeper(this, new StickerStore(db, db.file().toAbsolutePath().getParent().resolve("stickers")), guard);
         this.intercom = new Intercom(db);
         this.held = new HeldLines(db);
-        this.tasks = new BackgroundTasks(this);
+        this.tasks = new BackgroundTasks(this, db);
     }
 
     public BackgroundTasks tasks() {
@@ -171,6 +171,20 @@ public final class ChatAgent {
         return forwards.read(id);
     }
 
+    private volatile java.util.function.Supplier<ToolSet> requestTools = () -> null;
+
+    public void setRequestTools(java.util.function.Supplier<ToolSet> requestTools) {
+        this.requestTools = requestTools;
+    }
+
+    ToolSet requestTools() {
+        try {
+            return requestTools.get();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private volatile java.util.function.BinaryOperator<String> poker = (session, userId) -> null;
 
     public void setPoker(java.util.function.BinaryOperator<String> poker) {
@@ -212,7 +226,7 @@ public final class ChatAgent {
     }
 
     static boolean interjectable(String session) {
-        return session.startsWith("group:") || session.startsWith("private:") || session.startsWith("web:");
+        return session.startsWith("group:") || session.startsWith("private:") || session.startsWith("web:") || session.startsWith("task:");
     }
 
     public boolean busy(String session) {

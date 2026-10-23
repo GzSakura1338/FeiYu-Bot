@@ -2,6 +2,7 @@ package dafeiyu.agent.reply;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,8 +48,16 @@ public record Markup(String thought, String said, List<Note> notes, List<String>
         return found;
     }
 
+    private static final Pattern TAG = Pattern.compile("[<＜]\\s*(/?)\\s*(內心|内心|記住|记住|承諾|承诺|去做|完成|拍一拍)([^>＞]*)[>＞]");
+    private static final Map<String, String> SIMPLIFIED = Map.of("內心", "内心", "記住", "记住", "承諾", "承诺");
+
+    static String normalize(String text) {
+        return TAG.matcher(text).replaceAll(m -> Matcher.quoteReplacement(
+                "<" + m.group(1) + SIMPLIFIED.getOrDefault(m.group(2), m.group(2)) + m.group(3).stripTrailing() + ">"));
+    }
+
     public static Markup parse(String raw) {
-        String text = raw == null ? "" : raw;
+        String text = normalize(raw == null ? "" : raw);
         List<String> errands = collect(ERRAND, "</去做>", text);
         text = ERRAND.matcher(text).replaceAll("");
         List<String> promises = collect(PROMISE, "</承诺>", text);
