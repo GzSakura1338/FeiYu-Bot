@@ -1,27 +1,45 @@
 # FeiYu Bot
 
-- `napcat/`：[NapCatQQ](https://github.com/NapNeko/NapCatQQ) v4.18.41 Shell 版，用本机已装的 QQNT 登录 QQ 账号，对外提供 OneBot v11 协议。
-- `dafeiyu/`：**FeiYu Bot**，自己实现的机器人控制台（Java 25 + Gradle，MD3 网页界面），当前在用。说明见 `dafeiyu/README.md`。
-- `astrbot/`：[AstrBot](https://github.com/AstrBotDevs/AstrBot) v4.29.1，之前试用的现成框架（带 LLM），已停用但保留。
+自己写的 QQ 机器人，代码目录叫 `dafeiyu`。用大模型在 QQ 群聊和私聊里聊天：有人格、长期记忆和日记，有一直在自己想事情的「内心」，能用工具做事（读写文件、上网搜、跑命令、管群、处理好友和进群申请），也能装插件和 MCP 服务扩展。所有设置都在本机的网页控制台里管理。
 
-连接方式：NapCat 用反向 WebSocket 主动连到 `ws://127.0.0.1:6199/ws`，token 存放在 `.ws_token`，写在
-`napcat/config/onebot11.json`（所有账号共用的默认模板）里，大肥鱼的 `dafeiyu/config.properties` 和 AstrBot 的配置用的是同一个 token。
-大肥鱼和 AstrBot 都占用 6199 端口，同一时间只能开一个。
+- 后端 Java 25 + Gradle，依赖只有 Java-WebSocket、gson、sqlite-jdbc，数据存在 SQLite
+- 网页控制台按 Material Design 3 设计：http://127.0.0.1:8090/
+- 登录 QQ 交给 [NapCatQQ](https://github.com/NapNeko/NapCatQQ)：它用本机装的 QQNT 登录账号，通过 OneBot v11 反向 WebSocket 把消息推给 FeiYu Bot
+
+功能和代码结构的完整说明见 [dafeiyu/README.md](dafeiyu/README.md)，写插件看 [dafeiyu/插件开发.md](dafeiyu/插件开发.md)。
 
 ## 启动
 
-1. 双击 `start-dafeiyu.bat`，打开控制台：http://127.0.0.1:8090/
-2. 双击 `start-napcat.bat`，用手机 QQ 扫窗口里的二维码，或者扫 `napcat/cache/qrcode.png`。
-   - 窗口里会列出本机登录过的账号，以后可以用 `start-napcat.bat -q QQ号` 快速登录，免扫码。
-   - NapCat 的管理面板地址：http://127.0.0.1:6099/webui ，token 见 NapCat 窗口日志。
+1. 双击 `start-dafeiyu.bat`（`launch-dafeiyu.ps1` 是同一个，只是窗口最小化），打开 http://127.0.0.1:8090/
+2. 第一次用：在「智能体」里添加模型、建人格（角色卡见 `personas/`）、填主人的 QQ 号，再打开 QQ 自动回复
+3. 双击 `start-napcat.bat`，用手机 QQ 扫窗口里的二维码（也在 `napcat/cache/qrcode.png`）。以后可以用 `start-napcat.bat -q QQ号` 免扫码登录
+4. 控制台概览页显示已连接就好了
 
-## 改回 AstrBot（可选）
+关闭：直接关掉对应的命令行窗口。改了 Java 代码要重启 FeiYu Bot，改前端只要刷新浏览器。
 
-先关掉大肥鱼，再双击 `start-astrbot.bat`，WebUI 在 http://127.0.0.1:6185 。
-初始账号 `astrbot`，初始密码在 `astrbot_first.log` 里（搜 “Initial password”）。模型已配置为 GINKA 的 `deepseek-v4.1-flash`。
+## 目录
+
+| 路径 | 内容 | 进仓库 |
+| --- | --- | --- |
+| `dafeiyu/` | FeiYu Bot 本体：后端、网页、插件 SDK、说明文档 | 是（`data/`、`config.properties`、`build/` 除外） |
+| `personas/` | 人格角色卡，正文复制到控制台「人格」里用 | 是 |
+| `start-*.bat`、`launch-*.ps1` | 启动脚本 | 是 |
+| `napcat/` | NapCatQQ v4.18.41 Shell 版 | 否 |
+| `file/` | 她的工作目录：写的网页、画的图、跑的命令都在这里 | 否 |
+| `astrbot/` | 以前试用的 AstrBot，已停用 | 否 |
+
+## 连接和配置
+
+- NapCat 主动连 `ws://127.0.0.1:6199/ws`。token 存在 `.ws_token`，NapCat 那边写在 `napcat/config/onebot11.json`（新账号用的模板）和 `onebot11_<QQ号>.json`（已登录账号）
+- FeiYu Bot 的端口、前端目录、数据库位置，以及反向 WebSocket 的初始值在 `dafeiyu/config.properties`；其余设置（模型和 API Key、人格、工作目录、反向 WebSocket、插件……）都在网页上改，存在 `dafeiyu/data/dafeiyu.db`
+- 升级表结构前会自动备份数据库到 `dafeiyu/data/backup/`
 
 ## 注意
 
-- 同一个 QQ 号同一时间只能在一台“电脑端”在线：NapCat 登录后会把桌面 QQ 上的同一账号挤下线，建议机器人用小号。
-- 所有服务都只监听 127.0.0.1，只能从本机访问。
-- 关闭：直接关掉对应的命令行窗口即可。
+- 同一个 QQ 号同一时间只能有一个电脑端在线：NapCat 登录后会把桌面 QQ 上的同一账号挤下线，机器人最好用小号
+- 控制台（8090）和反向 WebSocket（6199）只监听 127.0.0.1。NapCat 的管理面板（6099）默认监听所有网卡，局域网里能打开（要 token 登录）；只想本机访问，就把 `napcat/config/webui.json` 的 `host` 改成 `127.0.0.1`
+- `dafeiyu/data/` 里有 API Key 和全部聊天记录，不进仓库，也别发给别人
+
+## 旧的 AstrBot
+
+`astrbot/` 是之前试用的现成框架，已经不用了，只是还留着。它也占 6199 端口，要换回去得先关掉 FeiYu Bot，再双击 `start-astrbot.bat`（WebUI 在 http://127.0.0.1:6185 ，初始密码在 `astrbot_first.log` 里搜 “Initial password”）。
