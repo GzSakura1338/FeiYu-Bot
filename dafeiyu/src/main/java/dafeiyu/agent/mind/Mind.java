@@ -258,7 +258,6 @@ public final class Mind implements QqChatBridge.Observer {
             notice(flat, !perceived.isEmpty() || set.used());
             String thought = abbreviate(flat, 160);
             if (!thought.isEmpty() && agent.guard().scan(thought) == null) {
-                agent.mood().remember(persona.id(), thought, SESSION);
                 agent.extensions().thought(thought);
             }
             thoughts++;

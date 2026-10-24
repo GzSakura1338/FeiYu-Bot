@@ -58,6 +58,7 @@ final class QqOutbox {
 
     private final ChatAgent agent;
     private final NapCatService napcat;
+    private volatile java.util.function.BiFunction<Path, String, String> sentImages = (file, session) -> null;
     private final MessageArchive archive;
     private final LogBuffer log;
     private final Map<String, GroupState> groups;
@@ -119,6 +120,10 @@ final class QqOutbox {
 
     boolean hasTempGroup(String userId) {
         return tempGroups.containsKey(userId);
+    }
+
+    void numberSentImages(java.util.function.BiFunction<Path, String, String> numbering) {
+        this.sentImages = numbering;
     }
 
     void setGate(MessageGate gate) {
@@ -259,9 +264,11 @@ final class QqOutbox {
             if (IMAGE_EXTENSIONS.contains(extension) && size <= MAX_INLINE_IMAGE) {
                 JsonArray message = new JsonArray();
                 message.add(segment("image", "file", "base64://" + Base64.getEncoder().encodeToString(read(file, name))));
-                send(target, message, "[图片] " + name);
+                String number = sentImages.apply(file, target.session());
+                String label = number == null ? "[图片]" : "[图片#" + number + "]";
+                send(target, message, label + " " + name);
                 log.info("agent [" + target.where() + "] sent image " + name);
-                return "Sent image " + name + " to the user.";
+                return "Sent image " + name + " to the user" + (number == null ? "." : " as " + label + " (view_image " + number + " shows it again).");
             }
             JsonObject params = destination(target);
             params.addProperty("file", file.toAbsolutePath().toString());

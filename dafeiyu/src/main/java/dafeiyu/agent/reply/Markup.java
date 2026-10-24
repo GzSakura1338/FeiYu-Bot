@@ -50,10 +50,16 @@ public record Markup(String thought, String said, List<Note> notes, List<String>
     }
 
     private static final Pattern TAG = Pattern.compile("[<＜]\\s*(/?)\\s*(內心|内心|記住|记住|承諾|承诺|去做|完成|拍一拍)([^>＞]*)[>＞]");
+    private static final Pattern THOUGHT_ALIAS = Pattern.compile("[<＜]\\s*(/?)\\s*(?!记住|記住|去做|承诺|承諾|完成|拍一拍)[^<>＜＞\\n/]{0,6}"
+            + "(?:内心|內心|心里|心裡|心声|心聲|嘀咕|独白|獨白)[^<>＜＞\\n]{0,10}[>＞]");
+    private static final Pattern THOUGHT_LINE = Pattern.compile("(?m)^[ \\t]*(?:[【\\[（(][ \\t]*(?:内心|內心)[^】\\]）)\\n]{0,4}[】\\]）)][ \\t]*[:：]?"
+            + "|(?:内心|內心)[^:：\\n]{0,4}[:：])(.*)$");
     private static final Map<String, String> SIMPLIFIED = Map.of("內心", "内心", "記住", "记住", "承諾", "承诺");
 
     static String normalize(String text) {
-        return TAG.matcher(text).replaceAll(m -> Matcher.quoteReplacement(
+        String aliased = THOUGHT_ALIAS.matcher(text).replaceAll(m -> Matcher.quoteReplacement("<" + m.group(1) + "内心>"));
+        aliased = THOUGHT_LINE.matcher(aliased).replaceAll(m -> Matcher.quoteReplacement(THOUGHT_OPEN + m.group(1).strip() + THOUGHT_CLOSE));
+        return TAG.matcher(aliased).replaceAll(m -> Matcher.quoteReplacement(
                 "<" + m.group(1) + SIMPLIFIED.getOrDefault(m.group(2), m.group(2)) + m.group(3).stripTrailing() + ">"));
     }
 
@@ -83,24 +89,42 @@ public record Markup(String thought, String said, List<Note> notes, List<String>
         }
         note.appendTail(rest);
         text = STRAY.matcher(rest.toString()).replaceAll("");
-        int open = text.indexOf(THOUGHT_OPEN);
-        if (open < 0) {
-            return new Markup("", text.replace(THOUGHT_CLOSE, "").strip(), notes, errands, poke, promises, done);
+        List<String> thoughts = new ArrayList<>();
+        StringBuilder said = new StringBuilder();
+        int at = 0;
+        while (at < text.length()) {
+            int open = text.indexOf(THOUGHT_OPEN, at);
+            int close = text.indexOf(THOUGHT_CLOSE, at);
+            if (close >= 0 && (open < 0 || close < open)) {
+                int from = Math.max(at, text.lastIndexOf('\n', close) + 1);
+                said.append(text, at, from);
+                thoughts.add(text.substring(from, close));
+                at = close + THOUGHT_CLOSE.length();
+                continue;
+            }
+            if (open < 0) {
+                said.append(text, at, text.length());
+                break;
+            }
+            said.append(text, at, open);
+            int start = open + THOUGHT_OPEN.length();
+            int closing = text.indexOf(THOUGHT_CLOSE, start);
+            int next = text.indexOf(THOUGHT_OPEN, start);
+            if (closing >= 0 && (next < 0 || closing < next)) {
+                thoughts.add(text.substring(start, closing));
+                at = closing + THOUGHT_CLOSE.length();
+            } else {
+                int newline = text.indexOf('\n', start);
+                int end = newline < 0 ? text.length() : newline;
+                if (next >= 0 && next < end) {
+                    end = next;
+                }
+                thoughts.add(text.substring(start, end));
+                at = end;
+            }
         }
-        int close = text.indexOf(THOUGHT_CLOSE, open);
-        int end;
-        int resume;
-        if (close >= 0) {
-            end = close;
-            resume = close + THOUGHT_CLOSE.length();
-        } else {
-            int newline = text.indexOf('\n', open);
-            end = newline < 0 ? text.length() : newline;
-            resume = end;
-        }
-        String thought = text.substring(open + THOUGHT_OPEN.length(), end).strip();
-        String said = (text.substring(0, open) + text.substring(resume)).replace(THOUGHT_OPEN, "").replace(THOUGHT_CLOSE, "").strip();
-        return new Markup(thought, said, notes, errands, poke, promises, done);
+        String thought = String.join(" ", thoughts.stream().map(String::strip).filter(t -> !t.isEmpty()).toList());
+        return new Markup(thought, said.toString().strip(), notes, errands, poke, promises, done);
     }
 
     public static String saidOf(String raw) {

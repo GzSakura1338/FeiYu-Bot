@@ -94,6 +94,7 @@ function toolDetail(name, args, meta) {
     case 'start_task': return args.title ?? '';
     case 'steer_task': return join(args.task && `#${String(args.task).replace('#', '')}`, STEER[args.action], args.message);
     case 'view_image': return join(args.image, args.area && `放大 ${args.area}`);
+    case 'image': return join(args.prompt, args.size, args.n > 1 && `${args.n} 张`);
     case 'qq_api_search': return args.query ? `「${args.query}」` : args.category ?? '全部分类';
     case 'qq_api_call': return args.action ?? '';
     case 'websearch': case 'search': return args.query ? `「${args.query}」` : '';
@@ -286,7 +287,9 @@ const POKE = /<拍一拍\s*\/>|<拍一拍>([\s\S]*?)(?:<\/拍一拍>|$)/g;
 
 const TAG = /[<＜]\s*(\/?)\s*(內心|内心|記住|记住|承諾|承诺|去做|完成|拍一拍)([^>＞]*)[>＞]/g;
 const SIMPLIFIED = { 內心: '内心', 記住: '记住', 承諾: '承诺' };
-const normalize = text => text.replace(TAG, (_, slash, name, rest) => `<${slash}${SIMPLIFIED[name] ?? name}${rest.trimEnd()}>`);
+const THOUGHT_ALIAS = /[<＜]\s*(\/?)\s*(?!记住|記住|去做|承诺|承諾|完成|拍一拍)[^<>＜＞\n/]{0,6}(?:内心|內心|心里|心裡|心声|心聲|嘀咕|独白|獨白)[^<>＜＞\n]{0,10}[>＞]/g;
+const normalize = text => text.replace(THOUGHT_ALIAS, (_, slash) => `<${slash}内心>`)
+  .replace(TAG, (_, slash, name, rest) => `<${slash}${SIMPLIFIED[name] ?? name}${rest.trimEnd()}>`);
 
 export function splitInner(raw) {
   const notes = [];

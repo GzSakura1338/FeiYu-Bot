@@ -28,7 +28,7 @@ public final class ChatTools {
     }
 
     public static Tool skill(ChatAgent agent, String personaId) {
-        return Tool.text(SKILL, "查看你学会的某个技能的完整做法。“【你学会的技能】”里只写了用途的技能，碰到对应的事先用它看清楚怎么做。", """
+        return Tool.text(SKILL, "查看你学会的某个技能的完整做法。“【你学会的技能】”里只列了名字，碰到对应的事先用它看清楚怎么做；记不清名字就写关键词。", """
                         {"type": "object", "properties": {
                           "name": {"type": "string", "description": "技能的名字"}
                         }, "required": ["name"]}""",

@@ -40,6 +40,7 @@ export const MIND_TOOLS = {
   answer_friend: { icon: 'person', label: '处理好友申请' },
   answer_group: { icon: 'groups', label: '处理进群' },
   view_image: { icon: 'visibility', label: '看图' },
+  image: { icon: 'palette', label: '画图' },
   subagent: { icon: 'build', label: '交给子 agent' },
   steer_task: { icon: 'build', label: '管后台任务' },
   qq_api_search: { icon: 'manage_search', label: '查 QQ 接口' },

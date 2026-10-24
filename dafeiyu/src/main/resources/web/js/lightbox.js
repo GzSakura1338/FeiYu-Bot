@@ -1,7 +1,7 @@
 import { el } from './dom.js';
 import { createIcon } from './icons.js';
 
-const ZOOMABLE = '.chat-list img:not(.avatar-img), .file-preview-body img';
+const ZOOMABLE = '.chat-list img:not(.avatar-img), .file-preview-body img, .imagegen-preview img';
 
 let dialog;
 let image;

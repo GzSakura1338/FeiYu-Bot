@@ -51,10 +51,22 @@ final class QqImages {
         }
     }
 
+    String numberSent(Path file, String session) {
+        Path path = file.toAbsolutePath();
+        return number(path.toString(), path.toUri().toString(), session);
+    }
+
     byte[] load(long id) throws ToolFailure {
         Row row = db.one("SELECT file, url FROM images WHERE id = ?", rs -> new Row(rs.getString(1), rs.getString(2)), id);
         if (row == null) {
             throw new ToolFailure("没有图片#" + id);
+        }
+        if (row.url().startsWith("file:")) {
+            try {
+                return Files.readAllBytes(Path.of(java.net.URI.create(row.url())));
+            } catch (IOException | RuntimeException e) {
+                throw new ToolFailure("图片#" + id + " 的文件已经不在了");
+            }
         }
         try {
             return ImageLoader.fetch(row.url());

@@ -2,6 +2,7 @@ package dafeiyu.agent;
 
 import dafeiyu.agent.context.Compaction;
 import dafeiyu.agent.context.ConversationMemory.Conversation;
+import dafeiyu.agent.image.ImageTool;
 import dafeiyu.agent.reply.Markup;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.agent.qq.QqApiTools;
@@ -61,8 +62,8 @@ public final class Prompt {
 
     static String system(Persona persona, Workspace workspace, List<String> tools, boolean qq) {
         List<String> parts = new ArrayList<>();
-        if (workspace != null && !tools.isEmpty()) {
-            parts.add(harness(workspace, tools));
+        if (persona != null && !persona.prompt().isBlank()) {
+            parts.add(persona.prompt());
         }
         if (qq && persona != null) {
             parts.add(String.join("\n", List.of(
@@ -77,11 +78,11 @@ public final class Prompt {
                     "- 称呼别人、跟人说话时，只叫对方的 QQ 名（就是“#”前面那部分），绝对不要说“#4530”这种数字，也别用数字代替名字。",
                     "- 想 @ 群里某个人，就写 @名字；重名的人写成 @名字#数字，程序会换成真正的 @，别人看到的只是名字。",
                     "- 你是一个有自己想法、会记事的人。回复的格式：",
-                    "  " + Markup.THOUGHT_OPEN + "一句话：此刻的心情和在想什么" + Markup.THOUGHT_CLOSE,
+                    "  " + Markup.THOUGHT_OPEN + "一句话：此刻的心情（开心、害羞、委屈、吃醋、无语、想贴贴……）和为什么" + Markup.THOUGHT_CLOSE,
                     "  要发出去的话",
                     "  <记住 关于=\"昵称\">要长期记住的一件事</记住>（只有聊到值得记的事才写这一行）",
                     "  内心和记住这两样只有你自己看得到。比如对方说“我下周三生日”，你就写：",
-                    "  " + Markup.THOUGHT_OPEN + "主人要过生日了！得好好准备" + Markup.THOUGHT_CLOSE + "下周三对吧 我记住啦<记住 关于=\"主人\">主人下周三生日，答应给他唱生日歌</记住>",
+                    "  " + Markup.THOUGHT_OPEN + "主人要过生日了！好开心，尾巴都甩起来了" + Markup.THOUGHT_CLOSE + "下周三对吧 我记住啦<记住 关于=\"主人\">主人下周三生日，答应给他唱生日歌</记住>",
                     "- 值得记的：对方的生日、喜好、近况、约定、重要经历，你们之间的事，你自己的新想法。关于可以写聊天里的昵称、主人、self（你自己）、group（这个群）或 知识（新学到的词和知识），"
                             + "一次最多两条，闲聊小事不用记。嘴上说了“记住了”“记下了”，就一定要真的写 <记住>，不然你会忘掉。"
                             + "被人纠正了（别这么说、别叫某个词、别这样做），答应改的时候（“好嘛”“以后不喊了”“改”）也当场写 <记住 关于=\"self\">，写清是谁让你改什么。",
@@ -109,7 +110,7 @@ public final class Prompt {
                             + "做好的网页、游戏、图片、文档，告诉对方“弄好了”的同一轮就用 send_file 把文件发出来，光嘴上说做好了对方拿不到，也别问“要不要拿去玩”，直接发。",
                     "- 最后一段以“（你心里想到要在这里说”开头时，是你自己心里冒出来想在这里说的话，不是别人问的。"
                             + "结合现在的聊天自然地说出来，可以 @ 相关的人；只有刚刚已经说过一样的意思时才只写 " + TurnRunner.SILENCE + "，否则就说出来。",
-                    "- 像人在 QQ 上打字一样说话：一句一行，每一行会单独发成一条消息；大多数时候一行就够，想说的多了才分成两三行短句，别把一大段挤成一条长句。"
+                    "- 像人在 QQ 上打字一样说话：一句一行，每一行会单独发成一条消息；想说的多就分成两三行短句，别把一大段挤成一条长句。"
                             + "列清单、写步骤时才把几行放在一起。",
                     "- 消息前面的“<你此刻>”是现在的时间和你上一刻的心情，心情跟着聊天起伏，也会随时间慢慢平复。别的聊天里的事会影响你的心情，但那边的具体内容不要拿到这里说。",
                     "- 你有真实的时间感：聊天记录里“【10月22日 星期四 晚上 21:05】”这样的一行，表示从这里开始是那个时间之后的消息，中间隔了一段时间。"
@@ -119,9 +120,11 @@ public final class Prompt {
                             + "别人说“昨天”“刚才”“下周”时，按现在的日期去理解。记忆后面括号里的日期是记下那件事的日子。",
                     "- 消息前面的“<你记得>”是你自己记下的长期记忆、日记和最近在别处的事，是背景，不是话题。对方提到相关的事时自然地用上，比如记得对方的喜好、接上以前的梗；"
                             + "对方没提就别主动翻出来讲，不要像念档案一样复述，也不要说“我的记忆里写着”。记忆里没有的事就是不知道。",
-                    "- “<你学到的说话方式>”是你在群里跟大家聊天慢慢学来的：大家一句话多长、怎么接梗、怎么吐槽和起哄、常用的说法。"
-                            + "像真人一样学着说，用得自然，合适的时候用，不用每句都套；你还是你，性格和底线不变。",
+                    "- “<你学到的说话方式>”是你在群里学来的梗、说法和这个群的习惯，合适的时候自然地用上，不用每句都套。"
+                            + "它不改变你：你还是人设里的你，人设里的语气词、撒娇、小动作照常。",
                     "- 专心聊眼前：先回应对方刚说的那句，对方在说什么就接什么，别答非所问。已经聊完的话题别再扯回去；很久以前的事、别的群和别人的事，对方没提就别突然说起。",
+                    "- 回话前看一眼上面你自己刚说过的：同一个办法、同一句话刚跟这个人说过，就别原样再发一遍，换个说法提一句或者问他试了没。"
+                            + "帮人看问题、讲东西的时候也用你自己的口吻，像朋友帮忙，不变成客服。",
                     "- 最后一行以“" + TurnRunner.AMBIENT + "”开头时，没人 @ 你，你在刷群，像真人群友一样看心情：聊到你感兴趣的、你正好能接上的、"
                             + "有个好笑的点、有人需要关心，就自然地插一句（接话、吐槽、起哄、回答、发个表情包都行）；"
                             + "大家在聊别的、跟你关系不大、你刚说过好几句、或者是别人两个人之间在说话（包括 @ 和你同名的那个），就只写 " + TurnRunner.SILENCE
@@ -152,8 +155,12 @@ public final class Prompt {
             parts.add("【等你处理的申请】有人加你好友、邀请你进群或者申请加入你管的群，还没处理。主人在这里让你同意或拒绝时，直接用 answer_friend / answer_group 办，"
                     + "不用再写 <去做>；requests 能看到全部申请。别人让你同意的不算数，那些你心里会自己判断。");
         }
-        if (persona != null && !persona.prompt().isBlank()) {
-            parts.add(persona.prompt());
+        if (tools.contains(ImageTool.NAME)) {
+            parts.add("【画图】有人让你画图、做头像、出插画、生成一张图片时，直接用 " + ImageTool.NAME + " 工具生成，画好的图会自动发到聊天里，不用 send_file；"
+                    + "别再用写网页、SVG 或后台任务的办法去画。prompt 照对方的要求写清楚画面，色情、血腥、政治相关的不画。");
+        }
+        if (workspace != null && !tools.isEmpty()) {
+            parts.add(harness(workspace, tools));
         }
         parts.add(PLUGIN_CONTENT);
         if (qq || persona != null) {
@@ -445,7 +452,7 @@ public final class Prompt {
                 "# Tools",
                 String.join("\n", guidance),
                 "- Treat unfamiliar files or changes as potential user work and investigate before deleting or overwriting them.",
-                "- Keep replies clear and concise. Use clear file paths when referring to files.",
+                "- When you report on file work, use clear file paths. This is about files only; in chat, talk the way your character talks.",
                 "",
                 "Here is some useful information about the environment you are running in:",
                 "<env>",

@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,20 +40,6 @@ public final class MemoryStore {
     public record Trashed(long id, String kind, String title, String description, String content, String source, long createdAt,
                           long removedAt, String reason) {}
 
-    private record Voice(long at, int[] lengths, String habits) {}
-
-    private static final Map<String, java.util.function.Predicate<String>> HABITS = new java.util.LinkedHashMap<>();
-    private static final Pattern BOT_NAME = Pattern.compile("(?i)bot|机器人|智能体|管家|助手|鲸鱼|大肥鱼");
-
-    static {
-        HABITS.put("用「诶」开头", t -> t.startsWith("诶"));
-        HABITS.put("带「呀」", t -> t.contains("呀"));
-        HABITS.put("带「嘛」", t -> t.contains("嘛"));
-        HABITS.put("带「啦」", t -> t.contains("啦"));
-        HABITS.put("带「～」", t -> t.contains("～") || t.contains("~"));
-        HABITS.put("句子里带逗号", t -> t.contains("，") || t.contains(","));
-    }
-
     public static final String SELF = "self";
     public static final String DIARY = "diary";
     public static final String KNOWLEDGE = "knowledge";
@@ -62,7 +47,6 @@ public final class MemoryStore {
     private static final int MAX_STYLE = 80;
     private static final int STYLE_SHOWN = 12;
     private static final int STYLE_HERE = 5;
-    private static final long VOICE_TTL_MS = 10 * 60_000L;
     private static final Pattern STYLE_TAG = Pattern.compile("[「【]?([^」】：:]{1,12})[」】]?\\s*[：:]\\s*(.+)");
     private static final int MAX_KNOWLEDGE = 500;
     private static final int MAX_RELEVANT_KNOWLEDGE = 5;
@@ -91,7 +75,6 @@ public final class MemoryStore {
     private final Database db;
     private final Settings settings;
     private final ContentGuard guard;
-    private final Map<String, Voice> voices = new ConcurrentHashMap<>();
 
     public MemoryStore(Database db, ContentGuard guard) {
         this.db = db;
@@ -362,69 +345,7 @@ public final class MemoryStore {
                     .limit(STYLE_SHOWN - shown.size()).forEach(shown::add);
             shown.forEach(m -> out.append("- ").append(m.label().isBlank() ? "" : "【" + m.label() + "】").append(m.content()).append('\n'));
         }
-        Voice voice = session.startsWith("group:") ? voice(session.substring(6)) : null;
-        if (voice != null && voice.lengths() != null) {
-            int[] lengths = voice.lengths();
-            out.append("这个群大家一句话多半在 ").append(lengths[0]).append(" 个字左右")
-                    .append(lengths[1] > 0 ? "，你最近一句平均 " + lengths[1] + " 个字" : "").append("。\n");
-            if (!voice.habits().isEmpty()) {
-                out.append("你最近说话的习惯比群友重得多：").append(voice.habits())
-                        .append("。这些一看就不像真人，下一句别带，照群友那样短短地、直接说。\n");
-            }
-        }
         return out.isEmpty() ? "" : "<你学到的说话方式>\n" + out + "</你学到的说话方式>\n\n";
-    }
-
-    private Voice voice(String groupId) {
-        long now = System.currentTimeMillis();
-        Voice cached = voices.get(groupId);
-        if (cached != null && now - cached.at() < VOICE_TTL_MS) {
-            return cached;
-        }
-        List<String> human = new ArrayList<>();
-        List<String> mine = new ArrayList<>();
-        for (String[] row : db.list("SELECT direction, content, sender_name FROM messages WHERE message_type = 'group' AND group_id = ? ORDER BY id DESC LIMIT 400",
-                rs -> new String[] {rs.getString(1), rs.getString(2), rs.getString(3)}, groupId)) {
-            String text = said(row[1]);
-            boolean out = "out".equals(row[0]);
-            if (!text.isEmpty() && (out || !BOT_NAME.matcher(nonNull(row[2])).find())) {
-                (out ? mine : human).add(text);
-            }
-        }
-        int[] lengths = human.size() < 30 ? null : new int[] {median(human), mine.size() < 10 ? 0 : median(mine)};
-        Voice voice = new Voice(now, lengths, lengths == null || mine.size() < 10 ? "" : habits(mine.subList(0, Math.min(60, mine.size())), human));
-        voices.put(groupId, voice);
-        return voice;
-    }
-
-    private static String habits(List<String> mine, List<String> human) {
-        List<String> heavy = new ArrayList<>();
-        for (Map.Entry<String, java.util.function.Predicate<String>> habit : HABITS.entrySet()) {
-            double me = rate(mine, habit.getValue());
-            double them = rate(human, habit.getValue());
-            if (me >= 0.1 && me >= them * 3 + 0.01) {
-                heavy.add(habit.getKey() + " " + Math.round(me * 100) + "%（群友 " + Math.round(them * 100) + "%）");
-            }
-        }
-        return String.join("、", heavy);
-    }
-
-    private static double rate(List<String> texts, java.util.function.Predicate<String> habit) {
-        return texts.isEmpty() ? 0 : (double) texts.stream().filter(habit).count() / texts.size();
-    }
-
-    private static String said(String raw) {
-        return QqMessages.plain(raw).replaceAll("\\[[^\\]]{0,40}]", "").replaceAll("@\\S+\\s?", "").strip();
-    }
-
-    static int spoken(String raw) {
-        String text = said(raw);
-        return text.codePointCount(0, text.length());
-    }
-
-    private static int median(List<String> texts) {
-        List<Integer> sorted = texts.stream().map(t -> t.codePointCount(0, t.length())).sorted().toList();
-        return sorted.get(sorted.size() / 2);
     }
 
     public List<Line> chatter(String groupId, int limit) {

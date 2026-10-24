@@ -368,6 +368,16 @@ body {
 @media (prefers-reduced-motion: reduce) { .select-trigger, .select-trigger-arrow { transition: none; } }
 
 .field-row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.field-row-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.imagegen-form { display: flex; flex-direction: column; gap: 4px; padding: 4px 24px 16px; }
+.imagegen-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 4px; }
+.imagegen-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0; padding: 0 24px 20px; }
+.imagegen-preview[hidden] { display: none; }
+.imagegen-preview img {
+  max-width: min(320px, 100%); border-radius: var(--md-sys-shape-corner-large); cursor: zoom-in;
+  animation: badge-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+.imagegen-preview figcaption { color: var(--md-sys-color-on-surface-variant); }
 .sub-tabs { align-self: stretch; }
 .agent-view, .settings-view { display: flex; flex-direction: column; gap: var(--gap); }
 .agent-view[hidden], .settings-view[hidden] { display: none; }
@@ -978,7 +988,7 @@ body {
 }
 
 @media (max-width: 599px) {
-  .field-row-3 { grid-template-columns: 1fr; }
+  .field-row-3, .field-row-2 { grid-template-columns: 1fr; }
   .persona-identity { flex-direction: column; align-items: stretch; }
   .sub-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .sub-tabs .tab { flex: 1 0 auto; padding: 0 12px; font-size: 14px; white-space: nowrap; }

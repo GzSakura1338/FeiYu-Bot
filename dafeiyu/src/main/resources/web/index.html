@@ -768,6 +768,52 @@
         </ul>
         <div class="qqapi-groups" id="qqapi-groups"></div>
       </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">生图</h2></div>
+        <p class="panel-desc body-medium">开启后她多一个 image 工具：有人让她画图、做头像、出插画时直接调用生图模型，画好的图自动发到当前聊天（QQ 和网页测试对话都行），设了工作目录的话还会在「作品/生图」里存一份。画之前提示词先过内容审核。接口是 OpenAI 格式的 /images/generations。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="palette"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">启用</div>
+              <div class="list-supporting body-medium" id="imagegen-hint">关着时她看不到 image 工具</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="imagegen-enabled" aria-checked="false" aria-label="启用生图"><span class="switch-handle"></span></button>
+          </li>
+        </ul>
+        <form class="imagegen-form" id="imagegen-form" novalidate autocomplete="off">
+          <div class="text-field" data-field="baseUrl">
+            <div class="text-field-box"><input id="imagegen-url" name="baseUrl" placeholder=" " spellcheck="false"><label for="imagegen-url">接口地址</label></div>
+            <span class="supporting body-small" data-hint="例如 https://api.ginka.cloud/v1，会请求它下面的 /images/generations"></span>
+          </div>
+          <div class="text-field" data-field="apiKey">
+            <div class="text-field-box">
+              <input id="imagegen-key" name="apiKey" type="password" placeholder=" " spellcheck="false" autocomplete="new-password">
+              <label for="imagegen-key">API Key</label>
+              <button type="button" class="icon-button state-layer" id="imagegen-key-eye" title="显示" aria-label="显示 API Key"><svg data-icon="visibility"></svg></button>
+            </div>
+            <span class="supporting body-small" data-hint="还没保存 Key"></span>
+          </div>
+          <div class="field-row-2">
+            <div class="text-field" data-field="model">
+              <div class="text-field-box"><input id="imagegen-model" name="model" placeholder=" " spellcheck="false"><label for="imagegen-model">模型</label></div>
+              <span class="supporting body-small" data-hint="例如 gpt-image-2.5-sunburst"></span>
+            </div>
+            <div class="text-field" data-field="size">
+              <div class="text-field-box"><input id="imagegen-size" name="size" placeholder=" " spellcheck="false"><label for="imagegen-size">默认尺寸</label></div>
+              <span class="supporting body-small" data-hint="1024x1024；她也可以按要求画横图、竖图"></span>
+            </div>
+          </div>
+          <div class="imagegen-actions">
+            <button type="button" class="tonal-button label-large state-layer" id="imagegen-test"><svg data-icon="auto_awesome" class="icon-18"></svg>试画一张</button>
+            <button type="submit" class="filled-button filled-button-medium state-layer" id="imagegen-save" disabled>保存</button>
+          </div>
+        </form>
+        <figure class="imagegen-preview" id="imagegen-preview" hidden>
+          <img alt="试画的图">
+          <figcaption class="body-small"></figcaption>
+        </figure>
+      </div>
     </div>
 
     <div class="settings-view" data-view="appearance" hidden>

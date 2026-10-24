@@ -8,6 +8,7 @@ import dafeiyu.agent.context.Compactor;
 import dafeiyu.agent.context.Compactor.Trigger;
 import dafeiyu.agent.context.ConversationMemory;
 import dafeiyu.agent.context.ConversationMemory.Conversation;
+import dafeiyu.agent.image.ImageTool;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
 import dafeiyu.agent.reply.Markup;
@@ -180,6 +181,9 @@ public final class TurnRunner {
         }
         if (byOwner() || "web".equals(turn.source())) {
             set.addAll(agent.ownerTools());
+        }
+        if (agent.imageGen().config().ready()) {
+            set.add(ImageTool.tool(agent));
         }
         if (capabilities.vision(profile, protocol)) {
             set.add(new ImageViewer(agent, set.has("read")));

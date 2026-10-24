@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -33,7 +32,7 @@ public final class SkillStore {
     public static final int MAX_DESCRIPTION = 200;
     public static final int MAX_CONTENT = 3000;
     private static final int MAX_SKILLS = 200;
-    private static final int PROMPT_BUDGET = 24_000;
+    private static final int PROMPT_LISTED = 60;
     private static final double RELEVANT = 0.3;
     private static final int MAX_RELEVANT = 3;
     private static final String COLUMNS = "id, name, description, content, source, created_at, updated_at";
@@ -141,8 +140,8 @@ public final class SkillStore {
                 .findFirst().orElse(null);
         if (hit == null && !n.isEmpty()) {
             Set<String> words = Texts.bigrams(n);
-            hit = all.stream().filter(s -> s.name().contains(n) || n.contains(s.name()) || score(s, words) >= 0.6)
-                    .max(Comparator.comparingDouble(s -> score(s, words))).orElse(null);
+            hit = all.stream().filter(s -> s.name().contains(n) || n.contains(s.name()) || match(s, words) >= 0.6)
+                    .max(Comparator.comparingDouble(s -> match(s, words))).orElse(null);
         }
         if (hit == null) {
             return null;
@@ -174,24 +173,17 @@ public final class SkillStore {
         if (skills.isEmpty()) {
             return new Rendered("", List.of());
         }
-        StringBuilder out = new StringBuilder("【你学会的技能】\n这些是你以前在聊天里学会、总结下来的本事。碰到对应的事就照着做，别再从头摸索；做法过时了也没关系，回顾时会更新。"
-                + "只写了用途的技能，碰到对应的事时用 skill 工具按名字查看详细做法（有时也会直接放在“<用得上的技能>”里给你）。\n");
-        List<Skill> brief = new ArrayList<>();
-        int used = out.length();
-        for (Skill s : skills) {
-            String full = full(s);
-            boolean fits = used + full.length() <= PROMPT_BUDGET;
-            String piece = fits ? full
-                    : used <= PROMPT_BUDGET + 4_000
-                    ? "\n## " + s.name() + "\n" + (s.description().isEmpty() ? abbreviate(s.content().strip(), 80) : "什么时候用：" + s.description()) + "\n"
-                    : "\n## " + s.name() + "\n";
-            if (!fits) {
-                brief.add(s);
-            }
-            out.append(piece);
-            used += piece.length();
+        StringBuilder out = new StringBuilder("【你学会的技能】\n你以前做事时总结下来的做法，这里只列名字。碰到对应的事，用 skill 工具按名字看完整做法；"
+                + "跟眼前特别相关的会直接放在“<用得上的技能>”里。\n");
+        out.append(String.join("；", skills.stream().limit(PROMPT_LISTED).map(Skill::name).toList()));
+        if (skills.size() > PROMPT_LISTED) {
+            out.append("……还有 ").append(skills.size() - PROMPT_LISTED).append(" 个，用 skill 写关键词也能找到");
         }
-        return new Rendered(out.toString().strip(), brief);
+        return new Rendered(out.toString(), skills);
+    }
+
+    private static double match(Skill s, Set<String> words) {
+        return Math.max(score(s, words), Texts.overlap(words, Texts.bigrams(s.name() + s.description())));
     }
 
     private static double score(Skill s, Set<String> words) {

@@ -21,6 +21,9 @@ public final class QqText {
     private static final Pattern MD_LINK = Pattern.compile("\\[([^\\[\\]]+)]\\((https?://[^)\\s]+)\\)");
     private static final Pattern INLINE_CODE = Pattern.compile("(?<!`)`([^`\\n]+)`(?!`)");
     private static final Pattern SPACES = Pattern.compile("[ \\t]{2,}");
+    private static final Pattern STAGE_DIRECTION = Pattern.compile("\\s*[（(][\\p{IsHan}、，…·\\s]{1,12}[）)]");
+    private static final Pattern STICKER_TAG = Pattern.compile("[<＜]\\s*表情包\\s*[:：#]?\\s*#?(\\d+)\\s*/?\\s*[>＞]");
+    private static final Pattern HAN_TAG = Pattern.compile("[<＜]\\s*/?\\s*\\p{IsHan}[^<>＜＞\\n]{0,20}[>＞]");
 
     private QqText() {}
 
@@ -102,6 +105,8 @@ public final class QqText {
                 line = HEADING.matcher(line).replaceFirst("").replace("**", "").replace("__", "");
                 line = HTML_TAG.matcher(HTML_BREAK.matcher(line).replaceAll(" ")).replaceAll("");
                 line = INLINE_CODE.matcher(MD_LINK.matcher(line).replaceAll("$1 $2")).replaceAll("$1");
+                line = HAN_TAG.matcher(STICKER_TAG.matcher(line).replaceAll("[表情包:$1]")).replaceAll("");
+                line = STAGE_DIRECTION.matcher(line).replaceAll("");
                 line = SPACES.matcher(STRAY_TAIL.matcher(line).replaceAll("$1")).replaceAll(" ").stripTrailing();
             }
             out.append(out.isEmpty() ? "" : "\n").append(line);

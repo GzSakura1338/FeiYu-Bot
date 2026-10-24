@@ -4,6 +4,7 @@ import dafeiyu.agent.context.Compaction;
 import dafeiyu.agent.context.Compactor;
 import dafeiyu.agent.context.ConversationMemory;
 import dafeiyu.agent.context.HeldLines;
+import dafeiyu.agent.image.ImageGen;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
@@ -48,6 +49,7 @@ public final class ChatAgent {
     private final StickerKeeper stickers;
     private final Intercom intercom;
     private final HeldLines held;
+    private final ImageGen imageGen;
     private final BackgroundTasks tasks;
     private final SessionMonitor monitor = new SessionMonitor();
     private final Map<String, ReentrantLock> sessions = new ConcurrentHashMap<>();
@@ -71,6 +73,11 @@ public final class ChatAgent {
         this.intercom = new Intercom(db);
         this.held = new HeldLines(db);
         this.tasks = new BackgroundTasks(this, db);
+        this.imageGen = new ImageGen(db);
+    }
+
+    public ImageGen imageGen() {
+        return imageGen;
     }
 
     public BackgroundTasks tasks() {
