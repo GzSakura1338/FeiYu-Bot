@@ -23,6 +23,8 @@ final class GroupState {
     private static final long STREAK_GAP_MS = 3 * 60_000;
     private static final int STREAK_LIMIT = 4;
     private static final long STREAK_COOLDOWN_MS = 5 * 60_000;
+    private static final long BOT_CHAT_WINDOW_MS = 10 * 60_000;
+    private static final int BOT_CHAT_LIMIT = 2;
 
     final String groupId;
     private final Deque<Line> buffer = new ArrayDeque<>();
@@ -32,6 +34,7 @@ final class GroupState {
     private final Map<String, String> lastMessage = lru(300);
     private final Map<String, Boolean> botMessages = lru(100);
     private final Deque<Long> botTimes = new ArrayDeque<>();
+    private final Deque<Long> botChats = new ArrayDeque<>();
     private long lastBotAt;
     private String streakUser = "";
     private int streak;
@@ -145,6 +148,23 @@ final class GroupState {
 
     synchronized boolean hasNewLines() {
         return buffer.stream().anyMatch(l -> !l.seen());
+    }
+
+    synchronized List<Line> unseen() {
+        return buffer.stream().filter(l -> !l.seen()).toList();
+    }
+
+    synchronized void chattedWithBots() {
+        long now = System.currentTimeMillis();
+        botChats.addLast(now);
+        while (!botChats.isEmpty() && now - botChats.peekFirst() > BOT_CHAT_WINDOW_MS) {
+            botChats.removeFirst();
+        }
+    }
+
+    synchronized boolean tiredOfBots() {
+        long now = System.currentTimeMillis();
+        return botChats.stream().filter(t -> now - t < BOT_CHAT_WINDOW_MS).count() >= BOT_CHAT_LIMIT;
     }
 
     synchronized boolean consumed(java.util.Collection<String> texts) {

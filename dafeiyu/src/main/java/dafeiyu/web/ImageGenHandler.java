@@ -1,5 +1,6 @@
 package dafeiyu.web;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import dafeiyu.agent.ChatAgent;
@@ -10,6 +11,7 @@ import dafeiyu.log.LogBuffer;
 
 import java.io.IOException;
 import java.util.Base64;
+import java.util.List;
 
 final class ImageGenHandler {
 
@@ -19,6 +21,8 @@ final class ImageGenHandler {
     private record UpdateRequest(Boolean enabled, String baseUrl, String apiKey, String model, String size) {}
 
     private record TestRequest(String prompt) {}
+
+    private record ModelsRequest(String baseUrl, String apiKey) {}
 
     private final ChatAgent agent;
     private final LogBuffer log;
@@ -44,6 +48,23 @@ final class ImageGenHandler {
                 HttpResponses.json(ex, state(saved));
             } else if (rest.equals("/test") && method.equals("POST") && Requests.isJson(ex)) {
                 test(ex, Requests.readJson(ex, TestRequest.class));
+            } else if (rest.equals("/models") && method.equals("POST") && Requests.isJson(ex)) {
+                ModelsRequest body = Requests.readJson(ex, ModelsRequest.class);
+                try {
+                    List<String> models = agent.imageGen().listModels(body.baseUrl(), body.apiKey());
+                    JsonObject out = new JsonObject();
+                    JsonArray list = new JsonArray();
+                    for (String id : models) {
+                        JsonObject o = new JsonObject();
+                        o.addProperty("id", id);
+                        o.addProperty("image", ImageGen.imageModel(id));
+                        list.add(o);
+                    }
+                    out.add("models", list);
+                    HttpResponses.json(ex, out.toString());
+                } catch (ToolFailure e) {
+                    HttpResponses.json(ex, 502, error(e.getMessage()));
+                }
             } else {
                 HttpResponses.json(ex, 405, error("不支持这个请求"));
             }

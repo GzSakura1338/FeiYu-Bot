@@ -417,6 +417,11 @@ public final class Prompt {
                     + "relevant passages. Follow links from the list at the end of the page to dig deeper. "
                     + "Say what the page actually says; if the fetch fails, tell the user instead of guessing.");
         }
+        if (tools.contains("download")) {
+            guidance.add("- Use the download tool when you need an actual file from the internet (someone shares a link to an archive, installer, mod, "
+                    + "image, PDF or dataset, or a task needs a resource): it saves the file into 下载/ in the working directory. Use webfetch only to read web pages. "
+                    + "To hand the file to someone, download it and then send it with send_file.");
+        }
         if (tools.contains(ImageViewer.NAME)) {
             guidance.add("- Use view_image to look at an image again or zoom into part of it (screenshots, small text, long images, charts): "
                     + "view the whole image first, it comes with a 4×4 grid, then pass area such as B2 or B2:C3.");

@@ -44,6 +44,10 @@ import static dafeiyu.util.Texts.abbreviate;
 final class MindTools {
 
     private static final int MAX_STEPS = 8;
+    private static final int SEARCHES_PER_HOUR = 20;
+    private static final long SEARCH_WINDOW_MS = 3_600_000;
+    private static final java.util.Deque<Long> SEARCHES = new java.util.ArrayDeque<>();
+    private static final int MAX_DIARY_NOTE = 300;
     private static final String SUBAGENT = "subagent";
     private static final Pattern KNOWN_TERM = Pattern.compile("\\s*[「“\"']?[^」”\"'：:\\n]{1,30}[」”\"']?\\s*[：:]\\s*.+", Pattern.DOTALL);
     private static final Pattern AFTER = Pattern.compile("(\\d{1,4})\\s*(分钟|小时|天)后?");
@@ -74,7 +78,7 @@ final class MindTools {
         set.addAll(bridge.requests().tools());
         set.add(Toolbox.get("webfetch"));
         if (agent.vision()) {
-            set.add(new ImageViewer(agent, false));
+            set.add(new ImageViewer(agent, true));
         }
         set.addAll(agent.extensions().tools(false, true, Set.copyOf(agent.workspaces().config().enabled())));
         set.add(subagentTool());
@@ -148,9 +152,10 @@ final class MindTools {
                           "again": {"type": "boolean", "description": "被提醒“已经交过了”之后，确实还要再交时才填 true"}
                         }, "required": ["group_id", "intent"]}""",
                         (args, context) -> tellGroup(args.group("group_id"), args.text("intent"), args.bool("again", false))),
-                Tool.text("remember", "把值得长期记住的事记下来。about 写 self、group:群号、user:QQ号，或者 knowledge（搜到的新词、新知识）。", """
+                Tool.text("remember", "把值得长期记住的事记下来。about 写 self、group:群号、user:QQ号、knowledge（搜到的新词、新知识），"
+                        + "或者 diary（往今天的日记里补一两句，整天的日记回顾时会自动写）。", """
                         {"type": "object", "properties": {
-                          "about": {"type": "string", "description": "self、group:群号、user:QQ号 或 knowledge"},
+                          "about": {"type": "string", "description": "self、group:群号、user:QQ号、knowledge 或 diary"},
                           "term": {"type": "string", "description": "about 是 knowledge 时写：这个词、这个东西叫什么（比如「弓头鲸」），以后聊天里有人提到它你就会想起来"},
                           "text": {"type": "string", "description": "要记住的一件事，30 字左右；knowledge 写它的意思、关键知识"}
                         }, "required": ["about", "text"]}""",
@@ -233,6 +238,18 @@ final class MindTools {
     }
 
     private static String search(String query) throws ToolFailure {
+        synchronized (SEARCHES) {
+            long now = System.currentTimeMillis();
+            while (!SEARCHES.isEmpty() && now - SEARCHES.peekFirst() > SEARCH_WINDOW_MS) {
+                SEARCHES.removeFirst();
+            }
+            if (SEARCHES.size() >= SEARCHES_PER_HOUR) {
+                long minutes = (SEARCH_WINDOW_MS - (now - SEARCHES.peekFirst())) / 60_000 + 1;
+                return "（这一小时已经搜了 " + SEARCHES_PER_HOUR + " 次，再搜搜索服务要限流了。先歇一歇，大约 " + minutes
+                        + " 分钟后再搜；这会儿用你已经知道的、记下的去想。）";
+            }
+            SEARCHES.addLast(now);
+        }
         return WebSearch.render(query, WebSearch.search(query, 5));
     }
 
@@ -374,7 +391,10 @@ final class MindTools {
         if (text.isEmpty()) {
             throw new ToolFailure("要记的内容是空的");
         }
-        String scope = scope(about, false);
+        String scope = scope(about, true);
+        if (scope.equals(MemoryStore.DIARY) && text.length() > MAX_DIARY_NOTE) {
+            throw new ToolFailure("往日记里补一两句就好（" + MAX_DIARY_NOTE + " 字以内）；一整天的日记回顾时会自动写");
+        }
         if (scope.equals(MemoryStore.KNOWLEDGE) && !term.isEmpty()) {
             text = "「" + term.replaceAll("^[「“\"']+|[」”\"']+$", "") + "」：" + text;
         } else if (scope.equals(MemoryStore.KNOWLEDGE) && !KNOWN_TERM.matcher(text).matches()) {

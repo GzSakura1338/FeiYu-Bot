@@ -11,6 +11,7 @@ import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Locale;
@@ -44,6 +45,74 @@ public final class PublicWeb {
     private static volatile long proxyCheckedAt;
 
     private PublicWeb() {}
+
+    public record Saved(URI uri, String type, String disposition, long size) {}
+
+    static Saved save(String url, Path file, long maxBytes, Duration total) throws ToolFailure {
+        URI uri = parse(url);
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            checkPublic(uri);
+            HttpRequest request = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(30))
+                    .header("User-Agent", BROWSER)
+                    .header("Accept", "*/*")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response = send(request, uri.getHost());
+            int status = response.statusCode();
+            if (status >= 300 && status < 400) {
+                String location = response.headers().firstValue("Location").orElse(null);
+                close(response);
+                if (location == null) {
+                    throw new ToolFailure("服务器要跳转但没给地址（HTTP " + status + "）");
+                }
+                uri = parse(uri.resolve(location.strip().replace(" ", "%20")).toString());
+                continue;
+            }
+            if (status >= 400) {
+                close(response);
+                throw new ToolFailure("下载失败：HTTP " + status);
+            }
+            long declared = response.headers().firstValueAsLong("Content-Length").orElse(-1);
+            if (declared > maxBytes) {
+                close(response);
+                throw new ToolFailure("文件太大了（" + declared / 1024 / 1024 + " MB，上限 " + maxBytes / 1024 / 1024 + " MB）");
+            }
+            InputStream in = response.body();
+            Future<Long> copying = READERS.submit(() -> {
+                long written = 0;
+                byte[] buffer = new byte[64 * 1024];
+                try (in; java.io.OutputStream out = java.nio.file.Files.newOutputStream(file)) {
+                    for (int n; (n = in.read(buffer)) > 0; ) {
+                        written += n;
+                        if (written > maxBytes) {
+                            throw new IOException("文件太大了（超过 " + maxBytes / 1024 / 1024 + " MB）");
+                        }
+                        out.write(buffer, 0, n);
+                    }
+                }
+                return written;
+            });
+            try {
+                long size = copying.get(total.toMillis(), TimeUnit.MILLISECONDS);
+                String type = response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT);
+                return new Saved(uri, type, response.headers().firstValue("Content-Disposition").orElse(""), size);
+            } catch (TimeoutException e) {
+                copying.cancel(true);
+                close(response);
+                throw new ToolFailure("下载太慢了，" + total.toMinutes() + " 分钟还没下完");
+            } catch (ExecutionException e) {
+                throw new ToolFailure("下载中断了：" + (e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
+            } catch (InterruptedException e) {
+                copying.cancel(true);
+                close(response);
+                Thread.currentThread().interrupt();
+                throw new ToolFailure("下载被取消了");
+            }
+        }
+        throw new ToolFailure("跳转次数太多");
+    }
 
     public static byte[] download(String url, int maxBytes) throws ToolFailure {
         Response response = get(url, "image/avif,image/webp,image/*,*/*;q=0.8", maxBytes, Duration.ofSeconds(30));

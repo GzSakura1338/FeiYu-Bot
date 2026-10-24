@@ -97,7 +97,7 @@ public final class ImageViewer implements Tool {
         String ref = args.text("image");
         String area = args.text("area");
         boolean grid = args.bool("grid", true);
-        Workspace workspace = workspaceFiles ? context.workspace() : null;
+        Workspace workspace = !workspaceFiles ? null : context.workspace() != null ? context.workspace() : agent.workspaces().workspace();
         try {
             if (ref.isEmpty()) {
                 throw new ToolFailure("要看哪张图？聊天里的图填编号（[图片#12] 就填 12），网页上的图填网址");
@@ -162,7 +162,16 @@ public final class ImageViewer implements Tool {
         if (number.matches()) {
             long id = Long.parseLong(number.group(1));
             name[0] = "图片#" + id;
-            return agent.image(id);
+            try {
+                return agent.image(id);
+            } catch (ToolFailure e) {
+                StickerStore.Sticker s = e.getMessage().startsWith("没有图片") ? agent.stickers().store().get(id) : null;
+                if (s == null || s.hidden() || s.status().equals("unsafe") || s.file().isEmpty()) {
+                    throw e;
+                }
+                name[0] = "表情包#" + id;
+                return read(agent.stickers().store().path(s));
+            }
         }
         if (workspace == null) {
             throw new ToolFailure("不知道「" + ref + "」是哪张图：聊天里的图填编号（[图片#12] 就填 12），网页上的图填网址");

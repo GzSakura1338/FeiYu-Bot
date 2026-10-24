@@ -780,6 +780,21 @@
             </div>
             <button class="switch" type="button" role="switch" id="imagegen-enabled" aria-checked="false" aria-label="启用生图"><span class="switch-handle"></span></button>
           </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="add_photo_alternate"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">默认尺寸</div>
+              <div class="list-supporting body-medium">她也可以按要求画横图、竖图；不同模型支持的尺寸不一样</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="生图默认尺寸" id="imagegen-size">
+              <button class="state-layer" role="radio" data-size="1024x1024" data-hint="1024×1024"><svg data-icon="check" class="icon-18 chip-check"></svg>方形</button>
+              <button class="state-layer" role="radio" data-size="1536x1024" data-hint="1536×1024 · 3:2"><svg data-icon="check" class="icon-18 chip-check"></svg>横版</button>
+              <button class="state-layer" role="radio" data-size="1024x1536" data-hint="1024×1536 · 2:3"><svg data-icon="check" class="icon-18 chip-check"></svg>竖版</button>
+              <button class="state-layer" role="radio" data-size="1792x1024" data-hint="1792×1024 · 16:9"><svg data-icon="check" class="icon-18 chip-check"></svg>宽屏</button>
+              <button class="state-layer" role="radio" data-size="1024x1792" data-hint="1024×1792 · 9:16"><svg data-icon="check" class="icon-18 chip-check"></svg>长图</button>
+              <button class="state-layer" role="radio" data-size="auto" data-hint="交给模型决定"><svg data-icon="check" class="icon-18 chip-check"></svg>自动</button>
+            </div>
+          </li>
         </ul>
         <form class="imagegen-form" id="imagegen-form" novalidate autocomplete="off">
           <div class="text-field" data-field="baseUrl">
@@ -794,15 +809,13 @@
             </div>
             <span class="supporting body-small" data-hint="还没保存 Key"></span>
           </div>
-          <div class="field-row-2">
-            <div class="text-field" data-field="model">
-              <div class="text-field-box"><input id="imagegen-model" name="model" placeholder=" " spellcheck="false"><label for="imagegen-model">模型</label></div>
-              <span class="supporting body-small" data-hint="例如 gpt-image-2.5-sunburst"></span>
+          <div class="text-field" data-field="model">
+            <div class="text-field-box">
+              <input id="imagegen-model" name="model" placeholder=" " spellcheck="false" autocomplete="off" aria-haspopup="listbox">
+              <label for="imagegen-model">模型</label>
+              <button type="button" class="icon-button state-layer" id="imagegen-fetch" title="获取模型列表" aria-label="获取模型列表"><svg data-icon="refresh"></svg></button>
             </div>
-            <div class="text-field" data-field="size">
-              <div class="text-field-box"><input id="imagegen-size" name="size" placeholder=" " spellcheck="false"><label for="imagegen-size">默认尺寸</label></div>
-              <span class="supporting body-small" data-hint="1024x1024；她也可以按要求画横图、竖图"></span>
-            </div>
+            <span class="supporting body-small" data-hint="点右侧按钮可以从接口获取模型列表，生图模型排在前面"></span>
           </div>
           <div class="imagegen-actions">
             <button type="button" class="tonal-button label-large state-layer" id="imagegen-test"><svg data-icon="auto_awesome" class="icon-18"></svg>试画一张</button>

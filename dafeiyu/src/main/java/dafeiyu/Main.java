@@ -40,6 +40,7 @@ public final class Main {
         }
 
         Database db = Database.open(baseDir.resolve(config.dbPath()));
+        log.writeTo(db.file().toAbsolutePath().getParent().resolve("logs"));
 
         Path legacyProfiles = baseDir.resolve("ws-profiles.json");
         boolean hadLegacy = Files.exists(legacyProfiles);

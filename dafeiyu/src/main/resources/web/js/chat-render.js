@@ -95,6 +95,7 @@ function toolDetail(name, args, meta) {
     case 'steer_task': return join(args.task && `#${String(args.task).replace('#', '')}`, STEER[args.action], args.message);
     case 'view_image': return join(args.image, args.area && `放大 ${args.area}`);
     case 'image': return join(args.prompt, args.size, args.n > 1 && `${args.n} 张`);
+    case 'download': return join(args.url, args.path && `存到 ${args.path}`);
     case 'qq_api_search': return args.query ? `「${args.query}」` : args.category ?? '全部分类';
     case 'qq_api_call': return args.action ?? '';
     case 'websearch': case 'search': return args.query ? `「${args.query}」` : '';

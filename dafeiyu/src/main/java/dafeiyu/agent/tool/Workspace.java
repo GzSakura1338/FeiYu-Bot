@@ -190,6 +190,28 @@ public final class Workspace {
         }
     }
 
+    public void place(Path target, Path source) throws ToolFailure {
+        if (Files.isDirectory(target)) {
+            throw new ToolFailure("Path is a directory, not a file: " + relative(target));
+        }
+        Path dir = target.getParent();
+        try {
+            Files.createDirectories(dir);
+            Path realDir = dir.toRealPath();
+            if (!contains(realDir)) {
+                throw outside(relative(target));
+            }
+            Path dest = realDir.resolve(target.getFileName());
+            try {
+                Files.move(source, dest, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(source, dest, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new ToolFailure("Unable to write " + relative(target) + ": " + e.getMessage());
+        }
+    }
+
     public record Entry(String name, String path, boolean directory, long size, long modified, int items) {}
 
     public static final String TRASH = ".trash";

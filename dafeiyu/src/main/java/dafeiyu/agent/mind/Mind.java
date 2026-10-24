@@ -266,6 +266,10 @@ public final class Mind implements QqChatBridge.Observer {
             }
             return pace(set.used(), pending());
         } catch (AgentException e) {
+            if (e.kind() == AgentException.Kind.EMPTY_REPLY) {
+                log.info("mind: nothing came to mind this time");
+                return pace(false, pending());
+            }
             log.warn("mind: a thought failed: " + e.getMessage());
             return FAILED_MS;
         } finally {

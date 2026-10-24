@@ -1,11 +1,14 @@
 import { $, $$ } from './dom.js';
 import { setIcon } from './icons.js';
+import { closeMenu, openMenu } from './menu.js';
 import { onPageChange } from './router.js';
+import { menuSelect } from './select-menu.js';
 import { showSnackbar } from './snackbar.js';
 
-const FIELDS = ['baseUrl', 'model', 'size'];
+const FIELDS = ['baseUrl', 'model'];
 let state = null;
 let testing = false;
+let models = [];
 
 async function request(method, path = '', body) {
   const res = await fetch(`/api/agent/image-gen${path}`, {
@@ -35,6 +38,7 @@ function render(fill = true) {
   toggle.setAttribute('aria-checked', String(Boolean(state?.enabled)));
   toggle.disabled = !state;
   $('#imagegen-hint').textContent = state?.enabled ? '已开启：有人让她画图时会直接生成，发到当前聊天' : '关着时她看不到 image 工具';
+  for (const button of $$('#imagegen-size [role="radio"]')) button.setAttribute('aria-checked', String(button.dataset.size === state?.size));
   if (fill && state) {
     for (const name of FIELDS) input(name).value = state[name] ?? '';
     input('apiKey').value = '';
@@ -89,6 +93,54 @@ async function toggle() {
   }
 }
 
+async function setSize(size) {
+  if (!state || size === state.size) return;
+  try {
+    state = await request('PUT', '', { size });
+    render(false);
+  } catch (err) {
+    showSnackbar(`保存失败：${err.message}`, 'error');
+  }
+}
+
+function showModels(focus = false) {
+  const field = input('model');
+  if (!models.length) return closeMenu();
+  const value = field.value.trim();
+  const query = value.toLowerCase();
+  const matches = models.some(m => m.id === value) ? models : models.filter(m => m.id.toLowerCase().includes(query));
+  openMenu(field.parentElement, (matches.length ? matches : models).map(m => ({ value: m.id, label: m.id, hint: m.image ? '生图' : undefined })), {
+    selected: value,
+    focus,
+    onSelect: id => {
+      field.value = id;
+      updateSave();
+      field.focus();
+    },
+  });
+}
+
+async function fetchModels() {
+  const button = $('#imagegen-fetch');
+  const hint = $('#imagegen-form [data-field="model"] .supporting');
+  button.disabled = true;
+  $('svg', button).classList.add('spin');
+  try {
+    ({ models } = await request('POST', '/models', { baseUrl: input('baseUrl').value.trim(), apiKey: input('apiKey').value.trim() }));
+    const images = models.filter(m => m.image).length;
+    hint.textContent = models.length
+      ? `获取到 ${models.length} 个模型${images ? `，其中 ${images} 个像生图模型排在前面` : ''}，点输入框选择或直接输入`
+      : '接口没有返回模型';
+    input('model').focus();
+    showModels(false);
+  } catch (err) {
+    showSnackbar(`获取模型列表失败：${err.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    $('svg', button).classList.remove('spin');
+  }
+}
+
 async function test() {
   if (testing || !(await save())) return;
   const button = $('#imagegen-test');
@@ -115,6 +167,18 @@ export function initSettingsImageGen() {
   $('#imagegen-form').addEventListener('submit', save);
   $('#imagegen-form').addEventListener('input', updateSave);
   $('#imagegen-test').addEventListener('click', test);
+  $('#imagegen-fetch').addEventListener('click', fetchModels);
+  for (const button of $$('#imagegen-size [role="radio"]')) button.addEventListener('click', () => setSize(button.dataset.size));
+  menuSelect($('#imagegen-size'));
+  const model = input('model');
+  model.addEventListener('input', () => showModels(false));
+  model.addEventListener('click', () => showModels(false));
+  model.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' && models.length) {
+      e.preventDefault();
+      showModels(true);
+    }
+  });
   $('#imagegen-key-eye').addEventListener('click', e => {
     const key = input('apiKey');
     const show = key.type === 'password';

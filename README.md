@@ -26,7 +26,6 @@
 | `start-*.bat`、`launch-*.ps1` | 启动脚本 | 是 |
 | `napcat/` | NapCatQQ v4.18.41 Shell 版 | 否 |
 | `file/` | 她的工作目录：写的网页、画的图、跑的命令都在这里 | 否 |
-| `astrbot/` | 以前试用的 AstrBot，已停用 | 否 |
 
 ## 连接和配置
 
@@ -39,7 +38,3 @@
 - 同一个 QQ 号同一时间只能有一个电脑端在线：NapCat 登录后会把桌面 QQ 上的同一账号挤下线，机器人最好用小号
 - 控制台（8090）和反向 WebSocket（6199）只监听 127.0.0.1。NapCat 的管理面板（6099）默认监听所有网卡，局域网里能打开（要 token 登录）；只想本机访问，就把 `napcat/config/webui.json` 的 `host` 改成 `127.0.0.1`
 - `dafeiyu/data/` 里有 API Key 和全部聊天记录，不进仓库，也别发给别人
-
-## 旧的 AstrBot
-
-`astrbot/` 是之前试用的现成框架，已经不用了，只是还留着。它也占 6199 端口，要换回去得先关掉 FeiYu Bot，再双击 `start-astrbot.bat`（WebUI 在 http://127.0.0.1:6185 ，初始密码在 `astrbot_first.log` 里搜 “Initial password”）。

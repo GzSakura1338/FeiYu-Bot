@@ -7,6 +7,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.model.ImageLoader;
+import dafeiyu.agent.protocol.Protocols;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
 
 import static dafeiyu.util.Jsons.optObject;
@@ -56,6 +58,8 @@ public final class ImageGen {
     public static final int MAX_PICTURES = 4;
 
     private static final String KEY = "agent.imageGen";
+    private static final java.util.regex.Pattern IMAGE_MODEL = java.util.regex.Pattern.compile(
+            "(?i)image|dall-?e|flux|stable-?diffusion|sdxl|\\bsd[-\\d]|midjourney|\\bmj\\b|imagen|kolors|seedream|cogview|wanx|jimeng|hunyuan-?image|recraft|ideogram|playground|banana");
     private static final String ENDPOINT = "/images/generations";
     private static final Duration TIMEOUT = Duration.ofMinutes(3);
     private static final int ERROR_MAX = 300;
@@ -186,8 +190,42 @@ public final class ImageGen {
         }
     }
 
+    public List<String> listModels(String baseUrl, String apiKey) throws ToolFailure {
+        Config config = config();
+        String url = baseUrl == null || baseUrl.isBlank() ? config.baseUrl() : apiBase(baseUrl);
+        if (url.isEmpty()) {
+            throw new ToolFailure("先填接口地址");
+        }
+        String key = apiKey == null || apiKey.isBlank() ? sameServer(config.baseUrl(), url) ? config.apiKey() : "" : apiKey.strip();
+        try {
+            List<String> models = new ArrayList<>(Protocols.get("openai-chat").listModels(apiBase(url), key));
+            models.sort(Comparator.comparing((String id) -> !IMAGE_MODEL.matcher(id).find()));
+            return models;
+        } catch (AgentException e) {
+            throw new ToolFailure(e.getMessage());
+        }
+    }
+
+    public static boolean imageModel(String id) {
+        return IMAGE_MODEL.matcher(id).find();
+    }
+
+    private static String apiBase(String baseUrl) {
+        return baseUrl.strip().replaceAll("/+$", "").replaceFirst("(?i)/images/generations$", "");
+    }
+
+    private static boolean sameServer(String a, String b) {
+        try {
+            URI x = URI.create(a);
+            URI y = URI.create(b);
+            return x.getHost() != null && x.getHost().equalsIgnoreCase(y.getHost()) && x.getPort() == y.getPort();
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     static URI endpoint(String baseUrl) throws ToolFailure {
-        String url = baseUrl.replaceAll("/+$", "").replaceFirst("(?i)/images/generations$", "");
+        String url = apiBase(baseUrl);
         try {
             URI base = URI.create(url);
             if (base.getHost() == null) {

@@ -68,6 +68,7 @@ public final class Reflection {
     private static final int MAX_FAILURES = 3;
     private static final int TIDY_SELF_AT = 8;
     private static final long FAILURE_BACKOFF_MS = 10 * 60_000;
+    private static final Pattern NOT_A_CLAIM = Pattern.compile("[不没非别才只谁]");
     private static final Pattern CLAIMS_OWNER = Pattern.compile("(叫|当|认|是|做|称呼?)[^，。,.!！?？\\s]{0,4}主人|主人(是|叫做|换)");
     private static final Pattern SKILL_ID = Pattern.compile("[Ss]?(\\d+)");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA);
@@ -359,7 +360,13 @@ public final class Reflection {
         List<MemoryStore.Memory> topics = memories.selfTopics(persona.id());
         List<SkillStore.Skill> known = skills.list(persona.id());
         String prompt = prompt(persona, session, chunk.transcript(), roster, owners, existing, day, diary, topics, known);
-        return apply(persona.id(), session, ask(profile, session, prompt), owners, names, existing, day, diary, known);
+        String reply = ask(profile, session, prompt);
+        try {
+            parse(reply);
+        } catch (AgentException cut) {
+            reply = ask(profile, session, prompt);
+        }
+        return apply(persona.id(), session, reply, owners, names, existing, day, diary, known);
     }
 
     private static Chunk chunk(List<MemoryStore.Turn> pending) {
@@ -689,10 +696,17 @@ public final class Reflection {
     }
 
     public static boolean claimsOwner(String scope, String content, Set<String> owners) {
-        if (!CLAIMS_OWNER.matcher(content).find()) {
+        if (scope.equals(MemoryStore.KNOWLEDGE) || scope.startsWith("user:") && owners.contains(scope.substring(5))) {
             return false;
         }
-        return !scope.startsWith("user:") || !owners.contains(scope.substring(5));
+        java.util.regex.Matcher m = CLAIMS_OWNER.matcher(content);
+        while (m.find()) {
+            String before = content.substring(Math.max(0, m.start() - 2), m.start());
+            if (!NOT_A_CLAIM.matcher(before).find()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String scopeName(String scope, String label) {

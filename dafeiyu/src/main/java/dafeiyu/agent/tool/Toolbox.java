@@ -7,7 +7,7 @@ public final class Toolbox {
 
     private static final List<Tool> ALL = List.of(
             new ReadTool(), new WriteTool(), new EditTool(), new PatchTool(), new ListTool(), new GlobTool(), new GrepTool(), new MoveTool(),
-            new DeleteTool(), new TodoTool(), new WebSearchTool(), new WebFetchTool(), new ShellTool(), new SendFileTool());
+            new DeleteTool(), new TodoTool(), new WebSearchTool(), new WebFetchTool(), new DownloadTool(), new ShellTool(), new SendFileTool());
 
     private Toolbox() {}
 

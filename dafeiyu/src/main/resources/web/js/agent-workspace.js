@@ -16,6 +16,7 @@ export const TOOLS = {
   todowrite: { icon: 'check', label: '任务清单', desc: '步骤多的活先列清单，做完一项勾一项' },
   websearch: { icon: 'travel_explore', label: '网络检索', desc: '上网搜索新闻、资料、教程和不认识的词，中文走必应、英文走 Exa，需要细节时再打开网页读' },
   webfetch: { icon: 'link', label: '读网页', desc: '打开公网网页转成文字来读；本机和内网地址一律拒绝' },
+  download: { icon: 'download', label: '下载文件', desc: '把公网链接上的文件下载到工作目录（默认「下载」文件夹），最大 200 MB，不覆盖同名文件' },
   shell: { icon: 'terminal', label: 'Shell 命令', desc: '让她在工作目录里跑命令（cmd / python / node），默认关闭' },
   send_file: { icon: 'upload_file', label: '发送文件', desc: '把目录里的文件发给对方，图片直接显示' },
 };

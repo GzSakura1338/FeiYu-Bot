@@ -412,7 +412,7 @@ public final class ChatAgent {
     }
 
     public long compactAt(String session) {
-        long at = Compaction.threshold(limits());
+        long at = Compaction.threshold(limits(), session != null && session.startsWith("mind:"));
         return at == Long.MAX_VALUE ? 0 : at;
     }
 

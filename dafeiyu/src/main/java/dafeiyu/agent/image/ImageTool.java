@@ -32,7 +32,7 @@ public final class ImageTool {
                         + "prompt 写清楚画面：主体、动作、场景、风格、构图、颜色，按对方的要求写，中文英文都行。一次一般画 1 张。", """
                         {"type": "object", "properties": {
                           "prompt": {"type": "string", "description": "画面描述"},
-                          "size": {"type": "string", "description": "可选。尺寸，比如 1024x1024（方）、1536x1024（横）、1024x1536（竖）；不写用设置里的默认尺寸"},
+                          "size": {"type": "string", "description": "可选。尺寸：1024x1024 方形、1536x1024 横版、1024x1536 竖版、1792x1024 宽屏、1024x1792 长图、auto 让模型决定；不写用设置里的默认尺寸"},
                           "n": {"type": "integer", "description": "可选。画几张，1～4，默认 1"}
                         }, "required": ["prompt"]}""",
                 (args, context) -> {
@@ -50,7 +50,7 @@ public final class ImageTool {
                     if (verdict != null) {
                         throw new ToolFailure("这张不能画（涉及" + verdict.category().label() + "），换个别的吧");
                     }
-                    ImageGen.Result result = agent.imageGen().generate(prompt, args.optString("size"), args.integer("n", 1));
+                    ImageGen.Result result = agent.imageGen().generate(prompt, args.text("size"), args.integer("n", 1));
                     List<Path> saved = save(agent.imageGen(), context.workspace(), result.pictures());
                     StringBuilder out = new StringBuilder();
                     if (context.files() == null) {

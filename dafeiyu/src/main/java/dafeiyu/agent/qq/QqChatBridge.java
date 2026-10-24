@@ -60,6 +60,7 @@ public final class QqChatBridge {
     private static final int MAX_IMAGES = 4;
     private static final String OWNER_TAG = "【主人】";
     private static final String POKE_TAG = "【拍一拍】";
+    private static final String POKE_HINT = "（被拍了一下：随口回一句就好，每次换个反应，嘟囔、撒娇、反问、拍回去都行；看看你前面被拍时说过什么，别又是「干嘛戳我」那一句。）";
     private static final long OWN_POKE_ECHO_MS = 20_000;
     private static final long POKE_GAP_MS = 20_000;
     private static final String CONSOLE_TAG = "【控制台】";
@@ -67,7 +68,7 @@ public final class QqChatBridge {
     private static final String RESUMED = "你刚才正在回这条，回到一半被重启打断了，对方还没收到你的回复。接着把它回完；刚才在做的事（写文件、调工具）如果没做完，"
             + "看看聊天记录里做到哪一步了，接着做完，别从头重来。";
     private static final String FOCUS ="对方在说什么就接什么，先回应这条，别答非所问；别扯回前面已经聊完的话题，也别突然提起很久以前的事或者别处的事，除非对方自己提到。";
-    private static final java.util.regex.Pattern BOT_NAME = java.util.regex.Pattern.compile("(?i)机器人|智能体|bot|助手");
+    private static final java.util.regex.Pattern BOT_NAME = java.util.regex.Pattern.compile("(?i)机器人|智能体|bot|助手|鲸鱼|肥鱼");
     private static final java.util.regex.Pattern NAME_PARTS = java.util.regex.Pattern.compile("[\\s|｜/／·・,，_\\-]+");
     private static final java.util.regex.Pattern QUOTED_PICTURE = java.util.regex.Pattern.compile("\\[(图片|表情包)#(\\d+)");
     private static final java.util.regex.Pattern STICKER_MENTION = java.util.regex.Pattern.compile("\\[表情包#(\\d+)]");
@@ -642,7 +643,7 @@ public final class QqChatBridge {
                 agent.personas().isOwner(targetId), this::reservedName);
         String line = (owner ? OWNER_TAG : "") + POKE_TAG + name + " " + action + " " + target + suffix;
         observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, action + " " + target + suffix, me);
-        boolean addressed = me && !(botLike(name) && state.cooling(userId)) && !looksLikeMe(name);
+        boolean addressed = me && !(botLike(name) && (state.cooling(userId) || state.tiredOfBots())) && !looksLikeMe(name);
         state.add(new Line("", userId, name, line, System.currentTimeMillis(), addressed, List.of(), false));
         hear(state, line, userId, attachments.toString());
         if (!agent.store().groupMode()) {
@@ -674,7 +675,7 @@ public final class QqChatBridge {
         boolean addressed = agent.store().groupMode()
                 ? (incoming.mentionedMe() || mine(state, incoming.replyTo()) || (!incoming.mentionedOthers() && calledByName(incoming.text()))
                         || continuing)
-                        && !looksLikeMe(name) && (owner || !(botLike(name) && state.cooling(userId)))
+                        && !looksLikeMe(name) && (owner || !(botLike(name) && (state.cooling(userId) || state.tiredOfBots())))
                 : incoming.mentionedMe();
         observeHeard("group:" + groupId, (owner ? "主人 " : "") + name, flat,
                 addressed || incoming.mentionedMe() || mine(state, incoming.replyTo()));
@@ -751,7 +752,8 @@ public final class QqChatBridge {
                 continue;
             }
             String quoted = String.join("", latest.stream().map(l -> "「" + abbreviate(l, 200) + "」").toList());
-            String prompt = "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）";
+            String prompt = "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）"
+                    + (latest.stream().anyMatch(l -> l.contains(POKE_TAG)) ? POKE_HINT : "");
             agent.store().markReplying(new AgentStore.Replying(session, target.userId(), target.messageId(), "", String.join("\n", latest),
                     System.currentTimeMillis()));
             try {
@@ -890,6 +892,13 @@ public final class QqChatBridge {
                     .append(" 是群里和你重名的别人（多半是另一个机器人），不是你：那些话不是你说的，别人 @ 它、回复它、跟它聊天也不是在找你。"
                             + "跟它斗两句嘴可以，别没完没了地来回接。）");
         }
+        List<String> bots = lines.stream().filter(l -> !agent.personas().isOwner(l.userId())).map(Line::speaker)
+                .filter(s -> !looksLikeMe(s) && botLike(s)).distinct().toList();
+        if (!bots.isEmpty()) {
+            prompt.append(prompt.isEmpty() ? "" : "\n").append("（").append(String.join("、", bots))
+                    .append(" 是群里的其他机器人：跟它们斗两句嘴可以，聊两三个来回就收，它们说的话不用句句接，"
+                            + (state.tiredOfBots() ? "你刚才已经跟机器人聊了好几轮，这次没人类找你就写 " + TurnRunner.SILENCE + "。）" : "别没完没了地来回接。）"));
+        }
         List<String> pretenders = lines.stream()
                 .filter(l -> !agent.personas().isOwner(l.userId()) && ownerLike(l.speaker().replaceFirst("#\\d{4}$", "")))
                 .map(Line::speaker).distinct().toList();
@@ -916,7 +925,8 @@ public final class QqChatBridge {
                     .append(TurnRunner.SILENCE).append("，潜水也很正常。");
         } else {
             prompt.append(prompt.isEmpty() ? "" : "\n").append("（").append(resumedGroups.remove(state.groupId) ? RESUMED : "")
-                    .append("有人在跟你说话，现在要回的是这条：「").append(abbreviate(trigger.text(), 300)).append("」。").append(FOCUS).append("）");
+                    .append("有人在跟你说话，现在要回的是这条：「").append(abbreviate(trigger.text(), 300)).append("」。").append(FOCUS).append("）")
+                    .append(trigger.text().contains(POKE_TAG) ? POKE_HINT : "");
         }
         Target target = trigger == null
                 ? Target.group(state.groupId, "", selfId, "")
@@ -938,6 +948,8 @@ public final class QqChatBridge {
             agent.store().markReplying(new AgentStore.Replying(session, trigger.userId(), trigger.messageId(), trigger.speaker(), trigger.text(),
                     System.currentTimeMillis()));
         }
+        boolean botsOnly = notes.isEmpty() && (trigger != null ? !agent.personas().isOwner(trigger.userId()) && botLike(trigger.speaker())
+                : onlyBots(lines.stream().filter(l -> !l.seen()).toList()));
         String sent;
         try {
             sent = reply(target, turn, true);
@@ -945,6 +957,9 @@ public final class QqChatBridge {
             if (trigger != null) {
                 agent.store().clearReplying(session);
             }
+        }
+        if (sent != null && botsOnly) {
+            state.chattedWithBots();
         }
         if (sent == null) {
             state.restore(lines);
@@ -987,8 +1002,15 @@ public final class QqChatBridge {
             if (!agent.store().qqReply() || !agent.store().groupMode() || state.busy || !state.hasNewLines()) {
                 return;
             }
+            if (state.tiredOfBots() && onlyBots(state.unseen())) {
+                return;
+            }
         }
         startGroupTurn(state, selfId, Mode.AMBIENT);
+    }
+
+    private boolean onlyBots(List<Line> lines) {
+        return !lines.isEmpty() && lines.stream().allMatch(l -> !agent.personas().isOwner(l.userId()) && botLike(l.speaker()));
     }
 
     private String reply(Target target, ChatTurn turn, boolean deliver) {
