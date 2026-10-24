@@ -1,7 +1,5 @@
 package dafeiyu.agent.qq;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
@@ -9,10 +7,8 @@ import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.message.StoredMessage;
-import dafeiyu.util.Clock;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -23,13 +19,6 @@ import static dafeiyu.util.Texts.abbreviate;
 
 public final class QqActions {
 
-    public record ForwardLine(String name, String userId, long time, String text, List<String> images, String attachments) {}
-
-    private static final int MAX_FORWARD_LINES = 200;
-    private static final int MAX_FORWARD_TEXT = 8000;
-    private static final int MAX_FORWARD_CACHE = 500;
-    private final Map<String, List<ForwardLine>> forwards = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>());
-
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_MUTE_MINUTES = 30 * 24 * 60;
     private static final int MAX_RECALL = 10;
@@ -38,15 +27,13 @@ public final class QqActions {
     private final MessageArchive archive;
     private final QqOutbox outbox;
     private final QqContacts contacts;
-    private final QqImages images;
     private final LogBuffer log;
 
-    QqActions(ChatAgent agent, MessageArchive archive, QqOutbox outbox, QqContacts contacts, QqImages images, LogBuffer log) {
+    QqActions(ChatAgent agent, MessageArchive archive, QqOutbox outbox, QqContacts contacts, LogBuffer log) {
         this.agent = agent;
         this.archive = archive;
         this.outbox = outbox;
         this.contacts = contacts;
-        this.images = images;
         this.log = log;
     }
 
@@ -151,139 +138,6 @@ public final class QqActions {
         agent.record("private:" + userId, ChatMessage.assistant(formatted, ""));
         log.info("agent [private " + userId + " via group " + via + "] messaged a stranger: " + abbreviate(formatted.replace('\n', ' '), 120));
         return "通过「" + contacts.groupName(via) + "」的临时会话给 QQ " + userId + " 发了：" + formatted + "。TA 回你的话会在你们的私聊里。";
-    }
-
-    public List<ForwardLine> forward(String id) throws ToolFailure {
-        String key = id == null ? "" : id.strip();
-        if (key.isEmpty() || key.length() > 200) {
-            throw new ToolFailure("合并转发的编号不对：" + id);
-        }
-        List<ForwardLine> cached = forwards.get(key);
-        if (cached != null) {
-            return cached;
-        }
-        JsonObject params = new JsonObject();
-        params.addProperty("message_id", key);
-        params.addProperty("id", key);
-        JsonObject response;
-        try {
-            response = outbox.call("get_forward_msg", params, Duration.ofSeconds(20));
-        } catch (ToolFailure e) {
-            log.warn("agent: get_forward_msg " + key + " failed: " + e.getMessage());
-            throw new ToolFailure("读不到这段合并转发（" + (e.getMessage().contains("内层") ? "它套在另一段合并转发里，先读外面那段" : "已经过期了，QQ 只能读刚发不久的") + "）");
-        }
-        JsonArray nodes = nodes(response == null ? null : response.get("data"));
-        if (nodes == null || nodes.isEmpty()) {
-            log.warn("agent: get_forward_msg " + key + " returned no messages: " + abbreviate(String.valueOf(response), 600));
-            throw new ToolFailure("读不到这段合并转发（QQ 没把内容给过来）");
-        }
-        return remember(key, lines(nodes));
-    }
-
-    private static JsonArray nodes(JsonElement data) {
-        if (data == null || data.isJsonNull()) {
-            return null;
-        }
-        if (data.isJsonArray()) {
-            return data.getAsJsonArray();
-        }
-        JsonObject object = data.getAsJsonObject();
-        for (String name : List.of("messages", "message", "content", "nodes")) {
-            if (object.has(name) && object.get(name).isJsonArray()) {
-                return object.getAsJsonArray(name);
-            }
-        }
-        return null;
-    }
-
-    private List<ForwardLine> remember(String key, List<ForwardLine> lines) {
-        while (forwards.size() >= MAX_FORWARD_CACHE) {
-            forwards.remove(forwards.keySet().iterator().next());
-        }
-        forwards.put(key, List.copyOf(lines));
-        return lines;
-    }
-
-    public void prefetch(JsonObject event) {
-        JsonElement message = event.get("message");
-        if (message == null || !message.isJsonArray()) {
-            return;
-        }
-        for (JsonElement segment : message.getAsJsonArray()) {
-            JsonObject seg = segment.isJsonObject() ? segment.getAsJsonObject() : null;
-            JsonObject data = seg == null ? null : optObject(seg, "data");
-            String id = data == null ? "" : optString(data, "id");
-            if (seg != null && "forward".equals(optString(seg, "type")) && !id.isBlank() && !forwards.containsKey(id)) {
-                Thread.ofVirtual().start(() -> {
-                    try {
-                        forward(id);
-                    } catch (ToolFailure ignored) {
-                    }
-                });
-            }
-        }
-    }
-
-    private void cacheNested(JsonObject event) {
-        JsonElement message = event.get("message");
-        if (message == null || !message.isJsonArray()) {
-            return;
-        }
-        for (JsonElement segment : message.getAsJsonArray()) {
-            JsonObject data = segment.isJsonObject() ? optObject(segment.getAsJsonObject(), "data") : null;
-            String id = data == null ? "" : optString(data, "id");
-            JsonArray inner = data == null ? null : nodes(data);
-            if ("forward".equals(optString(segment.getAsJsonObject(), "type")) && !id.isBlank() && inner != null && !inner.isEmpty()) {
-                remember(id, lines(inner));
-            }
-        }
-    }
-
-    private List<ForwardLine> lines(JsonArray nodes) {
-        String self = outbox.selfId();
-        List<ForwardLine> lines = new ArrayList<>();
-        for (JsonElement e : nodes) {
-            if (!e.isJsonObject() || lines.size() >= MAX_FORWARD_LINES) {
-                continue;
-            }
-            JsonObject node = e.getAsJsonObject();
-            JsonObject data2 = optObject(node, "data");
-            JsonObject event = node.has("message") || node.has("raw_message") ? node : data2 != null && data2.has("content") ? content(data2) : node;
-            JsonObject sender = optObject(event, "sender");
-            String userId = sender == null ? optString(event, "user_id") : optString(sender, "user_id");
-            String name = sender == null ? optString(data2 == null ? event : data2, "nickname")
-                    : !optString(sender, "card").isBlank() ? optString(sender, "card") : optString(sender, "nickname");
-            QqMessages.Incoming in = QqMessages.parse(event, self, (qq, nick) -> nick.isBlank() ? qq : nick, null,
-                    (file, url) -> images.number(file, url, "forward"));
-            long time = event.has("time") ? event.get("time").getAsLong() * 1000 : 0;
-            lines.add(new ForwardLine(unforgeable(name.isBlank() ? "QQ " + userId : name), userId, time, in.text(), in.imageUrls(), in.attachments()));
-            cacheNested(event);
-        }
-        return lines;
-    }
-
-    public String describeForward(String id) throws ToolFailure {
-        List<ForwardLine> lines = forward(id);
-        StringBuilder out = new StringBuilder("这段合并转发的聊天记录一共 " + lines.size() + " 条：\n");
-        for (ForwardLine l : lines) {
-            String row = (l.time() > 0 ? "[" + Clock.ago(l.time()) + "] " : "") + l.name() + "：" + l.text().replace("\n", " / ") + "\n";
-            if (out.length() + row.length() > MAX_FORWARD_TEXT) {
-                out.append("……后面还有，太长了没列完\n");
-                break;
-            }
-            out.append(row);
-        }
-        return out.append("（里面再套的合并转发，用它的编号再读一次）").toString();
-    }
-
-    private static JsonObject content(JsonObject data) {
-        JsonObject event = new JsonObject();
-        event.add("message", data.get("content"));
-        JsonObject sender = new JsonObject();
-        sender.addProperty("user_id", optString(data, "user_id"));
-        sender.addProperty("nickname", optString(data, "nickname"));
-        event.add("sender", sender);
-        return event;
     }
 
     String senderOf(String messageId) {

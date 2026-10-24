@@ -246,6 +246,13 @@ public final class Migrations {
             """,
             """
             CREATE INDEX idx_messages_message_id ON messages (message_id)
+            """,
+            """
+            CREATE TABLE forwards (
+                id          TEXT PRIMARY KEY,
+                lines       TEXT NOT NULL,
+                created_at  INTEGER NOT NULL
+            )
             """
     );
 

@@ -103,9 +103,20 @@ public final class MessageArchive {
         if (messageId == null || messageId.isBlank()) {
             return null;
         }
-        return db.one("SELECT * FROM messages WHERE message_id = ? ORDER BY id DESC LIMIT 1", rs -> new StoredMessage(rs.getLong("id"),
-                rs.getLong("time"), rs.getString("direction"), rs.getString("message_type"), rs.getString("group_id"), rs.getString("user_id"),
-                rs.getString("sender_name"), rs.getString("message_id"), rs.getString("content")), messageId);
+        return db.one("SELECT * FROM messages WHERE message_id = ? ORDER BY id DESC LIMIT 1", MessageArchive::row, messageId);
+    }
+
+    public StoredMessage withForward(String forwardId) {
+        if (forwardId == null || !forwardId.matches("\\d{1,30}")) {
+            return null;
+        }
+        return db.one("SELECT * FROM messages WHERE content LIKE ? OR content LIKE ? ORDER BY id DESC LIMIT 1", MessageArchive::row,
+                "%[CQ:forward,id=" + forwardId + "]%", "%[CQ:forward,id=" + forwardId + ",%");
+    }
+
+    private static StoredMessage row(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new StoredMessage(rs.getLong("id"), rs.getLong("time"), rs.getString("direction"), rs.getString("message_type"),
+                rs.getString("group_id"), rs.getString("user_id"), rs.getString("sender_name"), rs.getString("message_id"), rs.getString("content"));
     }
 
     public String recordFile(String fileId) {

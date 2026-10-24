@@ -3,7 +3,7 @@ import { createIcon } from './icons.js';
 import { showSnackbar } from './snackbar.js';
 import { confirmDialog } from './dialog.js';
 import { createAvatar, createGroupAvatar } from './avatar.js';
-import { ago, formatTime } from './format.js';
+import { ago, chatTime, formatTime } from './format.js';
 import { createReply, noteCard, noteChips, reasoningBlock, renderContext, renderSaid, toolCard, settleToolCard, splitInner } from './chat-render.js';
 import { onAgentViewChange, renderMood } from './agent-page.js';
 import { navigate } from './router.js';
@@ -22,6 +22,7 @@ const MIND_EMPTY = '她的念头还没开始转。打开页头的「自由活动
 const MAX_MIND_NODES = 400;
 const PAGE = 60;
 const OLDER_PAGE = 80;
+const STAMP_GAP = 5 * 60_000;
 const OWNER_TAG = '【主人】';
 const CONSOLE_TAG = '【控制台】';
 const AMBIENT_TAG = '【旁听】';
@@ -39,6 +40,7 @@ let loadingOlder = false;
 let speakerIds = {};
 let fallbackSelf = { qq: '', name: '' };
 let self = fallbackSelf;
+let lastAt = 0;
 
 const selfName = () => self.name || fallbackSelf.name || '我';
 const meText = text => text.replace(/@你(?=\s|$|[，。,.!！?？~])/g, `@${selfName()}`);
@@ -53,12 +55,24 @@ async function loadSelf() {
   }
 }
 
-function selfLabel(time) {
-  const label = el('div', 'msg-label label-small reply-label');
-  label.append(el('span', 'msg-time', time ? formatTime(time) : ''), el('span', 'msg-name', selfName()),
-    createAvatar(self.qq || fallbackSelf.qq, selfName(), 'avatar avatar-xs reply-avatar'));
-  return label;
+function selfAvatar(time) {
+  const avatar = createAvatar(self.qq || fallbackSelf.qq, selfName(), 'avatar reply-avatar');
+  if (time) avatar.title = formatTime(time);
+  return avatar;
 }
+
+function timeStamp(time) {
+  const at = time ? new Date(time).getTime() : 0;
+  if (!at) return [];
+  const gap = at - lastAt;
+  lastAt = Math.max(lastAt, at);
+  if (gap < STAMP_GAP) return [];
+  const node = el('div', 'chat-time label-small', chatTime(at));
+  node.dataset.at = String(at);
+  return [node];
+}
+
+const stamped = (time, nodes, s) => (isQq(s?.kind) && nodes.length ? [...timeStamp(time), ...nodes] : nodes);
 
 const qqOf = name => (name ? speakerIds[name] ?? speakerIds[name.replace(/#\d{4}$/, '')] ?? null : null);
 const QQ_NAME = /^(?:QQ\s*)?(\d{5,12})$/;
@@ -328,6 +342,7 @@ function renderHeader(s) {
   $('#session-form').hidden = mind || task;
   $('#session-timeline').classList.toggle('is-web', web);
   $('#session-timeline').classList.toggle('is-mind', mind);
+  $('#session-timeline').classList.toggle('is-qq', isQq(s.kind));
   const clear = $('#session-clear');
   clear.title = clear.ariaLabel = web ? '删除这个测试对话' : mind ? '清空她的思绪' : '清空这个会话的记忆';
   $('#session-input').placeholder = web
@@ -373,7 +388,7 @@ function parseUser(content, kind) {
 }
 
 function userEntries(content, time, s, rawAttachments = '') {
-  if (TIME_MARK.test(content.trim())) return [el('div', 'chat-divider label-small', content.trim().slice(1, -1))];
+  if (TIME_MARK.test(content.trim())) return isQq(s.kind) ? [] : [el('div', 'chat-divider label-small', content.trim().slice(1, -1))];
   if (s.kind === 'mind') return [mindMoment(content, time)];
   if (s.kind === 'task') {
     const row = el('div', 'msg msg-console new');
@@ -385,7 +400,7 @@ function userEntries(content, time, s, rawAttachments = '') {
     return [row];
   }
   const attachments = parseAttachments(rawAttachments);
-  if (s.kind !== 'web' && isPoke(content, attachments)) return [pokeNote(content, time, formatTime)];
+  if (s.kind !== 'web' && isPoke(content, attachments)) return [pokeNote(content)];
   if (s.kind === 'web') {
     const node = el('div', 'msg-console new');
     node.append(el('div', 'bubble bubble-user body-large', content));
@@ -394,30 +409,38 @@ function userEntries(content, time, s, rawAttachments = '') {
   }
   const parsedList = parseUser(content, s.kind);
   const carrier = parsedList.findLast(p => !p.seen && !p.time && !p.console);
-  return parsedList.filter(parsed => !parsed.seen).map(parsed => {
-    if (parsed.time) return el('div', 'chat-divider label-small', parsed.time);
+  return parsedList.filter(parsed => !parsed.seen && !parsed.time).map(parsed => {
     if (parsed.console) {
       const row = el('div', 'msg msg-console new');
       const label = el('div', 'msg-label label-small');
-      label.append(createIcon('terminal', 'icon-18'), el('span', null, '控制台'), el('span', 'msg-time', time ? formatTime(time) : ''));
+      label.append(createIcon('terminal', 'icon-18'), el('span', null, '控制台'));
       row.append(label, el('div', 'bubble bubble-console body-large', parsed.text));
+      if (time) row.title = formatTime(time);
       return row;
     }
     const who = s.kind === 'private' ? { qq: s.target, name: parsed.name ?? s.name } : speaker(parsed.name);
     const name = who.name ?? (s.kind === 'private' ? s.name : '群友');
     const row = el('div', 'msg msg-in new');
-    row.append(createAvatar(who.qq, name));
+    const avatar = createAvatar(who.qq, name);
+    if (time) avatar.title = `${name} · ${formatTime(time)}`;
+    row.append(avatar);
     const body = el('div', 'msg-body');
-    const label = el('div', 'msg-label label-small');
-    label.append(el('span', 'msg-name', name));
-    if (parsed.tag) label.append(el('span', 'owner-chip label-small', parsed.tag));
-    label.append(el('span', 'msg-time', time ? formatTime(time) : ''));
-    body.append(label);
-    if (parsed.quote) body.append(quoteBlock(parsed.quote, row));
+    if (s.kind === 'group') {
+      const label = el('div', 'msg-label label-small');
+      if (parsed.tag) label.append(el('span', 'owner-chip label-small', parsed.tag));
+      label.append(el('span', 'msg-name', name));
+      body.append(label);
+    }
     const own = parsed === carrier ? attachments : [];
     const text = stripPlaceholders(parsed.text, own);
-    if (text) body.append(renderSaid(meText(mentionNames(text)), 'bubble bubble-in body-large'));
-    body.append(...attachmentNodes(own));
+    const inline = text || parsed.quote ? own.filter(a => a.kind === 'image' || a.kind === 'sticker') : [];
+    if (text || parsed.quote) {
+      const bubble = renderSaid(meText(mentionNames(text)), 'bubble bubble-in body-large');
+      if (parsed.quote) bubble.prepend(quoteBlock(parsed.quote, row));
+      bubble.append(...attachmentNodes(inline));
+      body.append(bubble);
+    }
+    body.append(...attachmentNodes(own.filter(a => !inline.includes(a))));
     row.append(body);
     return row;
   });
@@ -465,7 +488,7 @@ function locateQuoted(row, who, text) {
   const found = (snippet || wantsImage) && (above.find(node => byName(node) && matches(node)) ?? above.find(matches));
   if (found) {
     found.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    found.classList.remove('msg-flash');
+    found.classList.remove('msg-flash', 'new');
     requestAnimationFrame(() => found.classList.add('msg-flash'));
     return;
   }
@@ -475,7 +498,7 @@ function locateQuoted(row, who, text) {
 function botEntry(turn, cards, s) {
   const wrap = el('div', 'reply reply-bot new');
   const qq = isQq(s?.kind);
-  if (qq) wrap.append(selfLabel(turn.createdAt));
+  if (qq) wrap.append(selfAvatar(turn.createdAt));
   if (turn.reasoning) wrap.append(reasoningBlock(turn.reasoning));
   const { inner, said, notes } = splitInner(turn.content ?? '');
   if (inner) wrap.append(el('div', 'inner-voice body-medium', inner));
@@ -519,8 +542,8 @@ function turnNodes(turns, s) {
   const nodes = [];
   const cards = new Map();
   for (const turn of turns) {
-    if (turn.role === 'user') nodes.push(...userEntries(turn.content, turn.createdAt, s, turn.attachments));
-    else if (turn.role === 'assistant') nodes.push(mind ? mindEntry(turn, cards) : botEntry(turn, cards, s));
+    if (turn.role === 'user') nodes.push(...stamped(turn.createdAt, userEntries(turn.content, turn.createdAt, s, turn.attachments), s));
+    else if (turn.role === 'assistant') nodes.push(...(mind ? [mindEntry(turn, cards)] : stamped(turn.createdAt, [botEntry(turn, cards, s)], s)));
     else if (turn.role === 'tool') {
       const card = cards.get(turn.toolCallId);
       if (card) settleToolCard(card, turn.content, turn.toolError);
@@ -543,7 +566,13 @@ async function loadOlder() {
     const height = timeline.scrollHeight;
     const top = timeline.scrollTop;
     timeline.querySelector(':scope > .timeline-older')?.remove();
-    timeline.prepend(...timelineHead(s), ...turnNodes(data.turns, s));
+    const latest = lastAt;
+    lastAt = 0;
+    const older = turnNodes(data.turns, s);
+    const first = timeline.firstElementChild;
+    if (first?.classList.contains('chat-time') && Number(first.dataset.at) - lastAt < STAMP_GAP) first.remove();
+    lastAt = latest;
+    timeline.prepend(...timelineHead(s), ...older);
     timeline.scrollTop = top + (timeline.scrollHeight - height);
   } catch (err) {
     showSnackbar(`读取更早的消息失败：${err.message}`, 'error');
@@ -556,6 +585,7 @@ function renderTimeline() {
   const s = currentSession();
   const timeline = $('#session-timeline');
   const mind = s.kind === 'mind';
+  lastAt = 0;
   const nodes = [...timelineHead(s), ...turnNodes(detail.turns, s)];
   if (!nodes.length) nodes.push(el('div', 'empty-state body-medium', s.kind === 'web' ? WEB_EMPTY : mind ? MIND_EMPTY : '这个会话还没有记录'));
   timeline.replaceChildren(...nodes);
@@ -590,10 +620,14 @@ function startLive(turn, replay = false) {
     note(commandNote('正在压缩上下文…', 'info', 'history'));
     return;
   }
-  if (turn.prompt) timeline.append(...userEntries(turn.prompt, turn.startedAt, currentSession()));
+  const s = currentSession();
+  if (turn.prompt) timeline.append(...stamped(turn.startedAt, userEntries(turn.prompt, turn.startedAt, s), s));
   const reply = createReply(timeline, node => {
     node.classList.add(isMind(turn.session) ? 'mind-step' : 'reply-bot');
-    if (isQq(currentSession().kind)) node.prepend(selfLabel(turn.startedAt ?? Date.now()));
+    if (!isQq(s.kind)) return appendToTimeline(node);
+    const at = turn.startedAt ?? Date.now();
+    node.prepend(selfAvatar(at));
+    for (const stamp of timeStamp(at)) appendToTimeline(stamp);
     return appendToTimeline(node);
   });
   live.set(turn.turnId, reply);
@@ -630,6 +664,7 @@ async function select(session) {
   detail = null;
   shown = PAGE;
   live = new Map();
+  lastAt = 0;
   $('#session-placeholder').hidden = true;
   $('#session-view').hidden = false;
   $('#session-timeline').replaceChildren();
@@ -683,7 +718,8 @@ function onHeard(data) {
   if (data.session === selected) {
     const name = data.userId ? parseUser(data.text, 'group')[0]?.name : null;
     if (name) speakerIds[name] = data.userId;
-    const nodes = userEntries(data.text, data.time, currentSession(), data.attachments);
+    const current = currentSession();
+    const nodes = stamped(data.time, userEntries(data.text, data.time, current, data.attachments), current);
     const timeline = $('#session-timeline');
     timeline.querySelector(':scope > .empty-state')?.remove();
     timeline.append(...nodes);
@@ -705,7 +741,8 @@ function onSaid(data) {
   const timeline = $('#session-timeline');
   const near = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 64;
   timeline.querySelector(':scope > .empty-state')?.remove();
-  timeline.append(botEntry({ role: 'assistant', content: data.content, createdAt: data.time }, new Map(), currentSession()));
+  const current = currentSession();
+  timeline.append(...stamped(data.time, [botEntry({ role: 'assistant', content: data.content, createdAt: data.time }, new Map(), current)], current));
   if (near) timeline.scrollTop = timeline.scrollHeight;
 }
 

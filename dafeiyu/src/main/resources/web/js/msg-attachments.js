@@ -152,9 +152,8 @@ export function isPoke(content, attachments) {
   return attachments.some(a => a.kind === 'poke') || /^(【主人】)?【拍一拍】/.test(content);
 }
 
-export function pokeNote(content, time, formatTime) {
-  const node = el('div', 'poke-note label-medium');
+export function pokeNote(content) {
+  const node = el('div', 'poke-note label-medium new');
   node.append(createIcon('mood', 'icon-18'), el('span', null, content.replace(/【主人】|【拍一拍】/g, '').trim()));
-  if (time) node.append(el('span', 'poke-time', formatTime(time)));
   return node;
 }

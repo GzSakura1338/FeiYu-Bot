@@ -251,7 +251,7 @@ export function toolCard(call, live = false) {
   const { card, head, inner } = foldCard(`tool-card${live ? ' new' : ''}`, meta.icon ?? 'build', meta.label,
     toolDetail(call.name, parseArgs(call.arguments), meta));
   card.dataset.state = 'running';
-  if (live) card.dataset.start = String(performance.now());
+  if (live) card.dataset.live = '';
   const status = el('span', 'tool-status label-medium');
   status.append(createIcon('progress_activity', 'icon-18'));
   head.append(status, createIcon('chevron_right', 'icon-18 tool-chevron'));
@@ -262,16 +262,10 @@ export function toolCard(call, live = false) {
   return card;
 }
 
-function duration(ms) {
-  return ms < 1000 ? `${Math.max(1, Math.round(ms))} 毫秒` : ms < 60_000 ? `${(ms / 1000).toFixed(1)} 秒` : `${Math.floor(ms / 60_000)} 分 ${Math.round(ms % 60_000 / 1000)} 秒`;
-}
-
 export function settleToolCard(card, output, error) {
   card.dataset.state = error ? 'error' : 'done';
   const status = $('.tool-status', card);
   status.replaceChildren(createIcon(error ? 'error' : 'check_circle', 'icon-18'));
-  const start = Number(card.dataset.start);
-  if (start) status.append(el('span', null, duration(performance.now() - start)));
   const call = calls.get(card);
   $('.tool-diff', card)?.remove();
   if (!error && call && EDITS.has(call.name)) status.before(diffBadge(diffStats(call.name, parseArgs(call.arguments), output)));
@@ -346,6 +340,7 @@ export function fillSaid(node, said) {
     last = m.index + m[0].length;
   }
   if (last < said.length) node.append(document.createTextNode(said.slice(last)));
+  node.classList.toggle('bubble-bare', last > 0 && !node.textContent.trim());
   return node;
 }
 

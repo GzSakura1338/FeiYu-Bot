@@ -105,7 +105,7 @@ final class SessionHandler {
         String id = raw == null || !raw.startsWith("id=") ? "" : java.net.URLDecoder.decode(raw.substring(3), java.nio.charset.StandardCharsets.UTF_8);
         try {
             JsonArray lines = new JsonArray();
-            for (dafeiyu.agent.qq.QqActions.ForwardLine l : bridge.actions().forward(id)) {
+            for (dafeiyu.agent.qq.QqForwards.Line l : bridge.forwards().read(id)) {
                 JsonObject o = new JsonObject();
                 o.addProperty("name", l.name());
                 o.addProperty("userId", l.userId());

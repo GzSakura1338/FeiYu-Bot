@@ -121,6 +121,7 @@ public final class QqChatBridge {
     private final QqContacts contacts;
     private final QqBackfill backfill;
     private final QqActions actions;
+    private final QqForwards forwards;
     private final QqImages images;
     private final QqVoice voice;
     private final QqRequests requests;
@@ -146,7 +147,8 @@ public final class QqChatBridge {
         this.backfill = new QqBackfill(agent, archive, outbox, log);
         this.images = new QqImages(db, outbox);
         this.voice = new QqVoice(outbox, db.file().toAbsolutePath().getParent().resolve("voice"));
-        this.actions = new QqActions(agent, archive, outbox, contacts, images, log);
+        this.actions = new QqActions(agent, archive, outbox, contacts, log);
+        this.forwards = new QqForwards(db, archive, outbox, images, log);
         agent.setImageSource(images::load);
         this.requests = new QqRequests(agent, db, outbox, contacts, actions, log);
         requests.setOnNew(r -> {
@@ -162,7 +164,7 @@ public final class QqChatBridge {
             return tools;
         });
         agent.setElsewhere(this::elsewhere);
-        agent.setForwardReader(actions::describeForward);
+        agent.setForwardReader(forwards::describe);
         agent.setPoker((session, userId) -> {
             try {
                 return poke(session, userId);
@@ -336,6 +338,10 @@ public final class QqChatBridge {
 
     public QqActions actions() {
         return actions;
+    }
+
+    public QqForwards forwards() {
+        return forwards;
     }
 
     public QqApiTools qqApi() {
@@ -519,7 +525,7 @@ public final class QqChatBridge {
         if (messageType.equals("group")) {
             latestInGroup.put(optString(event, "group_id"), optString(event, "message_id"));
         }
-        actions.prefetch(event);
+        forwards.prefetch(event);
         boolean replying = agent.store().qqReply();
         MessageGate plugins = gate;
         if (!replying && plugins == MessageGate.NONE) {

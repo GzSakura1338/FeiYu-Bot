@@ -6,6 +6,18 @@ export function formatTime(iso) {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+export function chatTime(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86_400_000);
+  if (days <= 0) return hm;
+  if (days === 1) return `昨天 ${hm}`;
+  if (days < 7) return `星期${'日一二三四五六'[d.getDay()]} ${hm}`;
+  const date = `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+  return d.getFullYear() === now.getFullYear() ? date : `${d.getFullYear()}年${date}`;
+}
+
 export function ago(iso) {
   const s = secondsSince(iso);
   if (s < 5) return '刚刚';

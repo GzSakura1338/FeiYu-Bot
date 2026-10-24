@@ -149,7 +149,7 @@
   40%, 80% { transform: translateX(6px); }
 }
 .dialog-wide, .dialog { transition: width var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized); }
-.reply.new { animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both; }
+.reply.new, .msg.new, .poke-note.new { animation: row-in var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both; }
 .agent-view.view-enter { animation: page-in var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized-decelerate) both; }
 .persona-card:active { transform: scale(.98); }
 .persona-card { transition: background-color var(--md-sys-motion-duration-short4) linear, border-color var(--md-sys-motion-duration-short4) linear, transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
