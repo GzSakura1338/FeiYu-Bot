@@ -82,6 +82,10 @@ public interface Sandbox {
         return null;
     }
 
+    default boolean limited() {
+        return false;
+    }
+
     Map<String, String> environment(Path root, List<Path> extraPath) throws ToolFailure;
 
     String quote(List<String> args);

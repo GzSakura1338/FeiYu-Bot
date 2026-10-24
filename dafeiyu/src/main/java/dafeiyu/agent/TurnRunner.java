@@ -211,7 +211,7 @@ public final class TurnRunner {
             if (step > 1) {
                 interject();
             }
-            if (hasHistory() && estimateContext() >= Compaction.threshold(limits, turn.mind())) {
+            if (hasHistory() && estimateContext() >= Compaction.threshold(limits, Compaction.Style.of(turn.session()))) {
                 compact(Trigger.AUTO);
             }
             boolean lastStep = step >= maxSteps;

@@ -23,9 +23,11 @@ public final class Compaction {
     }
 
     static final int KEEP_TOKENS = 15_000;
-    static final int CHAT_KEEP_TOKENS = 15_000;
-    static final int MIND_KEEP_TOKENS = 15_000;
-    public static final long MIND_CONTEXT = 128_000;
+    static final int CHAT_KEEP_TOKENS = 10_000;
+    static final int MIND_KEEP_TOKENS = 8_000;
+    static final long TASK_CONTEXT = 128_000;
+    static final long CHAT_CONTEXT = 48_000;
+    static final long MIND_CONTEXT = 48_000;
     static final int RESERVE_MIN = 16_000;
     static final int OUTPUT_TOKEN_MAX = 32_000;
     static final int UNKNOWN_WINDOW = 200_000;
@@ -163,9 +165,13 @@ public final class Compaction {
         return usable(limits.context(), limits.output());
     }
 
-    public static long threshold(Limits limits, boolean mind) {
-        long at = threshold(limits);
-        return mind ? Math.min(at, MIND_CONTEXT) : at;
+    public static long threshold(Limits limits, Style style) {
+        long cap = switch (style) {
+            case MIND -> MIND_CONTEXT;
+            case CHAT -> CHAT_CONTEXT;
+            case TASK -> TASK_CONTEXT;
+        };
+        return Math.min(threshold(limits), cap);
     }
 
     public static String checkpointMessage(String summary, String recent) {

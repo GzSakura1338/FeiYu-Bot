@@ -410,6 +410,7 @@ final class AgentHandler {
         box.addProperty("shell", sandbox.shellName());
         box.addProperty("missing", sandbox.missing());
         box.addProperty("reachesLan", sandbox.reachesLan());
+        box.addProperty("limited", sandbox.limited());
         box.addProperty("networkMissing", sandbox.missing() == null ? sandbox.networkMissing() : null);
         body.add("sandbox", box);
         return body.toString();

@@ -99,8 +99,8 @@ final class ShellTool extends TextTool {
             + "System Python is read-only, so install packages into a venv in the working directory: python3 -m venv .venv, "
             + "then .venv/bin/python -m pip install X. npm install works in the working directory. Downloads can be slow; raise timeout for big ones";
 
-    private static final String LIMITS_WINDOWS = "runs below normal priority with at most 50% CPU, 1 GB of memory and 64 processes; the whole process tree is killed on timeout";
-    private static final String LIMITS_UNIX = "runs at lower priority; the whole process tree is killed on timeout";
+    private static final String LIMITS = "runs below normal priority with at most 50% CPU, 1 GB of memory and 64 processes; the whole process tree is killed on timeout";
+    private static final String PRIORITY_ONLY = "runs at lower priority; the whole process tree is killed on timeout";
 
     @Override
     public String description(ToolContext context) {
@@ -110,7 +110,7 @@ final class ShellTool extends TextTool {
         }
         boolean windows = Platform.windows();
         String network = !online(sandbox, context) ? OFFLINE : windows ? ONLINE_WINDOWS : ONLINE_UNIX;
-        return DESCRIPTION.formatted(sandbox.shellName(), sandbox.label(), network, windows ? LIMITS_WINDOWS : LIMITS_UNIX,
+        return DESCRIPTION.formatted(sandbox.shellName(), sandbox.label(), network, sandbox.limited() ? LIMITS : PRIORITY_ONLY,
                 windows ? "python and node" : "python3 and node", windows ? "; PowerShell is available as powershell" : "");
     }
 

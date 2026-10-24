@@ -40,6 +40,11 @@ final class WindowsSandbox implements Sandbox {
     }
 
     @Override
+    public boolean limited() {
+        return true;
+    }
+
+    @Override
     public boolean reachesLan() {
         return false;
     }

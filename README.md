@@ -25,7 +25,7 @@ FeiYu Bot 本身跨平台，需要 JDK 25（`java -version` 能看到 25 就行�
 2. NapCat 用它官方的 Linux 安装脚本或 Docker 版（仓库里的 `napcat/` 和 `start-napcat.bat` 只能在 Windows 上用），在 NapCat 的 OneBot 设置里加一个反向 WebSocket，地址 `ws://127.0.0.1:6199/ws`，token 和控制台里填的一样
 3. 想让她跑命令（「工作目录 › 命令行执行」），Linux 要先装 bubblewrap，要沙盒联网再装 passt：`sudo apt install bubblewrap passt`（Fedora 用 dnf，Arch 用 pacman）；macOS 自带 sandbox-exec，不用装。各系统沙盒的区别见 [dafeiyu/README.md](dafeiyu/README.md#多平台和命令沙盒)
 
-Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机连不上，但挡不住局域网；也只能降优先级，不能限内存和进程数。
+Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机连不上，但挡不住局域网；内存和进程数上限 Linux 要靠 systemd（`systemd-run`），macOS 和没有 systemd 的环境只能降优先级。
 
 ## 目录
 

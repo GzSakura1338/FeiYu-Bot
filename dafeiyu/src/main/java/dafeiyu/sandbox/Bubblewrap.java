@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -26,6 +27,9 @@ final class Bubblewrap extends UnixSandbox {
     private static final String NO_PASTA = "Linux 上沙盒联网要用 passt 里的 pasta 给沙盒单独一张网卡，这样沙盒才连不到本机的控制台和其他服务。"
             + "这台电脑没装：sudo apt install passt（Fedora：sudo dnf install passt；Arch：sudo pacman -S passt），装好重启 FeiYu Bot";
 
+    static final List<String> BUS = List.of("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS");
+    static final String ENV = "/usr/bin/env";
+
     private volatile boolean probed;
     private volatile String missing;
     private volatile String binary;
@@ -33,6 +37,8 @@ final class Bubblewrap extends UnixSandbox {
     private volatile String netMissing;
     private volatile String pasta;
     private volatile Path resolvFile;
+    private volatile boolean scopeProbed;
+    private volatile List<String> scope;
 
     @Override
     public String kind() {
@@ -50,6 +56,39 @@ final class Bubblewrap extends UnixSandbox {
             probe();
         }
         return missing;
+    }
+
+    @Override
+    public boolean limited() {
+        return missing() == null && scope() != null;
+    }
+
+    private List<String> scope() {
+        if (!scopeProbed) {
+            probeScope();
+        }
+        return scope;
+    }
+
+    private synchronized void probeScope() {
+        if (scopeProbed) {
+            return;
+        }
+        String run = locate("systemd-run");
+        if (run != null && Files.isExecutable(Path.of(ENV))) {
+            for (List<String> mode : List.of(List.of("--user"), List.<String>of())) {
+                List<String> base = new ArrayList<>(List.of(run));
+                base.addAll(mode);
+                base.addAll(List.of("--scope", "--quiet", "--collect", "--no-ask-password"));
+                List<String> test = new ArrayList<>(base);
+                test.addAll(List.of("-p", "MemoryMax=67108864", "-p", "TasksMax=8", "-p", "CPUQuota=50%", "--", "true"));
+                if (check(test) == null) {
+                    scope = List.copyOf(base);
+                    break;
+                }
+            }
+        }
+        scopeProbed = true;
     }
 
     @Override
@@ -144,7 +183,27 @@ final class Bubblewrap extends UnixSandbox {
             } catch (IOException ignored) {
             }
         }
-        return arguments(spec, argv, binary, pasta, Files::exists, resolv, resolvFile);
+        List<String> inner = arguments(spec, argv, binary, pasta, Files::exists, resolv, resolvFile);
+        List<String> base = scope();
+        return base == null ? inner : capped(inner, spec, base, System.getenv(), Runtime.getRuntime().availableProcessors());
+    }
+
+    static List<String> capped(List<String> inner, Spec spec, List<String> scope, Map<String, String> host, int cpus) {
+        List<String> args = new ArrayList<>(List.of(ENV));
+        for (String name : BUS) {
+            String value = host.get(name);
+            if (value != null && !value.isBlank()) {
+                args.add(name + "=" + value);
+            }
+        }
+        args.addAll(scope);
+        args.addAll(List.of("-p", "MemoryMax=" + spec.memoryBytes(), "-p", "TasksMax=" + (spec.maxProcesses() + 4),
+                "-p", "CPUQuota=" + Math.max(1, spec.cpuPercent()) * Math.max(1, cpus) + "%", "--", ENV));
+        for (String name : BUS) {
+            args.addAll(List.of("-u", name));
+        }
+        args.addAll(inner);
+        return args;
     }
 
     static List<String> arguments(Spec spec, List<String> argv, String bwrap, String pasta, Predicate<Path> exists, Path resolv,

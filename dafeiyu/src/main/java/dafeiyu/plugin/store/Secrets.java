@@ -6,10 +6,13 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
@@ -95,16 +98,23 @@ public final class Secrets {
             }
             byte[] fresh = new byte[32];
             RANDOM.nextBytes(fresh);
-            Files.createDirectories(file.toAbsolutePath().getParent());
+            Path dir = file.toAbsolutePath().getParent();
+            Files.createDirectories(dir);
+            Path temp;
             try {
-                Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+                temp = Files.createTempFile(dir, "secret", ".tmp", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
             } catch (UnsupportedOperationException e) {
-                Files.createFile(file);
-            } catch (FileAlreadyExistsException e) {
-                key = Files.readAllBytes(file);
-                return key;
+                temp = Files.createTempFile(dir, "secret", ".tmp");
             }
-            Files.write(file, fresh);
+            try {
+                try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.WRITE)) {
+                    channel.write(ByteBuffer.wrap(fresh));
+                    channel.force(true);
+                }
+                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE);
+            } finally {
+                Files.deleteIfExists(temp);
+            }
             key = fresh;
             return key;
         } catch (IOException e) {

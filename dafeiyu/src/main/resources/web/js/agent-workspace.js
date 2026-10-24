@@ -80,7 +80,7 @@ function shellTexts() {
   const windows = (box.platform ?? 'windows') === 'windows';
   const where = box.label ?? 'Windows 应用容器（AppContainer）';
   SHELL_ON.desc = `开启后她能跑命令，默认都在${where}里：只能读写工作目录，限时、断网`
-    + (windows ? '，限内存、限进程数' : '') + (box.missing ? `。现在用不了：${box.missing}` : '');
+    + ((box.limited ?? windows) ? '，限内存、限进程数' : '') + (box.missing ? `。现在用不了：${box.missing}` : '');
   NETWORK.desc = '让沙盒里的命令能上公网：下载文件、pip / npm 装包、调接口；'
     + (box.reachesLan ? '本机连不上，但这个系统上挡不住局域网' : '本机和局域网仍然连不上')
     + (box.networkMissing ? `。现在联网用不了，开着也是断网跑：${box.networkMissing}` : '');

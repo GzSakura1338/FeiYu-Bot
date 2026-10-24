@@ -189,7 +189,7 @@ public final class MemoryStore {
         if (!DAY_LABEL.matcher(day).matches()) {
             throw new IllegalArgumentException("日期不对：" + day);
         }
-        upsert(personaId, DIARY, day, clean(content, MAX_DIARY, true), source);
+        upsert(personaId, DIARY, day, diaryText(content), source);
     }
 
     public void appendDiary(String personaId, long at, String content, String source) {
@@ -220,7 +220,7 @@ public final class MemoryStore {
 
     public void replaceDiary(String personaId, String day, String content, List<Memory> pieces) {
         long created = pieces.isEmpty() ? System.currentTimeMillis() : pieces.getFirst().createdAt();
-        String text = clean(untail(content), MAX_DIARY, true);
+        String text = diaryText(untail(content));
         db.transaction(c -> {
             for (Memory m : pieces) {
                 Database.update(c, "DELETE FROM memories WHERE persona_id = ? AND id = ?", personaId, m.id());
@@ -386,7 +386,7 @@ public final class MemoryStore {
             return false;
         }
         String plain = untail(content);
-        String text = old.scope().equals(DIARY) ? clean(plain, MAX_DIARY, true)
+        String text = old.scope().equals(DIARY) ? diaryText(plain)
                 : SELF_TOPICS.contains(old.label()) && old.scope().equals(SELF) ? clean(plain, MAX_TOPIC, true) : clean(plain);
         if (text.isEmpty()) {
             throw new IllegalArgumentException("记忆内容不能为空");
@@ -714,6 +714,16 @@ public final class MemoryStore {
 
     private static String clean(String content) {
         return clean(content, MAX_CONTENT, false);
+    }
+
+    static String diaryText(String content) {
+        String text = clean(content, Integer.MAX_VALUE, true);
+        if (text.length() <= MAX_DIARY) {
+            return text;
+        }
+        int from = text.length() - MAX_DIARY + 1;
+        int line = text.indexOf('\n', from);
+        return "…" + text.substring(line >= 0 && line < from + 300 ? line + 1 : from);
     }
 
     private static String clean(String content, int max, boolean lines) {
