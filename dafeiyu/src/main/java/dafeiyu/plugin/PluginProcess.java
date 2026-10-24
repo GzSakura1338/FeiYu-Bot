@@ -2,45 +2,38 @@ package dafeiyu.plugin;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import dafeiyu.agent.tool.AppContainerSandbox;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.plugin.rpc.RpcChannel;
+import dafeiyu.sandbox.Sandbox;
+import dafeiyu.sandbox.Sandboxes;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 final class PluginProcess {
 
-    record Launch(List<String> command, Path cwd, Map<String, String> env, String container, boolean network, long memory, int cpu,
-                  int processes) {}
-
     private static final long SHUTDOWN_GRACE_MS = 3_000;
 
     private final String id;
-    private final AppContainerSandbox.Spawned process;
+    private final Sandbox.Running process;
     private final RpcChannel channel;
     private final long startedAt = System.currentTimeMillis();
     private volatile boolean stopping;
 
-    private PluginProcess(String id, AppContainerSandbox.Spawned process, RpcChannel channel) {
+    private PluginProcess(String id, Sandbox.Running process, RpcChannel channel) {
         this.id = id;
         this.process = process;
         this.channel = channel;
     }
 
-    static PluginProcess start(String id, Launch launch, RpcChannel.Handler handler, BiConsumer<String, String> log,
+    static PluginProcess start(String id, Sandbox.Spec launch, RpcChannel.Handler handler, BiConsumer<String, String> log,
                                Consumer<PluginProcess> onExit) throws ToolFailure {
-        String line = AppContainerSandbox.quote(launch.command());
-        AppContainerSandbox.Spawned spawned = AppContainerSandbox.spawn(new AppContainerSandbox.Spec(line, launch.cwd(), launch.env(),
-                launch.container(), launch.network(), launch.memory(), launch.cpu(), launch.processes()));
+        Sandbox.Running spawned = Sandboxes.current().spawn(launch);
         PluginProcess[] self = new PluginProcess[1];
         RpcChannel channel = new RpcChannel(spawned.stdout(), spawned.stdin(), handler,
                 problem -> log.accept("warn", "protocol: " + problem), () -> {

@@ -1,4 +1,6 @@
-package dafeiyu.agent.tool;
+package dafeiyu.sandbox;
+
+import dafeiyu.agent.tool.ToolFailure;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -31,11 +33,11 @@ import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
 import static java.lang.foreign.ValueLayout.JAVA_LONG;
 
-public final class AppContainerSandbox {
+final class AppContainerSandbox {
 
     record Result(int exitCode, String stdout, String stderr, boolean timedOut, boolean truncated, long millis) {}
 
-    public record Spec(String commandLine, Path cwd, Map<String, String> env, String container, boolean network, long memoryBytes,
+    record Spec(String commandLine, Path cwd, Map<String, String> env, String container, boolean network, long memoryBytes,
                        int cpuPercent, int maxProcesses) {}
 
     public static final String ALL_APP_PACKAGES = "S-1-15-2-1";
@@ -236,10 +238,6 @@ public final class AppContainerSandbox {
             line.append("\\".repeat(slashes * 2)).append('"');
         }
         return line.toString();
-    }
-
-    static void grant(Path path, boolean write) throws ToolFailure {
-        icacls(path, "*" + sid(), write);
     }
 
     private static void icacls(Path path, String account, boolean write) throws ToolFailure {
@@ -471,7 +469,7 @@ public final class AppContainerSandbox {
         }
     }
 
-    public static final class Spawned implements AutoCloseable {
+    static final class Spawned implements Sandbox.Running {
         private final MemorySegment process;
         private final MemorySegment job;
         private final long pid;

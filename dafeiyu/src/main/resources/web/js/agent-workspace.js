@@ -17,7 +17,7 @@ export const TOOLS = {
   websearch: { icon: 'travel_explore', label: '网络检索', desc: '上网搜索新闻、资料、教程和不认识的词，中文走必应、英文走 Exa，需要细节时再打开网页读' },
   webfetch: { icon: 'link', label: '读网页', desc: '打开公网网页转成文字来读；本机和内网地址一律拒绝' },
   download: { icon: 'download', label: '下载文件', desc: '把公网链接上的文件下载到工作目录（默认「下载」文件夹），最大 200 MB，不覆盖同名文件' },
-  shell: { icon: 'terminal', label: 'Shell 命令', desc: '让她在工作目录里跑命令（cmd / python / node），默认关闭' },
+  shell: { icon: 'terminal', label: 'Shell 命令', desc: '让她在工作目录里跑命令（cmd 或 bash / python / node），默认关闭' },
   send_file: { icon: 'upload_file', label: '发送文件', desc: '把目录里的文件发给对方，图片直接显示' },
 };
 
@@ -66,14 +66,29 @@ const ACCESS_HINT = {
   ALL: '所有能给机器人发消息的人都可以让它读写文件，有风险',
 };
 
-const SHELL_ON = { icon: 'terminal', label: '沙盒执行', desc: '开启后她能跑命令，默认都在 Windows 应用容器沙盒里：只能读写工作目录，限时、限内存、限进程数，断网' };
-const NETWORK = { icon: 'travel_explore', label: '沙盒联网', desc: '让沙盒里的命令能上公网：下载文件、pip / npm 装包、调接口；本机和局域网仍然连不上' };
+const SHELL_ON = { icon: 'terminal', label: '沙盒执行' };
+const NETWORK = { icon: 'travel_explore', label: '沙盒联网' };
 const DIRECT = { icon: 'shield', label: '沙盒外执行', desc: '不套沙盒，直接以你的身份在电脑上跑命令，整台机器的文件都能碰。只给信得过的人开' };
 const TESTS = {
-  sandbox: { body: { network: false }, hint: '在沙盒里跑 ver、cd、python --version，再试着上网（没开联网时应该连不上）' },
-  network: { body: { network: true }, hint: '打开联网跑一遍：百度和 PyPI 应该是 200，本机地址应该连不上（000）' },
-  direct: { body: { direct: true }, hint: '在沙盒外跑一遍：能看到真实用户名和主目录条目数，公网和本机都应该通' },
+  sandbox: { body: { network: false } },
+  network: { body: { network: true } },
+  direct: { body: { direct: true }, hint: '在沙盒外跑一遍：能看到系统版本、当前目录和真实用户名，公网和本机都应该通' },
 };
+
+function shellTexts() {
+  const box = state.sandbox ?? {};
+  const windows = (box.platform ?? 'windows') === 'windows';
+  const where = box.label ?? 'Windows 应用容器（AppContainer）';
+  SHELL_ON.desc = `开启后她能跑命令，默认都在${where}里：只能读写工作目录，限时、断网`
+    + (windows ? '，限内存、限进程数' : '') + (box.missing ? `。现在用不了：${box.missing}` : '');
+  NETWORK.desc = '让沙盒里的命令能上公网：下载文件、pip / npm 装包、调接口；'
+    + (box.reachesLan ? '本机连不上，但这个系统上挡不住局域网' : '本机和局域网仍然连不上')
+    + (box.networkMissing ? `。现在联网用不了，开着也是断网跑：${box.networkMissing}` : '');
+  TESTS.sandbox.hint = windows
+    ? '在沙盒里跑 ver、cd、python --version，再试着上网（没开联网时应该连不上）'
+    : '在沙盒里跑 uname、pwd、python3 --version，再试着上网（没开联网时应该连不上）';
+  TESTS.network.hint = '打开联网跑一遍：百度和 PyPI 应该是 200，本机地址应该连不上（000）';
+}
 const testOpen = new Set();
 const testResult = new Map();
 
@@ -153,6 +168,7 @@ function renderShell() {
     $('#shell-direct-warning').hidden = true;
     return;
   }
+  shellTexts();
   const on = state.enabled.includes('shell');
   const rows = testable(toolItem(SHELL_ON, 'shell', on, () => {
     const enabled = on ? state.enabled.filter(n => n !== 'shell') : [...state.enabled, 'shell'];

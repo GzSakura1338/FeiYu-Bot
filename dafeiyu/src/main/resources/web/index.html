@@ -318,7 +318,7 @@
 
       <div class="panel">
         <div class="panel-header"><h2 class="headline-small">命令行执行</h2></div>
-        <p class="panel-desc body-medium">让她能跑命令（cmd / python / node）。默认关着；打开后默认在 Windows 应用容器沙盒里跑，只能读写工作目录。每项都可以展开自测一下。</p>
+        <p class="panel-desc body-medium">让她能跑命令（cmd 或 bash / python / node）。默认关着；打开后默认在系统沙盒里跑（Windows 应用容器、Linux bubblewrap、macOS sandbox-exec），只能读写工作目录。每项都可以展开自测一下。</p>
         <ul class="list" id="workspace-shell"></ul>
         <div class="workspace-status body-medium" id="shell-direct-warning" data-tone="error" hidden></div>
         <form class="workspace-row" id="shell-direct-form" novalidate autocomplete="off" hidden>

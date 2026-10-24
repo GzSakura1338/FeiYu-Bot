@@ -25,6 +25,9 @@ import dafeiyu.agent.tool.Toolbox;
 import dafeiyu.agent.tool.WorkspaceStore;
 import dafeiyu.db.DatabaseException;
 import dafeiyu.log.LogBuffer;
+import dafeiyu.sandbox.Platform;
+import dafeiyu.sandbox.Sandbox;
+import dafeiyu.sandbox.Sandboxes;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -34,6 +37,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import static dafeiyu.util.Texts.abbreviate;
@@ -398,6 +402,16 @@ final class AgentHandler {
         extra.forEach(t -> names.add(t.name()));
         body.add("tools", gson.toJsonTree(names));
         body.add("extraTools", gson.toJsonTree(extra));
+        Sandbox sandbox = Sandboxes.current();
+        JsonObject box = new JsonObject();
+        box.addProperty("platform", Platform.current().name().toLowerCase(Locale.ROOT));
+        box.addProperty("kind", sandbox.kind());
+        box.addProperty("label", sandbox.label());
+        box.addProperty("shell", sandbox.shellName());
+        box.addProperty("missing", sandbox.missing());
+        box.addProperty("reachesLan", sandbox.reachesLan());
+        box.addProperty("networkMissing", sandbox.missing() == null ? sandbox.networkMissing() : null);
+        body.add("sandbox", box);
         return body.toString();
     }
 

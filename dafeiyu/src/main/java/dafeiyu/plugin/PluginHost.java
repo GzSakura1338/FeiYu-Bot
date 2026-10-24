@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.Extensions;
 import dafeiyu.agent.qq.MessageGate;
-import dafeiyu.agent.tool.AppContainerSandbox;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.agent.tool.Workspace;
 import dafeiyu.log.LogBuffer;
@@ -18,6 +17,9 @@ import dafeiyu.plugin.manifest.PluginManifest;
 import dafeiyu.plugin.mcp.McpManager;
 import dafeiyu.plugin.rpc.RpcChannel;
 import dafeiyu.plugin.store.PluginStore;
+import dafeiyu.sandbox.Platform;
+import dafeiyu.sandbox.Sandbox;
+import dafeiyu.sandbox.Sandboxes;
 import dafeiyu.util.Jsons;
 
 import java.io.IOException;
@@ -77,7 +79,6 @@ public final class PluginHost implements HostApi.Services {
     private final Path sdkDir;
     private final List<Path> extraDirs;
     private final Map<String, PluginSlot> slots = new ConcurrentHashMap<>();
-    private final Set<String> granted = ConcurrentHashMap.newKeySet();
     private final ScheduledExecutorService timers = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "plugin-host");
         t.setDaemon(true);
@@ -464,8 +465,12 @@ public final class PluginHost implements HostApi.Services {
         return merged.values().stream().limit(PluginManifest.MAX_TOOLS).toList();
     }
 
-    private PluginProcess.Launch launchSpec(PluginSlot slot, PluginManifest m) throws ToolFailure {
+    private Sandbox.Spec launchSpec(PluginSlot slot, PluginManifest m) throws ToolFailure {
         boolean sandbox = store.sandbox(slot.id);
+        Sandbox box = Sandboxes.current();
+        if (sandbox && box.missing() != null) {
+            throw new ToolFailure(box.missing() + "。也可以在插件详情里关掉这个插件的沙盒再启动");
+        }
         Set<Permission> perms = granted(slot);
         Path data = dataDir.resolve(slot.id);
         try {
@@ -475,6 +480,7 @@ public final class PluginHost implements HostApi.Services {
         }
         List<String> command = new ArrayList<>();
         List<Path> interpreterDirs = new ArrayList<>();
+        List<Path> shared = new ArrayList<>();
         switch (m.command()) {
             case "python" -> {
                 String exe = interpreter(true);
@@ -483,6 +489,7 @@ public final class PluginHost implements HostApi.Services {
                 }
                 command.addAll(List.of(exe, "-u"));
                 interpreterDirs.add(Path.of(exe).getParent());
+                shared.addAll(Sandboxes.runtimeRoots(Path.of(exe)));
             }
             case "node" -> {
                 String exe = interpreter(false);
@@ -491,6 +498,7 @@ public final class PluginHost implements HostApi.Services {
                 }
                 command.addAll(List.of(exe, "--preserve-symlinks", "--preserve-symlinks-main"));
                 interpreterDirs.add(Path.of(exe).getParent());
+                shared.addAll(Sandboxes.runtimeRoots(Path.of(exe)));
                 ensurePackageJson(slot.folder, slot.id, slot);
                 ensurePackageJson(sdkDir, "feiyu-plugin-sdk", null);
             }
@@ -503,7 +511,7 @@ public final class PluginHost implements HostApi.Services {
             }
         }
         command.addAll(m.args());
-        Map<String, String> env = AppContainerSandbox.baseEnvironment(data, interpreterDirs);
+        Map<String, String> env = box.environment(data, interpreterDirs);
         m.env().forEach((k, v) -> {
             if (!env.containsKey(k) && !k.toUpperCase().startsWith("FEIYU_")) {
                 env.put(k, v);
@@ -520,25 +528,19 @@ public final class PluginHost implements HostApi.Services {
         if (ws != null) {
             env.put("FEIYU_WORKSPACE", ws.root().toString());
         }
-        String container = null;
-        if (sandbox) {
-            container = "dafeiyu.plugin." + slot.id;
-            String sid = AppContainerSandbox.containerSid(container);
-            AppContainerSandbox.grantTo(slot.folder, false, sid);
-            grantOnce(data, true, sid);
-            if (Files.isDirectory(sdkDir)) {
-                grantOnce(sdkDir, false, AppContainerSandbox.ALL_APP_PACKAGES);
-            }
-            for (Path dir : interpreterDirs) {
-                grantOnce(dir, false, AppContainerSandbox.ALL_APP_PACKAGES);
-            }
-            if (ws != null) {
-                grantOnce(ws.root(), true, sid);
-            }
+        if (Files.isDirectory(sdkDir)) {
+            shared.add(sdkDir);
         }
         boolean network = !sandbox || perms.contains(Permission.NETWORK);
-        return new PluginProcess.Launch(command, slot.folder, env, container, network, sandbox ? 512L << 20 : 1024L << 20,
-                sandbox ? 50 : 80, sandbox ? 16 : 32);
+        if (sandbox && network && box.networkMissing() != null) {
+            pluginLog(slot, "warn", "这次断网启动：" + box.networkMissing());
+            network = false;
+        }
+        return Sandbox.Spec.exec(command, slot.folder, env)
+                .isolated(sandbox, "dafeiyu.plugin." + slot.id, network)
+                .reading(List.of(slot.folder), shared)
+                .writing(ws == null ? List.of(data) : List.of(data, ws.root()))
+                .limits(sandbox ? 512L << 20 : 1024L << 20, sandbox ? 50 : 80, sandbox ? 16 : 32);
     }
 
     private void ensurePackageJson(Path folder, String name, PluginSlot slot) {
@@ -557,41 +559,42 @@ public final class PluginHost implements HostApi.Services {
     }
 
     private void warmUp() {
+        Sandboxes.ledger(new Sandboxes.Ledger() {
+            @Override
+            public boolean granted(String key) {
+                return store.granted(key);
+            }
+
+            @Override
+            public void mark(String key) {
+                store.markGranted(key);
+            }
+        });
         Thread.ofVirtual().name("plugin-warmup").start(() -> {
             try {
+                List<Path> shared = new ArrayList<>();
                 for (boolean py : new boolean[] {true, false}) {
                     String exe = interpreter(py);
                     if (exe != null) {
-                        grantOnce(Path.of(exe).getParent(), false, AppContainerSandbox.ALL_APP_PACKAGES);
+                        shared.addAll(Sandboxes.runtimeRoots(Path.of(exe)));
                     }
                 }
                 if (Files.isDirectory(sdkDir)) {
-                    grantOnce(sdkDir, false, AppContainerSandbox.ALL_APP_PACKAGES);
+                    shared.add(sdkDir);
                 }
-            } catch (ToolFailure | RuntimeException e) {
+                Sandboxes.current().warm(shared);
+            } catch (RuntimeException e) {
                 log.warn("plugins: preparing the sandbox failed: " + e.getMessage());
             }
         });
     }
 
-    private void grantOnce(Path path, boolean write, String sid) throws ToolFailure {
-        String key = sid + "|" + path + "|" + (write ? "M" : "RX");
-        synchronized (granted) {
-            if (granted.contains(key)) {
-                return;
-            }
-            if (!store.granted(key)) {
-                AppContainerSandbox.grantTo(path, write, sid);
-                store.markGranted(key);
-            }
-            granted.add(key);
-        }
-    }
-
     private synchronized String interpreter(boolean pythonWanted) {
         if (pythonWanted) {
-            if (python == null) {
-                python = probe("python", "-c", "import sys;print(sys.executable)");
+            for (String name : Platform.windows() ? List.of("python") : List.of("python3", "python")) {
+                if (python == null) {
+                    python = probe(name, "-c", "import sys;print(sys.executable)");
+                }
             }
             return python;
         }

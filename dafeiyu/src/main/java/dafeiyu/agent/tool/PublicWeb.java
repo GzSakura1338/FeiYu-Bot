@@ -1,5 +1,7 @@
 package dafeiyu.agent.tool;
 
+import dafeiyu.sandbox.Platform;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Inet6Address;
@@ -195,27 +197,66 @@ public final class PublicWeb {
     }
 
     private static InetSocketAddress systemProxy() {
-        if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+        String server = switch (Platform.current()) {
+            case WINDOWS -> windowsProxy();
+            case MAC -> {
+                String env = envProxy();
+                yield env != null ? env : macProxy();
+            }
+            default -> envProxy();
+        };
+        Matcher hostPort = server == null ? null : PROXY_SERVER.matcher(server);
+        if (hostPort == null || !hostPort.find()) {
             return null;
         }
+        String host = hostPort.group(1);
+        if (!host.equals("127.0.0.1") && !host.equalsIgnoreCase("localhost")) {
+            return null;
+        }
+        return InetSocketAddress.createUnresolved(host, Integer.parseInt(hostPort.group(2)));
+    }
+
+    private static String windowsProxy() {
+        String out = output("reg", "query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings");
+        if (out == null || !Pattern.compile("ProxyEnable\\s+REG_DWORD\\s+0x1\\b").matcher(out).find()) {
+            return null;
+        }
+        Matcher server = Pattern.compile("ProxyServer\\s+REG_SZ\\s+(\\S+)").matcher(out);
+        return server.find() ? server.group(1) : null;
+    }
+
+    private static String macProxy() {
+        String out = output("scutil", "--proxy");
+        if (out == null) {
+            return null;
+        }
+        for (String kind : new String[] {"HTTPS", "HTTP"}) {
+            Matcher host = Pattern.compile(kind + "Proxy\\s*:\\s*(\\S+)").matcher(out);
+            Matcher port = Pattern.compile(kind + "Port\\s*:\\s*(\\d+)").matcher(out);
+            if (Pattern.compile(kind + "Enable\\s*:\\s*1\\b").matcher(out).find() && host.find() && port.find()) {
+                return host.group(1) + ":" + port.group(1);
+            }
+        }
+        return null;
+    }
+
+    private static String envProxy() {
+        for (String name : new String[] {"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"}) {
+            String value = System.getenv(name);
+            if (value != null && !value.isBlank() && !value.strip().toLowerCase(Locale.ROOT).startsWith("socks")) {
+                String text = value.strip().replaceFirst("(?i)^https?://", "");
+                return text.substring(text.lastIndexOf('@') + 1);
+            }
+        }
+        return null;
+    }
+
+    private static String output(String... command) {
         try {
-            Process p = new ProcessBuilder("reg", "query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
-                    .redirectErrorStream(true).start();
+            Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
             String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.Charset.defaultCharset());
             p.waitFor(5, TimeUnit.SECONDS);
-            if (!Pattern.compile("ProxyEnable\\s+REG_DWORD\\s+0x1\\b").matcher(out).find()) {
-                return null;
-            }
-            Matcher server = Pattern.compile("ProxyServer\\s+REG_SZ\\s+(\\S+)").matcher(out);
-            Matcher hostPort = server.find() ? PROXY_SERVER.matcher(server.group(1)) : null;
-            if (hostPort == null || !hostPort.find()) {
-                return null;
-            }
-            String host = hostPort.group(1);
-            if (!host.equals("127.0.0.1") && !host.equalsIgnoreCase("localhost")) {
-                return null;
-            }
-            return InetSocketAddress.createUnresolved(host, Integer.parseInt(hostPort.group(2)));
+            return out;
         } catch (IOException | RuntimeException e) {
             return null;
         } catch (InterruptedException e) {

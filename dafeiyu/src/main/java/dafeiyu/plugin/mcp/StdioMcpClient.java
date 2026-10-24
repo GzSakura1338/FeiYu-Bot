@@ -3,12 +3,15 @@ package dafeiyu.plugin.mcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import dafeiyu.agent.tool.AppContainerSandbox;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.plugin.rpc.RpcChannel;
 import dafeiyu.plugin.rpc.RpcChannel.RpcError;
+import dafeiyu.sandbox.Platform;
+import dafeiyu.sandbox.Sandbox;
+import dafeiyu.sandbox.Sandboxes;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -24,10 +27,10 @@ import java.util.function.Consumer;
 
 final class StdioMcpClient extends McpClient {
 
-    private final AppContainerSandbox.Spawned process;
+    private final Sandbox.Running process;
     private final RpcChannel channel;
 
-    private StdioMcpClient(AppContainerSandbox.Spawned process, RpcChannel channel) {
+    private StdioMcpClient(Sandbox.Running process, RpcChannel channel) {
         this.process = process;
         this.channel = channel;
     }
@@ -42,36 +45,38 @@ final class StdioMcpClient extends McpClient {
         if (exe == null) {
             throw new ToolFailure("找不到命令：" + config.command());
         }
+        Sandbox sandbox = Sandboxes.current();
+        if (config.sandbox() && sandbox.missing() != null) {
+            throw new ToolFailure(sandbox.missing() + "。也可以在这个 MCP 服务的设置里关掉沙盒");
+        }
         List<String> argv = new ArrayList<>();
         argv.add(exe.toString());
         String name = exe.getFileName().toString().toLowerCase(Locale.ROOT);
-        if (config.sandbox() && name.equals("node.exe")) {
+        if (config.sandbox() && (name.equals("node.exe") || name.equals("node"))) {
             argv.addAll(List.of("--preserve-symlinks", "--preserve-symlinks-main"));
         }
         argv.addAll(config.args());
-        String windows = System.getenv().getOrDefault("SystemRoot", "C:\\Windows");
-        String line = name.endsWith(".cmd") || name.endsWith(".bat")
-                ? "\"" + windows + "\\System32\\cmd.exe\" /d /s /c \"" + AppContainerSandbox.quote(argv) + "\""
-                : AppContainerSandbox.quote(argv);
         Map<String, String> env;
-        String container = null;
         if (config.sandbox()) {
-            env = AppContainerSandbox.baseEnvironment(data, List.of(exe.getParent()));
-            container = "dafeiyu.mcp." + config.name();
-            String sid = AppContainerSandbox.containerSid(container);
-            AppContainerSandbox.grantTo(data, true, sid);
-            AppContainerSandbox.grantTo(exe.getParent(), false, AppContainerSandbox.ALL_APP_PACKAGES);
-            for (Path folder : scriptFolders(config.args())) {
-                AppContainerSandbox.grantTo(folder, false, sid);
-            }
+            env = sandbox.environment(data, List.of(exe.getParent()));
             env.put("no_proxy", "*");
             env.put("NO_PROXY", "*");
         } else {
             env = new HashMap<>(System.getenv());
         }
         config.env().forEach((k, v) -> env.put(k, v.value()));
-        AppContainerSandbox.Spawned spawned = AppContainerSandbox.spawn(new AppContainerSandbox.Spec(line, data, env, container,
-                !config.sandbox() || config.network(), 1024L << 20, 80, 64));
+        boolean script = Platform.windows() && (name.endsWith(".cmd") || name.endsWith(".bat"));
+        boolean network = !config.sandbox() || config.network();
+        if (config.sandbox() && network && sandbox.networkMissing() != null) {
+            stderr.accept("这次断网启动：" + sandbox.networkMissing());
+            network = false;
+        }
+        Sandbox.Spec spec = (script ? Sandbox.Spec.shell(sandbox.quote(argv), data, env) : Sandbox.Spec.exec(argv, data, env))
+                .isolated(config.sandbox(), "dafeiyu.mcp." + config.name(), network)
+                .reading(scriptFolders(config.args()), Sandboxes.runtimeRoots(exe))
+                .writing(List.of(data))
+                .limits(1024L << 20, 80, 64);
+        Sandbox.Running spawned = sandbox.spawn(spec);
         RpcChannel channel = new RpcChannel(spawned.stdout(), spawned.stdin(), (method, params) -> switch (method) {
             case "ping" -> new JsonObject();
             case "roots/list" -> {
@@ -134,15 +139,16 @@ final class StdioMcpClient extends McpClient {
             return Files.isRegularFile(direct) ? direct : null;
         }
         String path = System.getenv().getOrDefault("PATH", System.getenv().getOrDefault("Path", ""));
-        List<String> exts = command.contains(".") ? List.of("") : List.of(".exe", ".cmd", ".bat", ".com", "");
-        for (String dir : path.split(";")) {
+        boolean windows = Platform.windows();
+        List<String> exts = !windows || command.contains(".") ? List.of("") : List.of(".exe", ".cmd", ".bat", ".com", "");
+        for (String dir : path.split(File.pathSeparator)) {
             if (dir.isBlank()) {
                 continue;
             }
             for (String ext : exts) {
                 try {
                     Path p = Path.of(dir.strip(), command + ext);
-                    if (Files.isRegularFile(p)) {
+                    if (Files.isRegularFile(p) && (windows || Files.isExecutable(p))) {
                         return p;
                     }
                 } catch (RuntimeException ignored) {

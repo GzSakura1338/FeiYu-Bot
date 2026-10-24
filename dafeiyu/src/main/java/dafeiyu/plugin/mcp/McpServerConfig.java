@@ -3,7 +3,7 @@ package dafeiyu.plugin.mcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import dafeiyu.plugin.store.Dpapi;
+import dafeiyu.plugin.store.Secrets;
 import dafeiyu.plugin.store.PluginStore;
 
 import java.net.URI;
@@ -92,7 +92,7 @@ public record McpServerConfig(String name, String type, String command, List<Str
             if (!s.secret()) {
                 e.addProperty("value", s.value());
             } else if (stored) {
-                e.addProperty("value", s.value().isEmpty() ? "" : Dpapi.encrypt(s.value()));
+                e.addProperty("value", s.value().isEmpty() ? "" : Secrets.encrypt(s.value()));
             } else {
                 e.addProperty("value", s.value().isEmpty() ? "" : PluginStore.KEEP_SECRET);
             }
@@ -137,9 +137,9 @@ public record McpServerConfig(String name, String type, String command, List<Str
             }
             boolean secret = bool(item, "secret", false);
             String value = optString(item, "value");
-            if (stored && secret && value.startsWith(Dpapi.PREFIX)) {
+            if (stored && secret && Secrets.sealed(value)) {
                 try {
-                    value = Dpapi.decrypt(value);
+                    value = Secrets.decrypt(value);
                 } catch (IllegalStateException ex) {
                     value = "";
                 }

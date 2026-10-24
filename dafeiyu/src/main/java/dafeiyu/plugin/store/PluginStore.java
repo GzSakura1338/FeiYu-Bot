@@ -142,7 +142,7 @@ public final class PluginStore {
         for (String secret : SettingsSchema.secrets(schema)) {
             if (stored.has(secret) && stored.get(secret).isJsonPrimitive()) {
                 try {
-                    stored.addProperty(secret, Dpapi.decrypt(stored.get(secret).getAsString()));
+                    stored.addProperty(secret, Secrets.decrypt(stored.get(secret).getAsString()));
                 } catch (IllegalStateException e) {
                     stored.remove(secret);
                 }
@@ -183,8 +183,8 @@ public final class PluginStore {
         }
         for (String secret : secrets) {
             JsonElement v = next.get(secret);
-            if (v != null && v.isJsonPrimitive() && !v.getAsString().isEmpty() && !v.getAsString().startsWith(Dpapi.PREFIX)) {
-                next.addProperty(secret, Dpapi.encrypt(v.getAsString()));
+            if (v != null && v.isJsonPrimitive() && !v.getAsString().isEmpty() && !Secrets.sealed(v.getAsString())) {
+                next.addProperty(secret, Secrets.encrypt(v.getAsString()));
             }
         }
         settings.put(key(id, "settings"), next.toString());

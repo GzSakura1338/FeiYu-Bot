@@ -21,6 +21,7 @@ import dafeiyu.plugin.api.QqPort;
 import dafeiyu.plugin.install.PluginInstaller;
 import dafeiyu.plugin.mcp.McpManager;
 import dafeiyu.plugin.store.PluginStore;
+import dafeiyu.plugin.store.Secrets;
 import dafeiyu.web.WebConsole;
 
 import java.nio.file.Files;
@@ -61,6 +62,7 @@ public final class Main {
         QqChatBridge bridge = new QqChatBridge(agent, napcat, archive, db, log);
         bridge.startLife();
         Path dataDir = db.file().toAbsolutePath().getParent();
+        Secrets.init(dataDir);
         PluginStore pluginStore = new PluginStore(db);
         QqPort qqPort = new QqPort() {
             @Override

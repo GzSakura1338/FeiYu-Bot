@@ -17,13 +17,23 @@
 
 关闭：直接关掉对应的命令行窗口。改了 Java 代码要重启 FeiYu Bot，改前端只要刷新浏览器。
 
+### Linux 和 macOS
+
+FeiYu Bot 本身跨平台，需要 JDK 25（`java -version` 能看到 25 就行）：
+
+1. 执行 `./start-dafeiyu.sh`，打开 http://127.0.0.1:8090/
+2. NapCat 用它官方的 Linux 安装脚本或 Docker 版（仓库里的 `napcat/` 和 `start-napcat.bat` 只能在 Windows 上用），在 NapCat 的 OneBot 设置里加一个反向 WebSocket，地址 `ws://127.0.0.1:6199/ws`，token 和控制台里填的一样
+3. 想让她跑命令（「工作目录 › 命令行执行」），Linux 要先装 bubblewrap，要沙盒联网再装 passt：`sudo apt install bubblewrap passt`（Fedora 用 dnf，Arch 用 pacman）；macOS 自带 sandbox-exec，不用装。各系统沙盒的区别见 [dafeiyu/README.md](dafeiyu/README.md#多平台和命令沙盒)
+
+Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机连不上，但挡不住局域网；也只能降优先级，不能限内存和进程数。
+
 ## 目录
 
 | 路径 | 内容 | 进仓库 |
 | --- | --- | --- |
 | `dafeiyu/` | FeiYu Bot 本体：后端、网页、插件 SDK、说明文档 | 是（`data/`、`config.properties`、`build/` 除外） |
 | `personas/` | 人格角色卡，正文复制到控制台「人格」里用 | 是 |
-| `start-*.bat`、`launch-*.ps1` | 启动脚本 | 是 |
+| `start-*.bat`、`launch-*.ps1`、`start-dafeiyu.sh` | 启动脚本（`.sh` 给 Linux 和 macOS） | 是 |
 | `napcat/` | NapCatQQ v4.18.41 Shell 版 | 否 |
 | `file/` | 她的工作目录：写的网页、画的图、跑的命令都在这里 | 否 |
 

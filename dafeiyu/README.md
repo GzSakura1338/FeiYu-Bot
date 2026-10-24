@@ -5,7 +5,7 @@
 
 ## 运行
 
-- 双击上一级目录的 `start-dafeiyu.bat`，或者在本目录执行 `.\gradlew.bat run`
+- 双击上一级目录的 `start-dafeiyu.bat`，或者在本目录执行 `.\gradlew.bat run`；Linux 和 macOS 用上一级目录的 `./start-dafeiyu.sh` 或 `./gradlew run`
 - 打开网页控制台：http://127.0.0.1:8090/
 - `config.properties`：控制台端口、前端目录、数据库位置，以及反向 WebSocket 的初始默认值
 - 其余配置都在网页上管理，存在 SQLite 数据库 `data/dafeiyu.db`（含 API Key，已加入 .gitignore）；表结构升级前会自动备份到 `data/backup/dafeiyu-v<旧版本>-<时间>.db`
@@ -101,14 +101,14 @@
   - 在别处聊的：主人找她时（私聊、群里主人叫她、控制台），每轮带上「<你这会儿在别处聊的>」：最近 20 分钟她在哪些私聊（对方名字、QQ 号）、哪些群（群名、群号、最近在说话的人）聊着；私聊里再附那边最后两句，群里只给名字不给内容。主人说「跟他说」「告诉她」没点名时先对照这里，只有一个就是他，几个就问；写 <去做> 时带上 QQ 号或群号，「私信」就是去私聊。别人的会话里没有这一块
 - 工作目录与文件工具（移植自 opencode 的 read / write / edit / patch / list / glob / grep / todowrite / webfetch，另加 move 移动改名、delete 删除、download 下载、send_file 发文件。patch 先全部校验再动手，删除进 .trash；webfetch 拒绝本机和内网地址）。
 - 网络检索 `websearch`（`WebSearch`、`WebSearchTool`，不需要 API Key）：含中文的查询先走 cn.bing.com（抓结果页的标题、链接、摘要），英文先走 Exa（opencode 同款的 `mcp.exa.ai` 免费接口，带网页正文摘录），一边失败或没结果就换另一边；默认 8 条，最多 15 条。工具说明里带当天日期，提示查近况时带上年份，需要细节再用 webfetch 打开。后端直连，不走系统代理。内心也有一个 `search` 工具（每次 5 条），好奇或群里聊到不懂的东西时会自己去搜
-- 读网页 `webfetch`（`WebFetchTool`、`HtmlText`、`PublicWeb`）：用真浏览器标识；有 `<article>` / `<main>` 就只取正文，几乎全是短链接的列表当菜单去掉；一次给约 8000 字，`offset` 接着读，`find` 写关键词只返回相关段落；第一次打开时在末尾列出编号链接（正文里写成「文字[3]」）和页面上的图片，可以顺着点下去或交给 `view_image` 看；同一网址 15 分钟内不重新下载；网页 30 秒没传完就放弃（包括只发了响应头、正文一直不来的）。直连连不上时，如果 Windows 设了本机系统代理（比如 127.0.0.1:7897），就改走代理并记住这个网站；网站拒绝（403 / 412 / 429 等）或网页要靠脚本才有内容时，用 Exa 的 `web_fetch_exa` 兜底。知乎、百度百科、贴吧、B 站这类网站两边都读不了。内心也有 `webfetch`，提示词里鼓励她闲着时上网冲浪
+- 读网页 `webfetch`（`WebFetchTool`、`HtmlText`、`PublicWeb`）：用真浏览器标识；有 `<article>` / `<main>` 就只取正文，几乎全是短链接的列表当菜单去掉；一次给约 8000 字，`offset` 接着读，`find` 写关键词只返回相关段落；第一次打开时在末尾列出编号链接（正文里写成「文字[3]」）和页面上的图片，可以顺着点下去或交给 `view_image` 看；同一网址 15 分钟内不重新下载；网页 30 秒没传完就放弃（包括只发了响应头、正文一直不来的）。直连连不上时，如果系统设了本机代理（比如 127.0.0.1:7897，各系统怎么读见「多平台和命令沙盒」），就改走代理并记住这个网站；网站拒绝（403 / 412 / 429 等）或网页要靠脚本才有内容时，用 Exa 的 `web_fetch_exa` 兜底。知乎、百度百科、贴吧、B 站这类网站两边都读不了。内心也有 `webfetch`，提示词里鼓励她闲着时上网冲浪
 - 下载文件 `download`（`DownloadTool`，走 `PublicWeb` 同一套公网检查、跳转和本机代理）：把公网链接上的文件下到工作目录，默认放「下载/」，也可以写文件夹或完整路径。文件名先取服务器给的（Content-Disposition，含 `filename*` 编码），没有就用网址最后一段，再没有按类型补扩展名；同名文件自动加「 (1)」不覆盖，只有写了完整路径才覆盖。最大 200 MB、10 分钟，边下边写进临时文件，下完再挪进工作目录（和 write 一样检查不能出工作目录）。服务器给的是网页（text/html）时提醒她可能要登录或换直链。默认开着，QQ 里也能直接用（不算要交给后台的「动手」工具），下完可以 send_file 发出去
 - 看图放大 `view_image`（`ImageViewer`，模型支持看图才给）：QQ 收到的普通图片都登记进 `images` 表（库版本 12，按 QQ 文件名去重），聊天里显示成「[图片#12]」；图片链接过期后用 NapCat `get_image` 重新取。不写 area 看整张（小图放大到 768 像素以上，大图缩到 1568），图上画 4×4 格子（列 A–D、行 1–4）；area 写格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55）时从原图裁出来，最多放大 4 倍。也能看 `[表情包#5]`、网页图片网址和（能用 read 时，或者在内心里）工作目录里的图片；只填了数字、又没有这个图片编号时，退回去找同号的表情包。返回的图只放在这一轮的请求里，不写进聊天记录；每轮最多看 6 次。QQ 会话、网页会话、后台任务和内心都能用
 - 她自己发的图：用 send_file 或生图发到 QQ 的图片也登记进 `images` 表（按本地文件路径），聊天记录和工具结果里写成「[图片#N] 文件名」，以后能用 view_image 再看；发表情包记成「[表情包#N]」，被引用时带上表情包的说明。有人回复一张图（她自己发的或别人发的、图片或表情包）来找她时，那张图直接附在这一轮里给她看，不用她自己想起来去调 view_image
 - 生图 `image`（`ImageGen`、`ImageTool`，设置在「设置 › Agent › 生图」，存在 settings 表 `agent.imageGen`）：配接口地址、API Key、模型和默认尺寸，打开开关后所有聊天都多一个 image 工具。模型和添加模型一样能点右侧按钮从接口拉取列表（`{地址}/models`，Key 留空就用已保存的），名字像生图模型的（image、dall-e、flux、seedream、kolors……）排在前面并标「生图」；默认尺寸是下拉预设：方形 1024×1024、横版 1536×1024、竖版 1024×1536、宽屏 1792×1024、长图 1024×1792、自动，选了马上保存，她画图时也能按要求换尺寸。系统提示里也告诉她有人要画图时直接用它、别再写网页或 SVG 去画。调用 OpenAI 格式的 `{地址}/images/generations`（地址没写版本号时补 `/v1`，参数 model、prompt、size、n），返回的 `b64_json` 或 `url` 都认，最多 4 张、等 3 分钟。提示词先过关键词和模型两道内容审核，画好的图存进工作目录的「作品/生图」（没设工作目录就存 `data/generated/`），再用当前聊天的发文件通道发出去：QQ 里是图片消息并登记编号，网页测试对话里直接显示。API Key 只存在本机，接口读设置时只返回前三位和后四位；Key 留空保存表示不改。设置里「试画一张」用当前配置画一张预览
-  shell（沙盒执行，默认关闭）跑在 Windows AppContainer「dafeiyu.sandbox」里：只能读写工作目录，断网（含本机回环），注册表和用户目录都碰不到；
-  Job 对象限制 1 GB 内存、64 个进程、低优先级、CPU 上限 50%，超时整棵进程树一起杀掉。第一次使用时会用 icacls 给容器 SID 加两条权限：工作目录可写、Python 安装目录只读。
-  撤销：`icacls <目录> /remove *<容器 SID> /T /C /Q`（SID 在日志或 `CheckNetIsolation` 里能查到）。Node 装在 Program Files 里，要用的话需要管理员手动加只读权限。网页上的文件列表可以预览图片、文本和 HTML（HTML 在沙箱里打开）：
+  shell（沙盒执行，默认关闭）跑在系统沙盒里（见下面的「多平台和命令沙盒」），Windows 上是 AppContainer「dafeiyu.sandbox」：只能读写工作目录，断网（含本机回环），注册表和用户目录都碰不到；
+  Job 对象限制 1 GB 内存、64 个进程、低优先级、CPU 上限 50%，超时整棵进程树一起杀掉。第一次使用时会用 icacls 给容器 SID 加工作目录可写，给所有应用容器加 Python / Node 安装目录只读。
+  撤销：`icacls <目录> /remove *<容器 SID> /T /C /Q`（SID 在日志或 `CheckNetIsolation` 里能查到）。网页上的文件列表可以预览图片、文本和 HTML（HTML 在沙箱里打开）：
   - 在「工作目录」子页填一个目录后启用；模型按需多步调用工具（和 opencode 一样不限步数，做完为止；只留 1000 步的保险上限，到了按 opencode 要求只能文字收尾。同一个工具用一模一样的参数连调 3 次，会在结果后面提醒她换个办法或者停下来说明卡在哪；随时可以在网页上停止）
   - 整理：提示词要求她把新做的东西按主题放进文件夹（作品/、笔记/ 等），叫她「整理一下工作目录」时先 list 再 move；delete 只是挪进工作目录里的 `.trash`，可以找回
   - 「文件」面板：浏览工作目录、下载文件、删除到回收站，回收站里再删才是彻底删除
@@ -140,7 +140,7 @@
 - 插件是独立进程，放在 `plugins/<id>/`（`plugin.json` + 代码），通过标准输入输出说 JSON-RPC 2.0；自带 Python（只用标准库）和 Node 的 SDK（`plugins/sdk/`）。这里只提供宿主接口，具体插件由开发者自己写
 - 能做的事：QQ 命令（前缀默认 `#`）、订阅消息和通知事件、拦截或改写收到的消息、给她加工具（Agent 里默认可用，QQ 聊天和内心要单独打开）、定时任务（cron）、每轮提示词补充、过滤她要发出去的话、设置表单（含加密的密钥）、自己的 kv 存储和数据目录、读写记忆、调用大模型（token 记在「插件:id」名下，不限额度）、自定义页面
 - 权限：清单里声明，启用时逐项确认；主动发消息只能发到勾选的群，和她说的话一样过内容审核，每分钟 10 条、每天 100 条
-- 沙盒：每个插件一个 AppContainer，默认断网（`network` 权限才放开，本机和局域网始终不通），只能写自己的数据目录 `data/plugins/<id>/`；内存 512 MB、CPU 50%、16 个进程
+- 沙盒：Windows 上每个插件一个 AppContainer，默认断网（`network` 权限才放开，本机和局域网始终不通），只能写自己的数据目录 `data/plugins/<id>/`；内存 512 MB、CPU 50%、16 个进程。Linux / macOS 用 bubblewrap / sandbox-exec，规则相同，区别见下面的「多平台和命令沙盒」
 - 稳定性：崩溃自动重启（1 秒起翻倍，10 分钟崩 5 次自动停用）；命令 5 秒、拦截和出站过滤 2 秒、提示词补充 0.5 秒超时，拦截 / 过滤连续 3 次超时就暂停 5 分钟；日志每秒最多 50 行；插件出什么问题都不影响她正常聊天
 - 安装：上传 zip、Git 地址或 zip 网址，先看清单和权限再确认；升级保留设置和数据，版本变小会提示；卸载时可选是否删数据。开发模式下改了插件文件自动重新加载
 - MCP 服务：本地（stdio，默认沙盒 + 断网）和远程（Streamable HTTP），工具名 `mcp__<服务>__<工具>`
@@ -148,6 +148,28 @@
   - 资源和提示词包装成三个全局工具：`mcp_list_resources`（列资源和资源模板）、`mcp_read_resource`（按 URI 读，图片直接给她看）、`mcp_get_prompt`（列出或取用提示词模板）；只在有服务声明了对应能力时出现，在「工作目录」页能单独开关，也遵守每个服务的「QQ 里可用 / 内心可用」
   - 工具结果（插件工具也一样，`ToolResults`）：文字照给；图片直接附给模型看（每次最多 4 张）；音频说明听不了；资源链接写明 URI 并提示可以读；内嵌资源给出文字；只有 `structuredContent` 时给 JSON
   - 调用超时后给服务发 `notifications/cancelled`，晚到的回复安静丢掉；服务发来的日志通知（`notifications/message`）记进服务卡片的输出里
+
+## 多平台和命令沙盒
+
+Windows、Linux、macOS 都能跑（JDK 25）。跑命令的地方（shell 工具、插件进程、本地 MCP 服务）统一走 `sandbox` 包，按系统选沙盒；「工作目录 › 命令行执行」里会显示当前用的是哪个，自测按系统换成对应命令。
+
+| | Windows | Linux | macOS |
+| --- | --- | --- | --- |
+| 沙盒 | AppContainer + Job 对象 | bubblewrap（`bwrap`，要先装） | 系统自带的 `sandbox-exec` |
+| shell | `cmd.exe`（PowerShell 也能用） | `/bin/bash`，没有就 `/bin/sh` | `/bin/bash` |
+| 文件 | 只能读写工作目录；系统目录只读 | 新的挂载命名空间：系统目录（/usr、/etc……）只读挂进来，工作目录可写，其余（家目录等）根本看不到 | 拒绝所有，只放开系统目录只读和工作目录读写 |
+| 断网 | 不给联网能力，连本机都不通 | 独立网络命名空间，什么都连不上 | 拒绝所有网络 |
+| 联网时 | 只能上公网，本机和局域网不通 | 用 passt 的 `pasta` 给沙盒单独一张网卡（不映射主机回环、不转发端口，DNS 由 pasta 转发）：本机不通，局域网能连 | 只放开 IP 向外连接，拒绝 localhost；本机套接字只放开 DNS（mDNSResponder）：本机不通，局域网能连 |
+| 限制 | 内存、进程数、CPU 上限 | 只降优先级（nice 10），超时杀整棵进程树 | 同 Linux |
+
+- 本机必须挡住：控制台（8090）没有登录，沙盒里的命令要是连得上，就能改设置、打开沙盒外执行。所以 Linux 上没装 passt 时不会退回和主机共用网络，而是断网跑：shell 结果末尾、插件日志、MCP 输出里会写明原因，「命令行执行」里的「沙盒联网」也会提示装 `passt`
+- Linux 上没装 bubblewrap，或者系统不让普通用户建命名空间（Ubuntu 24.04 起默认限制），沙盒就用不了：打开 shell 工具会直接报出原因和修法（`sudo apt install bubblewrap`；Ubuntu 24.04 执行 `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0`）。这时只能给主人开「沙盒外执行」，或者插件 / MCP 关掉沙盒再启动
+- 其他系统（BSD 等）没有沙盒，只能用沙盒外执行
+- Python 在 Linux / macOS 上找 `python3`，装包用 `python3 -m venv .venv` 再 `.venv/bin/python -m pip install`；沙盒里的家目录和临时目录在工作目录的 `.sandbox/` 下
+- 插件和 MCP 的密钥：Windows 用 DPAPI 加密；Linux / macOS 用 `data/secret.key`（第一次用时随机生成，权限 600）做 AES-GCM 加密。在 Windows 上加密过的密钥换到别的系统读不出来，要重新填
+- 系统代理：Windows 读注册表，macOS 读 `scutil --proxy`，Linux / macOS 读 `HTTPS_PROXY` / `HTTP_PROXY` 环境变量；都只认本机地址的代理
+- NapCat 在 Linux 上用官方安装脚本或 Docker 版，macOS 用它的 macOS 版，连 `ws://127.0.0.1:6199/ws`
+
 ## 后端结构 `src/main/java/dafeiyu`
 
 | 包 | 类 | 作用 |
@@ -184,9 +206,10 @@
 | `plugin.api` | `HostApi`、`QqPort` | 插件能调的宿主接口和权限检查、频率限制；QQ 收发的适配层 |
 | `plugin.manifest` | `PluginManifest`、`Permission`、`PluginVersion`、`Cron`、`SettingsSchema`、`ArgsCheck` | 清单解析与校验、权限、版本比较、cron、设置表单校验、工具参数校验 |
 | `plugin.rpc` | `RpcChannel`、`ToolResults` | 按行的 JSON-RPC 2.0、工具结果转换和截断 |
-| `plugin.store` | `PluginStore`、`Dpapi` | 启用状态、授权、设置（密钥用 DPAPI 加密）、kv、插件日志 |
+| `plugin.store` | `PluginStore`、`Secrets`、`Dpapi` | 启用状态、授权、设置（密钥在 Windows 用 DPAPI、其他系统用 AES-GCM 加密）、kv、插件日志 |
 | `plugin.install` | `PluginInstaller` | zip / Git / 网址安装、升级、卸载 |
 | `plugin.mcp` | `McpManager`、`McpClient`、`StdioMcpClient`、`HttpMcpClient`、`McpServerConfig` | MCP 客户端 |
+| `sandbox` | `Sandbox`、`Sandboxes`、`Platform`、`WindowsSandbox`、`AppContainerSandbox`、`UnixSandbox`、`Bubblewrap`、`Seatbelt`、`Processes` | 跨平台的进程沙盒：统一的启动参数（命令、可读 / 可写目录、联网、资源上限）和按系统的实现；Windows 的 AppContainer 和授权记录、Linux 的 bwrap 参数、macOS 的 Seatbelt 规则；普通子进程的输出收集和整树结束 |
 | `web` | `WebConsole`、`ApiHandler`、`MediaHandler`、`WsProfileHandler`、`AgentHandler`、`SessionHandler`、`MindHandler`、`MemoryHandler`、`StickersHandler`、`FilesHandler`、`QqApiHandler`、`ImageGenHandler`、`PluginHandler`、`McpHandler`、`PluginPageHandler`、`QqDirectory`、`SseWriter`、`StaticFileHandler`、`Requests`、`HttpResponses` | HTTP 服务和接口（会话列表 / 实时事件 / 命令、内心状态与「想一想」、记忆与回顾、表情包、工作目录文件、QQ 接口清单和开关 `/api/agent/qqapi`、生图设置和试画 `/api/agent/image-gen`、插件和 MCP 管理、插件自定义页面、群名和好友昵称） |
 | `util` | `Jsons`、`Texts` | JSON 取值、文本截断 |
 
