@@ -9,6 +9,7 @@ import dafeiyu.message.MessageArchive;
 import dafeiyu.message.StoredMessage;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +23,14 @@ public final class QqActions {
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_MUTE_MINUTES = 30 * 24 * 60;
     private static final int MAX_RECALL = 10;
+    private static final int MAX_LEAVES_PER_DAY = 2;
 
     private final ChatAgent agent;
     private final MessageArchive archive;
     private final QqOutbox outbox;
     private final QqContacts contacts;
     private final LogBuffer log;
+    private final List<Long> leaves = new ArrayList<>();
 
     QqActions(ChatAgent agent, MessageArchive archive, QqOutbox outbox, QqContacts contacts, LogBuffer log) {
         this.agent = agent;
@@ -100,6 +103,55 @@ public final class QqActions {
         log.info("agent [group " + groupId + "] kicked " + userId + (block ? " and blocked re-join" : ""));
         note(groupId, "（你把" + name + "踢出了群" + (block ? "，不让再加" : "") + "）");
         return "把" + name + "踢出了「" + contacts.groupName(groupId) + "」" + (block ? "，以后也加不进来了" : "");
+    }
+
+    String latestMessageId(String groupId) {
+        return archive.conversation(true, groupId, 50).reversed().stream().map(StoredMessage::messageId)
+                .filter(id -> id != null && id.matches("-?\\d+")).findFirst().orElse(null);
+    }
+
+    public synchronized void checkLeave(String groupId) throws ToolFailure {
+        if (!groupId.matches("\\d{5,12}")) {
+            throw new ToolFailure("群号不对：" + groupId);
+        }
+        if (!contacts.groups().containsKey(groupId)) {
+            throw new ToolFailure("你不在这个群里");
+        }
+        if (role(groupId, outbox.selfId()).equals("owner")) {
+            throw new ToolFailure("你是「" + contacts.groupName(groupId) + "」的群主，退群会把整个群解散，不能退");
+        }
+        long now = System.currentTimeMillis();
+        leaves.removeIf(at -> now - at > 86_400_000L);
+        if (leaves.size() >= MAX_LEAVES_PER_DAY) {
+            throw new ToolFailure("这一天里已经退过 " + MAX_LEAVES_PER_DAY + " 个群了，先缓一缓，真不想待就跟主人说");
+        }
+    }
+
+    public String leaveGroup(String groupId, String reason) throws ToolFailure {
+        String why = abbreviate(reason == null ? "" : reason.strip(), 200);
+        if (why.isEmpty()) {
+            throw new ToolFailure("要写清楚为什么退");
+        }
+        String name;
+        synchronized (this) {
+            checkLeave(groupId);
+            name = contacts.groupName(groupId);
+            JsonObject params = new JsonObject();
+            params.addProperty("group_id", number(groupId));
+            params.addProperty("is_dismiss", false);
+            outbox.call("set_group_leave", params, TIMEOUT);
+            leaves.add(System.currentTimeMillis());
+        }
+        contacts.forgetGroups();
+        log.warn("agent [group " + groupId + "] left the group: " + why);
+        for (String owner : agent.personas().owners()) {
+            try {
+                outbox.deliver(QqOutbox.Target.direct(owner, outbox.selfId(), ""), "我退出了「" + name + "」（群号 " + groupId + "）：" + why, null);
+            } catch (ToolFailure e) {
+                log.warn("agent: could not tell owner " + owner + " about leaving " + groupId + ": " + e.getMessage());
+            }
+        }
+        return "退出了「" + name + "」，已经私聊告诉主人了";
     }
 
     public String deleteFriend(String userId) throws ToolFailure {

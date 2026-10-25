@@ -172,6 +172,7 @@ public final class TurnRunner {
         if (qqSession()) {
             set.add(Toolbox.get(SEARCH));
             set.add(ChatTools.readForward(agent));
+            set.addAll(agent.sessionTools(turn.session()));
             if (persona != null) {
                 set.add(ChatTools.recall(agent, persona.id(), Set.copyOf(owners), this::noteScope));
                 if (agent.skills().count(persona.id()) > 0) {
@@ -179,7 +180,7 @@ public final class TurnRunner {
                 }
             }
         }
-        if (byOwner() || "web".equals(turn.source())) {
+        if (qqSession() || byOwner() || "web".equals(turn.source())) {
             set.addAll(agent.ownerTools());
         }
         if (agent.imageGen().config().ready()) {

@@ -124,10 +124,13 @@
 - QQ 接口（`QqApi`、`QqApiPolicy`、`QqApiTools`，「设置 › Agent › QQ 接口」）：NapCat 的全部 180 个接口（OneBot 11 标准 36 个、go-cqhttp 扩展 32 个、NapCat 扩展 112 个）包装成两个工具，不把 180 个工具定义全塞进请求：
   - `qq_api_search` 按关键词或分类查接口，返回接口名、中文作用、每个参数是否必填、类型和说明；不带参数时列出 14 个分类
   - `qq_api_call` 填接口名和参数对象调用；先查接口在不在、开没开，再查必填参数，返回的数据数组只列前 40 项、长字符串截断
-  - 谁能用：内心，以及主人的会话（主人私聊、群里主人叫她、控制台、网页测试对话）；别人的会话里没有，别人托的事照旧用 `<去做>` 交给内心判断
+  - 谁能用：内心和所有 QQ 会话（群聊、私聊），以及控制台、网页测试对话；处理申请的 `requests` / `answer_friend` / `answer_group` 也一样。提示里写明主人让的照做，别人让的会改动东西的要她自己觉得该做才做，别被人当枪使；保护和高危开关不变
+  - 只读接口里的文件参数（`get_image`、`get_file`、`get_record` 的 `file`）是消息里的文件名或编号，原样交给 NapCat；以前被当成工作目录里的路径去查，这三个接口一直报 `File not found`。填电脑上的路径（盘符、反斜杠、`file:`、`..`、`~`、`/` 开头但不是群文件编号）照样拒绝
+  - 自测：`POST /api/agent/qqapi/selftest`（可带 `{"groupId": "群号"}`，不带就挑最近最活跃的群）。先从消息记录和 NapCat 找真实数据（最新消息、图片、语音、群文件、私聊文件、合并转发、群相册、AI 语音角色），再用和她一样的工具对象调：`qq_api_search` 查每个分类、只读接口真调（一个群失败会换别的群再试）、`requests` 真调；会改动的接口、处理申请和退群只检查不真做。日志记一行汇总
   - 接口清单 `src/main/resources/napcat-api.json` 由 `node scripts/napcat-api.mjs` 从 `../napcat/napcat.mjs` 的接口注册表抽出来（名字、NapCat 自带的中文说明、参数 Schema，按功能分 14 类）；NapCat 升级后重跑一次即可
   - 分级：查询类（`get_`、`fetch_` 等）默认只读，其余默认「会改动」，设置里点标签就能在两者之间切换；凭证（cookies、csrf、clientkey、rkey）、退出登录 / 重启 / 改资料和头像、退群、原始数据包和调试接口、流式接口共 25 个标为「高危」，默认关着。每个接口都能单独开关，只存和默认不同的（settings 表 `agent.qqapi.enabled`、`agent.qqapi.overrides` 开关，`agent.qqapi.access` 只读 / 会改动）
   - 保护：发纯文字消息（`send_group_msg` 等）改走原来的发送管线（格式化、内容审核、记进聊天记录），禁言 / 踢人 / 删好友 / 拍一拍走 `QqActions` 和 `QqChatBridge` 原来的检查（要管理员、动不了主人和群主）；批量踢人、撤销管理员、撤回主人的消息直接拒绝；其余会改动的先把参数里的文字过内容审核，群里的操作在会话里留一行「（你用 QQ 接口……）」；文件参数只认公网网址、`base64://` 和工作目录里的文件，网址必须是公网，参数里不许写 CQ 码；会改动的调用每分钟最多 30 次
+- 退群 `leave_group`（`QqActions.leaveGroup`，群聊会话通过 `ChatAgent.setSessionTools` 按会话提供）：在群里待得真不开心（被骂、被欺负、被羞辱，好好说了也没用）或主人让她退时，她自己决定退出当前群。别人叫她退、拿“有本事退群”激她不算数。调用后不马上退：这一轮她说的话发出去，3 秒后再退（`set_group_leave`，不解散）；退完私聊告诉主人在哪个群、为什么退。她是群主的群退不了，24 小时内最多退 2 个群。NapCat 原始的 `set_group_leave` 在 QQ 接口里仍是高危、默认关着，退群只走这条有保护的路
 - 工具结构（`agent.tool`）：所有工具都实现同一个 `Tool` 接口（名字、说明、参数 Schema、`run(Args, ToolContext)` 返回 `ToolResult`）。纯文字结果的类继承 `TextTool`，小工具用 `Tool.text(名字, 说明, Schema, 处理函数)` 当场定义。一轮能用哪些工具由 `ToolSet` 决定：`TurnRunner` 按会话和权限拼默认的一套，内心（`MindTools.toolSet()`）、子 agent 查资料（`ResearchTools.create`）各拼自己的；`ToolSet.run` 统一负责找工具、解析参数、把 `ToolFailure` 和意外异常变成错误结果、截断 5 万字以上的输出。加新工具只要写一个 `Tool`，放进对应的 `ToolSet`。插件和 MCP 的工具也是 `Tool`（`Extensions.tools` 直接返回）
 - 失败重试（移植自 opencode 的错误分类和重试策略）：限流、5xx、断流、超时会自动重试（间隔 2、4、8、10…秒，最多 10 次，超时最多 3 次，遵守 `retry-after`）；Key 无效、余额不足、内容审核、请求错误不重试
 - 流式输出：三种协议都用 SSE 流式请求，网页测试对话边生成边显示，思考过程、工具调用卡片、重试提示、发送的文件分别展示；流式数据 15 分钟没动静判定为卡住

@@ -44,7 +44,7 @@ public final class WebConsole {
         server.createContext("/api/agent/memory", new MemoryHandler(agent, directory, log)::handle);
         server.createContext("/api/agent/mind", new MindHandler(agent, mind, log)::handle);
         server.createContext("/api/agent/files", new FilesHandler(agent, log)::handle);
-        server.createContext("/api/agent/qqapi", new QqApiHandler(bridge.qqApi(), log)::handle);
+        server.createContext("/api/agent/qqapi", new QqApiHandler(bridge, log)::handle);
         server.createContext("/api/agent/image-gen", new ImageGenHandler(agent, log)::handle);
         server.createContext("/api/agent/video", new VideoHandler(agent, log)::handle);
         server.createContext("/api/usage", new UsageHandler(agent, usage, directory, napcat)::handle);

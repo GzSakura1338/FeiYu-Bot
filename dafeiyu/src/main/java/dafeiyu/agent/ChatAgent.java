@@ -244,6 +244,20 @@ public final class ChatAgent {
         }
     }
 
+    private volatile java.util.function.Function<String, List<Tool>> sessionTools = session -> List.of();
+
+    public void setSessionTools(java.util.function.Function<String, List<Tool>> sessionTools) {
+        this.sessionTools = sessionTools;
+    }
+
+    public List<Tool> sessionTools(String session) {
+        try {
+            return sessionTools.apply(session);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
     private volatile java.util.function.BinaryOperator<String> poker = (session, userId) -> null;
 
     public void setPoker(java.util.function.BinaryOperator<String> poker) {

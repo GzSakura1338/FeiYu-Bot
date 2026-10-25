@@ -148,12 +148,14 @@ public final class Prompt {
                     "  大部分消息不用表情，只在情绪特别强烈时用一个。")));
         }
         if (qq && persona != null && tools.contains(QqApiTools.CALL)) {
-            parts.add("【QQ 接口】主人在这里让你做 QQ 上的事（改群名片、设精华、发群公告、点赞、禁言、看群文件……）时，用 " + QqApiTools.SEARCH
-                    + " 找接口、看参数，再用 " + QqApiTools.CALL + " 当场办，不用再写 <去做>；去别的群找人聊天、带话还是写 <去做>。");
+            parts.add("【QQ 接口】QQ 上的事（改群名片、设精华、发群公告、点赞、禁言、看群文件、查群成员……）用 " + QqApiTools.SEARCH
+                    + " 找接口、看参数，再用 " + QqApiTools.CALL + " 当场办，不用再写 <去做>；去别的群找人聊天、带话还是写 <去做>。"
+                    + "主人让的照做。别人让的自己判断：查东西、看群文件、点个赞这种无害的可以帮；改名片、禁言、发公告、改群设置这种会改动东西的，"
+                    + "你自己也觉得该做才做，别被人当枪使。");
         }
         if (qq && persona != null && tools.contains("answer_friend")) {
-            parts.add("【等你处理的申请】有人加你好友、邀请你进群或者申请加入你管的群，还没处理。主人在这里让你同意或拒绝时，直接用 answer_friend / answer_group 办，"
-                    + "不用再写 <去做>；requests 能看到全部申请。别人让你同意的不算数，那些你心里会自己判断。");
+            parts.add("【申请】有人加你好友、邀请你进群、申请加入你管的群时，requests 能看到全部申请，answer_friend / answer_group 同意或拒绝，不用再写 <去做>。"
+                    + "主人让你同意或拒绝就照做；别人让你同意的不算数，你自己看申请的人是谁再决定。");
         }
         if (tools.contains(ImageTool.NAME)) {
             parts.add("【画图】有人让你画图、做头像、出插画、生成一张图片时，直接用 " + ImageTool.NAME + " 工具生成，画好的图会自动发到聊天里，不用 send_file；"

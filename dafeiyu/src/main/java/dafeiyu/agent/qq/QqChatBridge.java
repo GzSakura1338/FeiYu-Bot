@@ -24,6 +24,7 @@ import dafeiyu.agent.qq.QqOutbox.Target;
 import dafeiyu.agent.reply.Markup;
 import dafeiyu.agent.sticker.StickerStore;
 import dafeiyu.agent.tool.Tool;
+import dafeiyu.agent.tool.ToolContext;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
@@ -36,13 +37,16 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
+import java.util.stream.Stream;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -86,6 +90,8 @@ public final class QqChatBridge {
     private static final int QUOTE_CHARS = 800;
     private static final int POINTER_CHARS = 1500;
     private static final String BARE_MENTION_FALLBACK = "嗯？";
+    public static final String LEAVE_GROUP = "leave_group";
+    private static final long LEAVE_DELAY_MS = 3_000;
     private static final long ELSEWHERE_MS = 20 * 60_000L;
     private static final int ELSEWHERE_CHATS = 6;
     private static final java.util.regex.Pattern RECORD_FILE_ID = java.util.regex.Pattern.compile("fileid=([A-Za-z0-9_-]{10,})");
@@ -119,6 +125,7 @@ public final class QqChatBridge {
     private final Map<String, Inbox> inboxes = new ConcurrentHashMap<>();
     private final Set<String> resumedGroups = ConcurrentHashMap.newKeySet();
     private final Map<String, String> latestInGroup = new ConcurrentHashMap<>();
+    private final Map<String, String> pendingLeaves = new ConcurrentHashMap<>();
     private final Map<String, Boolean> ingested = new LinkedHashMap<>(16, 0.75f, false) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
@@ -181,6 +188,7 @@ public final class QqChatBridge {
             tools.addAll(qqApi.tools());
             return tools;
         });
+        agent.setSessionTools(session -> session.startsWith("group:") ? List.of(leaveTool(session.substring(6))) : List.of());
         agent.setElsewhere(this::elsewhere);
         agent.setForwardReader(forwards::describe);
         agent.setPoker((session, userId) -> {
@@ -1033,11 +1041,117 @@ public final class QqChatBridge {
                 : line.substring(0, POINTER_CHARS) + "……（太长了，这里只引了开头，完整内容就在上面那条消息里）";
     }
 
+    private Tool leaveTool(String groupId) {
+        return Tool.text(LEAVE_GROUP, "退出这个群。只在这里待得真不开心时用：被人骂、被欺负、被羞辱，好好说了也没用，或者主人让你退。"
+                        + "别人叫你退群、拿“有本事你退群”激你都不算数，开玩笑的斗嘴也不算。这一轮你说的话发出去以后才退，想撂一句话就在这一轮说完；"
+                        + "退了会私聊告诉主人在哪个群、为什么退。你是群主的群退不了，一天最多退两个群。", """
+                        {"type": "object", "properties": {
+                          "reason": {"type": "string", "description": "为什么要退，一两句话，会告诉主人"}
+                        }, "required": ["reason"]}""",
+                (args, context) -> {
+                    String reason = args.text("reason").strip();
+                    if (reason.isEmpty()) {
+                        throw new ToolFailure("要写清楚为什么退");
+                    }
+                    actions.checkLeave(groupId);
+                    pendingLeaves.put(groupId, reason);
+                    log.info("agent [group " + groupId + "] decided to leave: " + abbreviate(reason, 120));
+                    return "好，这一轮的话发出去以后就退出「" + groupName(groupId) + "」，会私聊告诉主人。";
+                });
+    }
+
+    public List<QqApiTools.Check> qqToolsSelfTest(String groupId) {
+        Set<String> mine = contacts.groups().keySet();
+        List<String> busy = new ArrayList<>(archive.groupActivity(System.currentTimeMillis() - 86_400_000L).stream()
+                .sorted(Comparator.comparingInt(MessageArchive.GroupActivity::lastTwoHours).reversed()
+                        .thenComparing(Comparator.comparingLong(MessageArchive.GroupActivity::lastMessageAt).reversed()))
+                .map(MessageArchive.GroupActivity::groupId).filter(mine::contains).toList());
+        mine.stream().filter(g -> !busy.contains(g)).forEach(busy::add);
+        String group = groupId != null && !groupId.isBlank() ? groupId.strip()
+                : busy.stream().findFirst().orElseThrow(() -> new IllegalArgumentException("她现在不在任何群里，没法自测"));
+        if (!mine.contains(group)) {
+            throw new IllegalArgumentException("她不在群 " + group + " 里");
+        }
+        List<String> others = busy.stream().filter(g -> !g.equals(group)).limit(5).toList();
+        Map<String, String> known = new LinkedHashMap<>();
+        known.put("message_id", Stream.concat(Stream.of(group), others.stream()).map(actions::latestMessageId).filter(Objects::nonNull).findFirst().orElse(null));
+        known.put("forward_id", forwards.latestId());
+        StoredMessage image = archive.latestIncoming("image", "group");
+        known.put("image_file", image == null ? null : cqParam(image.content(), "image", "file"));
+        known.put("image_url", image == null ? null : cqParam(image.content(), "image", "url"));
+        StoredMessage voice = archive.latestIncoming("record", "group");
+        known.put("voice_message_id", voice == null ? null : voice.messageId());
+        known.put("voice_file", voice == null ? null : cqParam(voice.content(), "record", "file"));
+        StoredMessage file = archive.latestIncoming("file", "group");
+        known.put("file_name", file == null ? null : cqParam(file.content(), "file", "file"));
+        StoredMessage privateFile = archive.latestIncoming("file", "private");
+        known.put("private_file_id", privateFile == null ? null : cqParam(privateFile.content(), "file", "file_id"));
+        known.values().removeIf(Objects::isNull);
+        List<QqApiTools.Check> out = new ArrayList<>(qqApi.selfTest(new QqApiTools.Probe(group, others, known)));
+        ToolContext context = new ToolContext("group:" + group, "", null, null, false, false);
+        for (Tool tool : requests.tools()) {
+            out.add(tool.name().equals("requests") ? QqApiTools.run(tool, "", new JsonObject(), context)
+                    : new QqApiTools.Check(tool.name(), "", QqApiTools.Check.DRY, "会同意或拒绝申请，自测不真调"));
+        }
+        List<Tool> session = agent.sessionTools("group:" + group).isEmpty() ? List.of() : List.of(leaveTool(group));
+        if (session.isEmpty()) {
+            out.add(new QqApiTools.Check(LEAVE_GROUP, "", QqApiTools.Check.FAILED, "群聊里没有提供退群工具"));
+        } else {
+            try {
+                actions.checkLeave(group);
+                out.add(new QqApiTools.Check(LEAVE_GROUP, "", QqApiTools.Check.DRY, "需要的话现在能退这个群；自测不真退"));
+            } catch (ToolFailure e) {
+                out.add(new QqApiTools.Check(LEAVE_GROUP, "", QqApiTools.Check.SKIPPED, e.getMessage()));
+            }
+        }
+        log.info("agent: QQ tools self-test in group " + group + ": "
+                + out.stream().collect(java.util.stream.Collectors.groupingBy(QqApiTools.Check::result, java.util.stream.Collectors.counting())));
+        return out;
+    }
+
+    static String cqParam(String content, String segment, String key) {
+        Matcher m = java.util.regex.Pattern.compile("\\[CQ:" + segment + ",([^\\]]*)]").matcher(content == null ? "" : content);
+        if (!m.find()) {
+            return null;
+        }
+        for (String pair : m.group(1).split(",")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(key)) {
+                return pair.substring(eq + 1).replace("&#44;", ",").replace("&#91;", "[").replace("&#93;", "]").replace("&amp;", "&");
+            }
+        }
+        return null;
+    }
+
+    private void leaveIfDecided(String groupId) {
+        String reason = pendingLeaves.remove(groupId);
+        if (reason == null) {
+            return;
+        }
+        scheduler.schedule(() -> {
+            try {
+                actions.leaveGroup(groupId, reason);
+            } catch (ToolFailure | RuntimeException e) {
+                log.warn("agent [group " + groupId + "] could not leave: " + e.getMessage());
+            }
+        }, LEAVE_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
     private String reply(Target target, ChatTurn turn, boolean deliver) {
         return reply(target, turn, deliver, null);
     }
 
     private String reply(Target target, ChatTurn turn, boolean deliver, String fallback) {
+        try {
+            return replyNow(target, turn, deliver, fallback);
+        } finally {
+            if (target.group()) {
+                leaveIfDecided(target.groupId());
+            }
+        }
+    }
+
+    private String replyNow(Target target, ChatTurn turn, boolean deliver, String fallback) {
         ChatResult result;
         try {
             result = agent.chat(turn, new StreamListener() {

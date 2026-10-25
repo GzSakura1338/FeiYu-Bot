@@ -51,6 +51,10 @@ public final class QqForwards {
         this.log = log;
     }
 
+    String latestId() {
+        return db.one("SELECT id FROM forwards ORDER BY created_at DESC LIMIT 1", rs -> rs.getString(1));
+    }
+
     public List<Line> read(String id) throws ToolFailure {
         String key = id == null ? "" : id.strip();
         if (key.isEmpty() || key.length() > 200) {

@@ -45,6 +45,7 @@ public final class QqApiTools {
     private static final Pattern SLOW = Pattern.compile("upload|ai_record|^download_file$|flash|online_file|online_folder|custom_face|qzone|album");
     private static final Pattern NOT_TEXT = Pattern.compile("(?i).*(id|flag|type|seq|status|url|uin|format|time|count|duration|enable|approve|escape|file|files|image|images|path)$");
     private static final Set<String> FILE_KEYS = Set.of("file", "files", "image", "images", "path", "file_path", "folder_path", "thumb_path");
+    private static final Pattern LOCAL_PATH = Pattern.compile("(?i)^[a-z]:|^file:|\\\\|\\.\\.|^~|^/(?!\\p{XDigit}{8}-\\p{XDigit}{4}-)");
     private static final Set<String> SEND = Set.of("send_group_msg", "send_private_msg", "send_msg");
     private static final Set<String> POKE = Set.of("group_poke", "friend_poke", "send_poke");
     private static final int MAX_FOUND = 8;
@@ -78,6 +79,197 @@ public final class QqApiTools {
 
     public QqApi api() {
         return api;
+    }
+
+    public record Check(String tool, String action, String result, String detail) {
+
+        public static final String OK = "ok";
+        public static final String FAILED = "failed";
+        public static final String SKIPPED = "skipped";
+        public static final String OFF = "off";
+        public static final String DRY = "dry";
+    }
+
+    record Probe(String groupId, List<String> otherGroups, Map<String, String> known) {}
+
+    private static final Map<String, List<String>> OPTIONAL_FILLS = Map.of(
+            "ArkSharePeer", List.of("group_id"), "send_ark_share", List.of("group_id"), "get_image", List.of("file"),
+            "get_file", List.of("file"), "get_record", List.of("file"), "get_forward_msg", List.of("id"),
+            "get_mini_app_ark", List.of("type"), "get_group_file_url", List.of("busid"));
+
+    List<Check> selfTest(Probe probe) {
+        List<Check> out = new ArrayList<>();
+        ToolContext context = new ToolContext("group:" + probe.groupId(), "", null, null, false, false);
+        Tool search = searchTool();
+        Tool call = callTool();
+        out.add(run(search, "", new JsonObject(), context));
+        for (String category : api.categories()) {
+            JsonObject args = new JsonObject();
+            args.addProperty("category", category);
+            out.add(run(search, "分类：" + category, args, context));
+        }
+        Map<String, String> found = discover(probe);
+        for (Action a : api.all()) {
+            if (!policy.allowed(a.name())) {
+                out.add(new Check(CALL, a.name(), Check.OFF, why(a)));
+                continue;
+            }
+            if (policy.access(a.name()) == Access.WRITE) {
+                out.add(new Check(CALL, a.name(), Check.DRY, "会改动东西，自测不真调；接口在清单里、开关开着"));
+                continue;
+            }
+            JsonObject params = new JsonObject();
+            String missing = null;
+            List<String> extra = OPTIONAL_FILLS.getOrDefault(a.name(), List.of());
+            for (Param p : a.params()) {
+                if (!p.required() && !extra.contains(p.name())) {
+                    continue;
+                }
+                JsonElement value = sample(a.name(), p.name(), probe.groupId(), found);
+                if (value == null && p.required()) {
+                    missing = p.name();
+                    break;
+                }
+                if (value != null) {
+                    params.add(p.name(), value);
+                }
+            }
+            if (missing != null) {
+                out.add(new Check(CALL, a.name(), Check.SKIPPED, "必填参数 " + missing + " 找不到能用的真实数据"));
+                continue;
+            }
+            Check check = run(call, a.name(), args(a.name(), params), context);
+            if (check.result().equals(Check.FAILED) && params.has("group_id")) {
+                for (String other : probe.otherGroups()) {
+                    params.addProperty("group_id", Long.parseLong(other));
+                    Check retry = run(call, a.name(), args(a.name(), params), new ToolContext("group:" + other, "", null, null, false, false));
+                    if (retry.result().equals(Check.OK)) {
+                        check = new Check(CALL, a.name(), Check.OK, "在群 " + probe.groupId() + " 失败（" + abbreviate(check.detail(), 60) + "），在群 " + other + " 成功");
+                        break;
+                    }
+                }
+            }
+            out.add(check);
+        }
+        return out;
+    }
+
+    private static JsonObject args(String action, JsonObject params) {
+        JsonObject args = new JsonObject();
+        args.addProperty("action", action);
+        args.add("params", params.deepCopy());
+        return args;
+    }
+
+    private Map<String, String> discover(Probe probe) {
+        Map<String, String> found = new java.util.HashMap<>();
+        probe.known().forEach((key, value) -> put(found, key, value));
+        JsonObject group = new JsonObject();
+        group.addProperty("group_id", Long.parseLong(probe.groupId()));
+        put(found, "file_id", first(quietly("get_group_root_files", group), "file_id"));
+        put(found, "busid", first(quietly("get_group_root_files", group), "busid"));
+        put(found, "album_id", first(quietly("get_qun_album_list", group), "album_id"));
+        JsonObject characters = group.deepCopy();
+        characters.addProperty("chat_type", 1);
+        put(found, "character", first(quietly("get_ai_characters", characters), "character_id"));
+        return found;
+    }
+
+    private static void put(Map<String, String> map, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            map.put(key, value);
+        }
+    }
+
+    private JsonObject quietly(String action, JsonObject params) {
+        try {
+            return outbox.call(action, params, TIMEOUT);
+        } catch (ToolFailure e) {
+            return null;
+        }
+    }
+
+    private static String first(JsonElement element, String key) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonObject()) {
+            JsonObject o = element.getAsJsonObject();
+            if (o.has(key) && o.get(key).isJsonPrimitive()) {
+                return o.get(key).getAsString();
+            }
+            for (Map.Entry<String, JsonElement> e : o.entrySet()) {
+                String found = first(e.getValue(), key);
+                if (found != null) {
+                    return found;
+                }
+            }
+        } else if (element.isJsonArray()) {
+            for (JsonElement e : element.getAsJsonArray()) {
+                String found = first(e, key);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    static Check run(Tool tool, String action, JsonObject args, ToolContext context) {
+        try {
+            ToolResult result = tool.run(new Args(args), context);
+            return new Check(tool.name(), action, result.error() ? Check.FAILED : Check.OK, abbreviate(result.output().replaceAll("\\s+", " "), 160));
+        } catch (ToolFailure e) {
+            return new Check(tool.name(), action, Check.FAILED, abbreviate(String.valueOf(e.getMessage()), 300));
+        } catch (RuntimeException e) {
+            return new Check(tool.name(), action, Check.FAILED, "程序出错：" + e);
+        }
+    }
+
+    private JsonElement sample(String action, String name, String groupId, Map<String, String> found) {
+        if (action.equals("get_forward_msg") && (name.equals("id") || name.equals("message_id"))) {
+            return text(found.get("forward_id"));
+        }
+        if (action.equals("fetch_ptt_text") && name.equals("message_id")) {
+            return found.containsKey("voice_message_id") ? new JsonPrimitive(Long.parseLong(found.get("voice_message_id"))) : null;
+        }
+        if (action.equals("get_private_file_url") && name.equals("file_id")) {
+            return text(found.get("private_file_id"));
+        }
+        return switch (name) {
+            case "group_id" -> new JsonPrimitive(Long.parseLong(groupId));
+            case "user_id" -> new JsonPrimitive(Long.parseLong(outbox.selfId()));
+            case "message_id" -> found.containsKey("message_id") ? new JsonPrimitive(Long.parseLong(found.get("message_id"))) : null;
+            case "words" -> {
+                JsonArray words = new JsonArray();
+                words.add("hello");
+                yield words;
+            }
+            case "url", "picUrl", "jumpUrl" -> new JsonPrimitive("https://www.baidu.com");
+            case "title", "desc", "text" -> new JsonPrimitive("自测");
+            case "domain" -> new JsonPrimitive("qun.qq.com");
+            case "type" -> action.equals("get_mini_app_ark") ? new JsonPrimitive("bili") : null;
+            case "file" -> switch (action) {
+                case "get_image" -> text(found.get("image_file"));
+                case "get_file" -> text(found.get("file_name"));
+                case "get_record" -> text(found.get("voice_file"));
+                default -> null;
+            };
+            case "out_format" -> new JsonPrimitive("mp3");
+            case "image" -> text(found.get("image_url"));
+            case "file_id" -> text(found.get("file_id"));
+            case "busid" -> found.containsKey("busid") && found.get("busid").matches("\\d{1,18}") ? new JsonPrimitive(Long.parseLong(found.get("busid")))
+                    : text(found.get("busid"));
+            case "album_id" -> text(found.get("album_id"));
+            case "character" -> text(found.get("character"));
+            case "emojiId", "emoji_id" -> new JsonPrimitive("76");
+            case "emojiType", "emoji_type" -> new JsonPrimitive("1");
+            default -> null;
+        };
+    }
+
+    private static JsonElement text(String value) {
+        return value == null ? null : new JsonPrimitive(value);
     }
 
     public QqApiPolicy policy() {
@@ -187,7 +379,8 @@ public final class QqApiTools {
         }
         JsonObject raw = params.deepCopy();
         List<String> locals = new ArrayList<>();
-        checkFiles(params, "", locals);
+        boolean ids = policy.access(action.name()) == Access.READ;
+        checkFiles(params, "", locals, ids);
         protect(action.name(), params);
         boolean writes = policy.access(action.name()) == Access.WRITE;
         if (writes) {
@@ -214,7 +407,7 @@ public final class QqApiTools {
                 throw e;
             }
             JsonObject inline = raw.deepCopy();
-            checkFiles(inline, "", new ArrayList<>());
+            checkFiles(inline, "", new ArrayList<>(), ids);
             response = outbox.call(action.name(), inline, timeout);
         }
         log.info("agent [" + context.session() + "] qq api " + action.name() + " " + abbreviate(params.toString(), 200));
@@ -242,25 +435,25 @@ public final class QqApiTools {
         return parsed;
     }
 
-    private void checkFiles(JsonElement element, String key, List<String> locals) throws ToolFailure {
+    private void checkFiles(JsonElement element, String key, List<String> locals, boolean ids) throws ToolFailure {
         if (element == null || element.isJsonNull()) {
             return;
         }
         if (element.isJsonObject()) {
             for (Map.Entry<String, JsonElement> e : element.getAsJsonObject().entrySet()) {
                 if (isString(e.getValue())) {
-                    e.setValue(new JsonPrimitive(checkValue(e.getKey(), e.getValue().getAsString(), locals)));
+                    e.setValue(new JsonPrimitive(checkValue(e.getKey(), e.getValue().getAsString(), locals, ids)));
                 } else {
-                    checkFiles(e.getValue(), e.getKey(), locals);
+                    checkFiles(e.getValue(), e.getKey(), locals, ids);
                 }
             }
         } else if (element.isJsonArray()) {
             JsonArray array = element.getAsJsonArray();
             for (int i = 0; i < array.size(); i++) {
                 if (isString(array.get(i))) {
-                    array.set(i, new JsonPrimitive(checkValue(key, array.get(i).getAsString(), locals)));
+                    array.set(i, new JsonPrimitive(checkValue(key, array.get(i).getAsString(), locals, ids)));
                 } else {
-                    checkFiles(array.get(i), key, locals);
+                    checkFiles(array.get(i), key, locals, ids);
                 }
             }
         }
@@ -270,7 +463,7 @@ public final class QqApiTools {
         return element.isJsonPrimitive() && element.getAsJsonPrimitive().isString();
     }
 
-    private String checkValue(String key, String value, List<String> locals) throws ToolFailure {
+    private String checkValue(String key, String value, List<String> locals, boolean ids) throws ToolFailure {
         if (value.toLowerCase(Locale.ROOT).contains("[cq:")) {
             throw new ToolFailure("参数里别写 CQ 码，消息用消息段数组写，比如 [{\"type\":\"text\",\"data\":{\"text\":\"你好\"}}]");
         }
@@ -280,6 +473,12 @@ public final class QqApiTools {
         }
         if (!FILE_KEYS.contains(key)) {
             return value;
+        }
+        if (ids && !value.strip().toLowerCase(Locale.ROOT).matches("^(base64|https?)://.*")) {
+            if (LOCAL_PATH.matcher(value.strip()).find()) {
+                throw new ToolFailure("这个接口的文件参数填消息里的文件名或编号（比如 3F2A….jpg），不能填电脑上的路径");
+            }
+            return value.strip();
         }
         String safe = safeFile(value);
         if (!value.strip().toLowerCase(Locale.ROOT).matches("^(base64|https?)://.*")) {

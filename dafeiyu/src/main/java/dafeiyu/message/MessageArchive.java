@@ -114,6 +114,11 @@ public final class MessageArchive {
                 "%[CQ:forward,id=" + forwardId + "]%", "%[CQ:forward,id=" + forwardId + ",%");
     }
 
+    public StoredMessage latestIncoming(String segment, String messageType) {
+        return db.one("SELECT * FROM messages WHERE direction = 'in' AND message_type = ? AND content LIKE ? ORDER BY id DESC LIMIT 1",
+                MessageArchive::row, messageType, "%[CQ:" + segment + ",%");
+    }
+
     private static StoredMessage row(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new StoredMessage(rs.getLong("id"), rs.getLong("time"), rs.getString("direction"), rs.getString("message_type"),
                 rs.getString("group_id"), rs.getString("user_id"), rs.getString("sender_name"), rs.getString("message_id"), rs.getString("content"));

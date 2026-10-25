@@ -8,6 +8,7 @@ import dafeiyu.agent.qq.QqApi;
 import dafeiyu.agent.qq.QqApiPolicy;
 import dafeiyu.agent.qq.QqApiPolicy.Access;
 import dafeiyu.agent.qq.QqApiTools;
+import dafeiyu.agent.qq.QqChatBridge;
 import dafeiyu.log.LogBuffer;
 
 import java.io.IOException;
@@ -20,12 +21,16 @@ final class QqApiHandler {
 
     private record UpdateRequest(Boolean enabled, Map<String, Boolean> actions, Map<String, String> access) {}
 
+    private record SelfTestRequest(String groupId) {}
+
     private final Gson gson = new Gson();
+    private final QqChatBridge bridge;
     private final QqApiTools tools;
     private final LogBuffer log;
 
-    QqApiHandler(QqApiTools tools, LogBuffer log) {
-        this.tools = tools;
+    QqApiHandler(QqChatBridge bridge, LogBuffer log) {
+        this.bridge = bridge;
+        this.tools = bridge.qqApi();
         this.log = log;
     }
 
@@ -33,7 +38,10 @@ final class QqApiHandler {
         String rest = ex.getRequestURI().getPath().substring(PREFIX.length());
         String method = ex.getRequestMethod();
         try {
-            if (!rest.isEmpty() && !rest.equals("/")) {
+            if (rest.equals("/selftest") && method.equals("POST") && Requests.isJson(ex)) {
+                SelfTestRequest body = Requests.readJson(ex, SelfTestRequest.class);
+                HttpResponses.json(ex, gson.toJson(Map.of("checks", bridge.qqToolsSelfTest(body == null ? null : body.groupId()))));
+            } else if (!rest.isEmpty() && !rest.equals("/")) {
                 HttpResponses.json(ex, 404, error("没有这个接口"));
             } else if (method.equals("GET")) {
                 HttpResponses.json(ex, state());
