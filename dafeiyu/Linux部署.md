@@ -8,6 +8,7 @@
 - **时区**：云主机默认常是 UTC，她会把下午两点说成“大早上”。二选一：
   - 改系统时区：`sudo timedatectl set-timezone Asia/Shanghai`
   - 或者只改 FeiYu Bot：在 `dafeiyu/config.properties` 里加一行 `time.zone=Asia/Shanghai`，启动日志会打印 `time zone Asia/Shanghai`
+- **目录属主**：用 systemd 的 `User=` 以普通账号跑时，`dafeiyu/data/` 整个目录（包括 `data/backup/`、`data/logs/`）的属主要是这个账号：`chown -R feiyu:feiyu dafeiyu/data`。`data/backup` 写不进去时，升级前的数据库备份会改存到系统临时目录，日志里有一行 `database backup folder unusable`，不会再导致启动失败
 - **数据盘**：云模板经常给一块已经分好区的数据盘（比如 `vdb` 下面有 `vdb1`），`lsblk -d` 只列整块盘会漏掉分区。找要挂的分区用 `lsblk -f`，按 FSTYPE 和挂载点判断
 
 ## 2. 装依赖

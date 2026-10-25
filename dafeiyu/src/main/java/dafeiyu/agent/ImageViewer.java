@@ -40,15 +40,16 @@ public final class ImageViewer implements Tool {
     public static final String NAME = "view_image";
     private static final String DESCRIPTION = """
             看一张图，看不清的地方可以放大。图可以是：聊天里的 [图片#12]（填 12）、[表情包#5]（填 表情包#5）、网页上的图片网址，或者工作目录里的图片文件。
-            - 不写 area 就看整张图，图上会画好 4×4 的格子：列 A–D 从左到右，行 1–4 从上到下。
-            - 哪块字太小、细节看不清，就用 area 填格子放大，比如 B2，或者 B2:C3 这样一大块；也可以写 左上、右下、上半、下半、中间 这样的方位，\
-            或者用百分比框 30,40,60,55（左、上、右、下，占整张图的百分比）。
-            - 放大是从原图裁出来的，比聊天里直接看到的清楚得多。截图、长图、表格、小字，先看整张，再放大要读的那块。""";
+            - 不写 area 就看整张图，图保持原样，不画任何东西。大图会缩到长边 1568，返回里会写明给你的是多大。
+            - 哪块字太小、细节看不清，就用 area 放大：把整张图按 4×4 均分，列 A–D 从左到右，行 1–4 从上到下，填 B2，或者 B2:C3 这样一大块；\
+            也可以写 左上、右下、上半、下半、中间 这样的方位，或者用百分比框 30,40,60,55（左、上、右、下，占整张图的百分比）。
+            - 放大是从原图裁出来的，比聊天里直接看到的清楚得多。截图、长图、表格、小字，先看整张，再放大要读的那块。
+            - 颜色、配饰、文字、某样东西在不在这类细节，整张看不清就放大那块再确认，或者直说看不清，别猜，也别把猜的当看见的说出去。""";
     private static final JsonObject PARAMETERS = Args.schema("""
             {"type": "object", "properties": {
               "image": {"type": "string", "description": "哪张图：图片编号（[图片#12] 填 12）、表情包#编号、图片网址，或工作目录里的图片路径"},
               "area": {"type": "string", "description": "要放大的地方：格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55）；不写就看整张"},
-              "grid": {"type": "boolean", "description": "看整张图时要不要画格子，默认画"}
+              "grid": {"type": "boolean", "description": "看整张图时要不要画上 4×4 格子当参照，默认不画：画上去的红线和黄色标签会挡住画面，容易被当成图里的东西"}
             }, "required": ["image"]}""");
 
     private static final int MAX_BYTES = 15 * 1024 * 1024;
@@ -92,11 +93,19 @@ public final class ImageViewer implements Tool {
         return PARAMETERS;
     }
 
+    static String sizeNote(int w, int h, int vw, int vh) {
+        double factor = (double) Math.max(vw, vh) / Math.max(w, h);
+        if (factor < 0.99) {
+            return "；给你的是缩到 " + vw + "×" + vh + " 的版本（聊天里直接看到的图也是这个分辨率），比原图糊。";
+        }
+        return factor > 1.01 ? "；小图放大到了 " + vw + "×" + vh + " 给你看。" : "；按原尺寸给的。";
+    }
+
     @Override
     public ToolResult run(Args args, ToolContext context) throws ToolFailure {
         String ref = args.text("image");
         String area = args.text("area");
-        boolean grid = args.bool("grid", true);
+        boolean grid = args.bool("grid", false);
         Workspace workspace = !workspaceFiles ? null : context.workspace() != null ? context.workspace() : agent.workspaces().workspace();
         try {
             if (ref.isEmpty()) {
@@ -119,8 +128,10 @@ public final class ImageViewer implements Tool {
                 if (grid) {
                     drawGrid(view);
                 }
-                return ToolResult.withImages(name[0] + "（原图 " + w + "×" + h + "）" + (grid
-                        ? "。图上画了 4×4 的格子：列 A–D 从左到右，行 1–4 从上到下；哪块看不清，就用 area 填格子放大（比如 B2 或 B2:C3）。" : "。"),
+                return ToolResult.withImages(name[0] + "（原图 " + w + "×" + h + "）" + sizeNote(w, h, view.getWidth(), view.getHeight()) + (grid
+                        ? "图上画了 4×4 的格子当参照：红线和黄色标签 A1–D4 是画上去的，不是图里的东西。" : "")
+                        + "要放大哪块就用 area（整张按 4×4 均分：列 A–D 从左到右，行 1–4 从上到下，比如 B2 或 B2:C3）。"
+                        + "颜色、配饰、文字、某样东西在不在这类细节，整张看不清就放大再确认，或者直说看不清，别猜。",
                         List.of(encode(view)));
             }
             double[] r = region(area);

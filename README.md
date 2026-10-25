@@ -43,7 +43,7 @@ Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机�
 
 - NapCat 主动连 `ws://127.0.0.1:6199/ws`。token 存在 `.ws_token`，NapCat 那边写在 `napcat/config/onebot11.json`（新账号用的模板）和 `onebot11_<QQ号>.json`（已登录账号）
 - FeiYu Bot 的端口、前端目录、数据库位置，以及反向 WebSocket 的初始值在 `dafeiyu/config.properties`；其余设置（模型和 API Key、人格、工作目录、反向 WebSocket、插件……）都在网页上改，存在 `dafeiyu/data/dafeiyu.db`
-- 升级表结构前会自动备份数据库到 `dafeiyu/data/backup/`
+- 升级表结构前会自动备份数据库到 `dafeiyu/data/backup/`；这个目录写不进去时改存到系统临时目录，再不行就跳过备份照常启动，日志里会写明原因
 
 ## 注意
 

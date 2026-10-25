@@ -629,7 +629,7 @@ public final class TurnRunner {
                 views++;
                 shown.addAll(outcome.images());
             } else {
-                output += "（这一轮已经看了 " + MAX_VIEWS + " 次图，这张没给你看了，先根据看到的说吧）";
+                output += "（这一轮已经看了 " + MAX_VIEWS + " 次图，这张没给你看。你没看到它，别猜里面是什么；要说就直说这次没看这张）";
             }
         }
         if (repeating(call)) {

@@ -26,10 +26,16 @@ public final class Database implements AutoCloseable {
 
     private final Path file;
     private final Connection connection;
+    private final List<String> warnings;
 
-    private Database(Path file, Connection connection) {
+    private Database(Path file, Connection connection, List<String> warnings) {
         this.file = file;
         this.connection = connection;
+        this.warnings = List.copyOf(warnings);
+    }
+
+    public List<String> warnings() {
+        return warnings;
     }
 
     public static Database open(Path file) {
@@ -43,8 +49,9 @@ public final class Database implements AutoCloseable {
                 st.execute("PRAGMA foreign_keys = ON");
                 st.execute("PRAGMA busy_timeout = 5000");
             }
-            Migrations.apply(connection, absolute);
-            return new Database(absolute, connection);
+            List<String> warnings = Migrations.apply(connection, absolute);
+            warnings.forEach(w -> System.err.println("WARN " + w));
+            return new Database(absolute, connection, warnings);
         } catch (IOException | SQLException e) {
             throw new DatabaseException("cannot open database " + absolute + ": " + e.getMessage(), e);
         }

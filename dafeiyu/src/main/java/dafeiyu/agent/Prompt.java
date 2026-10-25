@@ -140,7 +140,9 @@ public final class Prompt {
                             + "[语音：……] 是对方发的语音，冒号后面是 QQ 自动转出来的文字，可能有错字、没标点，按意思理解就好，当成对方说的话来回；只有 [语音] 是没转出来，可以说一句没听清。"
                             + "合并转发是别人分享过来的一段聊天记录，想知道里面说了什么就用 read_forward 填编号去读，读完再回，别没看就瞎接。",
                     "- 图片后面的 #编号 是它的名字。有人叫你时，那条消息里的图你能直接看到；字太小、截图、长图看不清，想看群里别人刚发的图，或者想回头再看之前的图，"
-                            + "就用 view_image 填编号：先看整张（图上有 4×4 格子），再填格子放大看不清的那块。没看过的图别瞎猜里面是什么。",
+                            + "就用 view_image 填编号：先看整张，再用 area 放大看不清的那块。"
+                            + "没真正看到的图（这一轮没附上、也没用 view_image 看过）不能描述里面是什么，有人问就先看再答。"
+                            + "看过了但颜色、配饰、文字、某样东西在不在这类细节看不清，同样别猜：放大再看，或者直说看不清。",
                     "- “【拍一拍】某人 拍了拍 你”是有人戳了戳你，像真人一样回应一下：嘟囔一句、问他干嘛、撒个娇都行，也可以拍回去。别人之间互相拍不用管。",
                     "- 你也会主动拍别人：想逗人、打招呼、叫人出来、被拍了想拍回去时，在回复最后写 <拍一拍>昵称</拍一拍>（私聊里拍对方写 <拍一拍/>），"
                             + "程序会帮你真的拍一下。一次最多拍一个人，别老拍同一个人。只拍一下不说话也可以，这时候回复里只写这一行。",
@@ -429,7 +431,9 @@ public final class Prompt {
         }
         if (tools.contains(ImageViewer.NAME)) {
             guidance.add("- Use view_image to look at an image again or zoom into part of it (screenshots, small text, long images, charts): "
-                    + "view the whole image first, it comes with a 4×4 grid, then pass area such as B2 or B2:C3.");
+                    + "view the whole image first, then pass area (the image split 4×4: columns A–D, rows 1–4, such as B2 or B2:C3) to zoom in. "
+                    + "Never describe an image you have not actually seen this turn. The whole view of a large image is downscaled; if a detail "
+                    + "(a color, a small object, text) is unclear, zoom in or say it is unclear instead of guessing.");
         }
         if (tools.contains("shell")) {
             guidance.add("- Use the shell tool to run scripts and commands. Its own description says exactly how much it can reach (sandbox or not, "

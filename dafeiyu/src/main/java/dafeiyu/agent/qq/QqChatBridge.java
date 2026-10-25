@@ -9,6 +9,7 @@ import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ChatResult;
 import dafeiyu.agent.ChatTurn;
 import dafeiyu.agent.ImagePart;
+import dafeiyu.agent.ImageViewer;
 import dafeiyu.agent.SessionDetail;
 import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.ToolCall;
@@ -46,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -91,6 +93,7 @@ public final class QqChatBridge {
     private static final int POINTER_CHARS = 1500;
     private static final String BARE_MENTION_FALLBACK = "嗯？";
     public static final String LEAVE_GROUP = "leave_group";
+    private static final Pattern IMAGE_TALK = Pattern.compile("画面|图里|图中|图上|这张图|照片里|图片里");
     private static final long LEAVE_DELAY_MS = 3_000;
     private static final long ELSEWHERE_MS = 20 * 60_000L;
     private static final int ELSEWHERE_CHATS = 6;
@@ -1110,7 +1113,7 @@ public final class QqChatBridge {
     }
 
     static String cqParam(String content, String segment, String key) {
-        Matcher m = java.util.regex.Pattern.compile("\\[CQ:" + segment + ",([^\\]]*)]").matcher(content == null ? "" : content);
+        Matcher m = Pattern.compile("\\[CQ:" + segment + ",([^\\]]*)]").matcher(content == null ? "" : content);
         if (!m.find()) {
             return null;
         }
@@ -1153,6 +1156,7 @@ public final class QqChatBridge {
 
     private String replyNow(Target target, ChatTurn turn, boolean deliver, String fallback) {
         ChatResult result;
+        boolean[] looked = {!turn.user().images().isEmpty()};
         try {
             result = agent.chat(turn, new StreamListener() {
                 @Override
@@ -1162,6 +1166,7 @@ public final class QqChatBridge {
 
                 @Override
                 public void onToolCall(ToolCall call) {
+                    looked[0] |= call.name().equals(ImageViewer.NAME);
                     log.info("agent [" + target.where() + "] tool " + call.name() + " " + abbreviate(call.arguments().replace('\n', ' '), 160));
                 }
 
@@ -1189,6 +1194,10 @@ public final class QqChatBridge {
         if (result.content().isBlank()) {
             log.info("agent [" + target.where() + "] stayed quiet");
             return null;
+        }
+        if (!looked[0] && IMAGE_TALK.matcher(result.content()).find()) {
+            log.warn("agent [" + target.where() + "] talked about a picture without looking at one this turn: "
+                    + abbreviate(result.content().replace('\n', ' '), 120));
         }
         if (!deliver) {
             log.info("agent [" + target.where() + "] console reply kept in the console");
