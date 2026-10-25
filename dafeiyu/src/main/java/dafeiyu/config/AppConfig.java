@@ -13,7 +13,8 @@ public record AppConfig(
         String webHost,
         int webPort,
         Path webDir,
-        Path dbPath) {
+        Path dbPath,
+        String timeZone) {
 
     public static AppConfig load(Path file) throws IOException {
         Properties props = new Properties();
@@ -31,7 +32,8 @@ public record AppConfig(
                 props.getProperty("web.host", "127.0.0.1"),
                 Integer.parseInt(props.getProperty("web.port", "8090").trim()),
                 Path.of(props.getProperty("web.dir", "src/main/resources/web")),
-                Path.of(props.getProperty("db.path", "data/dafeiyu.db")));
+                Path.of(props.getProperty("db.path", "data/dafeiyu.db")),
+                props.getProperty("time.zone", "").strip());
     }
 
     public InetSocketAddress webAddress() {

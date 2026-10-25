@@ -16,6 +16,7 @@ import dafeiyu.agent.TurnRunner;
 import dafeiyu.agent.context.HeldLines;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.model.AgentStore;
+import dafeiyu.agent.image.VideoFrames;
 import dafeiyu.agent.model.ImageLoader;
 import dafeiyu.agent.qq.GroupState.Line;
 import dafeiyu.agent.qq.QqMessages.Incoming;
@@ -82,7 +83,9 @@ public final class QqChatBridge {
     private static final long ACTIVE_MEMBERS_MS = 3 * 86_400_000L;
     private static final int ACTIVE_MEMBERS = 12;
     private static final String SEEN_MARK = "（以上是你刚才看过的）";
-    private static final int QUOTE_CHARS = 120;
+    private static final int QUOTE_CHARS = 800;
+    private static final int POINTER_CHARS = 1500;
+    private static final String BARE_MENTION_FALLBACK = "嗯？";
     private static final long ELSEWHERE_MS = 20 * 60_000L;
     private static final int ELSEWHERE_CHATS = 6;
     private static final java.util.regex.Pattern RECORD_FILE_ID = java.util.regex.Pattern.compile("fileid=([A-Za-z0-9_-]{10,})");
@@ -751,13 +754,14 @@ public final class QqChatBridge {
                 }
                 continue;
             }
-            String quoted = String.join("", latest.stream().map(l -> "「" + abbreviate(l, 200) + "」").toList());
+            String quoted = String.join("", latest.stream().map(l -> "「" + pointer(l) + "」").toList());
+            Media media = media(target, images);
             String prompt = "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）"
-                    + (latest.stream().anyMatch(l -> l.contains(POKE_TAG)) ? POKE_HINT : "");
+                    + (latest.stream().anyMatch(l -> l.contains(POKE_TAG)) ? POKE_HINT : "") + (media.note().isEmpty() ? "" : "\n" + media.note());
             agent.store().markReplying(new AgentStore.Replying(session, target.userId(), target.messageId(), "", String.join("\n", latest),
                     System.currentTimeMillis()));
             try {
-                ChatTurn turn = new ChatTurn(session, ChatMessage.user(prompt, download(target, images)), target.userId(),
+                ChatTurn turn = new ChatTurn(session, ChatMessage.user(prompt, media.parts()), target.userId(),
                         outbox.files(target), "qq", List.of(target.userId()), Map.of(), true);
                 if (reply(target, turn, true) != null) {
                     agent.intercom().report(session, "你在私聊里回了 QQ " + target.userId() + " 一句（私聊的内容留在私聊里）");
@@ -925,13 +929,19 @@ public final class QqChatBridge {
                     .append(TurnRunner.SILENCE).append("，潜水也很正常。");
         } else {
             prompt.append(prompt.isEmpty() ? "" : "\n").append("（").append(resumedGroups.remove(state.groupId) ? RESUMED : "")
-                    .append("有人在跟你说话，现在要回的是这条：「").append(abbreviate(trigger.text(), 300)).append("」。").append(FOCUS).append("）")
+                    .append(bareMention(trigger.text()) ? "有人只 @ 了你一下，什么都没说：「" + trigger.text() + "」。多半是叫你出来、看你在不在，回一句，比如问问 TA 找你什么事。"
+                            : "有人在跟你说话，现在要回的是这条：「" + pointer(trigger.text()) + "」。")
+                    .append(FOCUS).append("）")
                     .append(trigger.text().contains(POKE_TAG) ? POKE_HINT : "");
         }
         Target target = trigger == null
                 ? Target.group(state.groupId, "", selfId, "")
                 : Target.group(state.groupId, trigger.userId(), selfId, trigger.messageId());
-        List<ImagePart> images = trigger == null ? List.of() : download(target, trigger.imageUrls());
+        Media media = trigger == null ? new Media(List.of(), "") : media(target, trigger.imageUrls());
+        if (!media.note().isEmpty()) {
+            prompt.append("\n").append(media.note());
+        }
+        List<ImagePart> images = media.parts();
         List<String> people = new ArrayList<>();
         if (trigger != null) {
             people.add(trigger.userId());
@@ -952,7 +962,7 @@ public final class QqChatBridge {
                 : onlyBots(lines.stream().filter(l -> !l.seen()).toList()));
         String sent;
         try {
-            sent = reply(target, turn, true);
+            sent = reply(target, turn, true, trigger != null && bareMention(trigger.text()) ? BARE_MENTION_FALLBACK : null);
         } finally {
             if (trigger != null) {
                 agent.store().clearReplying(session);
@@ -1013,7 +1023,21 @@ public final class QqChatBridge {
         return !lines.isEmpty() && lines.stream().allMatch(l -> !agent.personas().isOwner(l.userId()) && botLike(l.speaker()));
     }
 
+    static boolean bareMention(String line) {
+        int colon = line.indexOf('：');
+        return colon > 0 && !line.substring(0, colon).contains("（回复") && line.substring(colon + 1).replaceAll("@\\S+", "").isBlank();
+    }
+
+    static String pointer(String line) {
+        return line.length() <= POINTER_CHARS ? line
+                : line.substring(0, POINTER_CHARS) + "……（太长了，这里只引了开头，完整内容就在上面那条消息里）";
+    }
+
     private String reply(Target target, ChatTurn turn, boolean deliver) {
+        return reply(target, turn, deliver, null);
+    }
+
+    private String reply(Target target, ChatTurn turn, boolean deliver, String fallback) {
         ChatResult result;
         try {
             result = agent.chat(turn, new StreamListener() {
@@ -1035,7 +1059,18 @@ public final class QqChatBridge {
             });
         } catch (AgentException e) {
             log.warn("agent [" + target.where() + "] reply " + (e.kind() == AgentException.Kind.CANCELLED ? "stopped" : "failed") + ": " + e.getMessage());
-            return null;
+            if (fallback == null || !deliver || e.kind() != AgentException.Kind.EMPTY_REPLY) {
+                return null;
+            }
+            try {
+                outbox.deliver(target, fallback, target.group() ? target.messageId() : null);
+                agent.hear(target.session(), "（你刚才没想好说什么，先回了一句：" + fallback + "）");
+                log.info("agent [" + target.where() + "] answered a bare mention with a fallback");
+                return fallback;
+            } catch (ToolFailure failure) {
+                log.warn("agent [" + target.where() + "] fallback reply failed: " + failure.getMessage());
+                return null;
+            }
         }
         if (result.content().isBlank()) {
             log.info("agent [" + target.where() + "] stayed quiet");
@@ -1410,6 +1445,25 @@ public final class QqChatBridge {
             }
         }
         return false;
+    }
+
+    private record Media(List<ImagePart> parts, String note) {}
+
+    private Media media(Target target, List<String> urls) {
+        List<ImagePart> parts = new ArrayList<>(download(target, urls.stream().filter(u -> !u.startsWith(QqMessages.VIDEO_REF)).toList()));
+        String video = urls.stream().filter(u -> u.startsWith(QqMessages.VIDEO_REF)).findFirst().orElse(null);
+        if (video == null || !agent.vision() || !agent.videoFrames().config().enabled()) {
+            return new Media(parts, "");
+        }
+        try {
+            VideoFrames.Frames frames = agent.videoFrames().extract(video.substring(QqMessages.VIDEO_REF.length()));
+            parts.addAll(frames.parts());
+            log.info("agent [" + target.where() + "] looked at a video through " + frames.parts().size() + " frames");
+            return new Media(parts, frames.note());
+        } catch (ToolFailure e) {
+            log.warn("agent [" + target.where() + "] video skipped: " + e.getMessage());
+            return new Media(parts, "");
+        }
     }
 
     private List<ImagePart> download(Target target, List<String> imageUrls) {

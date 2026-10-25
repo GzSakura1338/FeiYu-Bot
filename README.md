@@ -6,7 +6,7 @@
 - 网页控制台按 Material Design 3 设计：http://127.0.0.1:8090/
 - 登录 QQ 交给 [NapCatQQ](https://github.com/NapNeko/NapCatQQ)：它用本机装的 QQNT 登录账号，通过 OneBot v11 反向 WebSocket 把消息推给 FeiYu Bot
 
-功能和代码结构的完整说明见 [dafeiyu/README.md](dafeiyu/README.md)，写插件看 [dafeiyu/插件开发.md](dafeiyu/插件开发.md)。
+功能和代码结构的完整说明见 [dafeiyu/README.md](dafeiyu/README.md)，写插件看 [dafeiyu/插件开发.md](dafeiyu/插件开发.md)，在 Linux 服务器上部署看 [dafeiyu/Linux部署.md](dafeiyu/Linux部署.md)。
 
 ## 启动
 
@@ -22,10 +22,12 @@
 FeiYu Bot 本身跨平台，需要 JDK 25（`java -version` 能看到 25 就行）：
 
 1. 执行 `./start-dafeiyu.sh`，打开 http://127.0.0.1:8090/
-2. NapCat 用它官方的 Linux 安装脚本或 Docker 版（仓库里的 `napcat/` 和 `start-napcat.bat` 只能在 Windows 上用），在 NapCat 的 OneBot 设置里加一个反向 WebSocket，地址 `ws://127.0.0.1:6199/ws`，token 和控制台里填的一样
+2. NapCat 用它官方的 Linux 安装脚本或 Docker 版（仓库里的 `napcat/` 和 `start-napcat.bat` 只能在 Windows 上用），在 NapCat 的 OneBot 设置里加一个反向 WebSocket，地址 `ws://127.0.0.1:6199/ws`，token 和控制台里填的一样。Docker 版记得加 `-e ACCOUNT=<QQ号>`（不然每次重启都要扫码），并把工作目录按相同路径挂进容器
 3. 想让她跑命令（「工作目录 › 命令行执行」），Linux 要先装 bubblewrap，要沙盒联网再装 passt：`sudo apt install bubblewrap passt`（Fedora 用 dnf，Arch 用 pacman）；macOS 自带 sandbox-exec，不用装。各系统沙盒的区别见 [dafeiyu/README.md](dafeiyu/README.md#多平台和命令沙盒)
 
 Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机连不上，但挡不住局域网；内存和进程数上限 Linux 要靠 systemd（`systemd-run`），macOS 和没有 systemd 的环境只能降优先级。
+
+在云服务器上部署（国内镜像、时区、NapCat Docker 怎么配、怎么查日志和用量）看 [dafeiyu/Linux部署.md](dafeiyu/Linux部署.md)。
 
 ## 目录
 

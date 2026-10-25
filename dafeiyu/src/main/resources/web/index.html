@@ -395,12 +395,22 @@
             <div class="mind-status session-stats body-medium" id="session-stats"></div>
             <div class="mind-bar" id="mind-bar" hidden>
               <div class="mind-status body-medium" id="mind-status"></div>
+              <div class="mind-pace-row">
               <div class="session-filter label-large mind-pace" role="radiogroup" aria-label="思考节奏" id="mind-pace">
                 <span class="mind-pace-label">思考节奏</span>
                 <button class="state-layer" role="radio" data-pace="fast" aria-checked="false">快（约 15 秒一个念头）</button>
                 <button class="state-layer" role="radio" data-pace="normal" aria-checked="true">正常（约 40 秒）</button>
                 <button class="state-layer" role="radio" data-pace="slow" aria-checked="false">慢（约 2 分钟）</button>
+                <button class="state-layer" role="radio" data-pace="custom" aria-checked="false" id="mind-pace-custom">自定义</button>
               </div>
+              <button type="button" class="icon-button state-layer" id="mind-pace-more" title="自定义间隔和深夜" aria-label="自定义间隔和深夜" aria-expanded="false"><svg data-icon="bedtime"></svg></button>
+              </div>
+              <form class="mind-pace-form body-medium" id="mind-pace-form" novalidate autocomplete="off" hidden>
+                <label>自定义：每隔 <input id="mind-pace-seconds" inputmode="numeric" spellcheck="false"> 秒想一个念头</label>
+                <label><input type="checkbox" id="mind-night-on"> 深夜 <input type="time" id="mind-night-start"> 到 <input type="time" id="mind-night-end">，每隔
+                  <input id="mind-night-seconds" inputmode="numeric" spellcheck="false"> 秒想一个（填 0 就停下不想，只有托她办的事、@ 她和私聊才会叫醒她）</label>
+                <button type="submit" class="filled-button filled-button-medium state-layer" id="mind-pace-save">保存</button>
+              </form>
             </div>
             <div class="chat-list session-timeline" id="session-timeline"></div>
             <div class="attachments" id="chat-attachments" hidden></div>
@@ -795,6 +805,17 @@
               <button class="state-layer" role="radio" data-size="auto" data-hint="交给模型决定"><svg data-icon="check" class="icon-18 chip-check"></svg>自动</button>
             </div>
           </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="timer"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">限额怎么算</div>
+              <div class="list-supporting body-medium" id="imagegen-quota-hint">不限</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="生图限额怎么算" id="imagegen-scope">
+              <button class="state-layer" role="radio" data-scope="global"><svg data-icon="check" class="icon-18 chip-check"></svg>大家一共</button>
+              <button class="state-layer" role="radio" data-scope="session"><svg data-icon="check" class="icon-18 chip-check"></svg>每个聊天各算</button>
+            </div>
+          </li>
         </ul>
         <form class="imagegen-form" id="imagegen-form" novalidate autocomplete="off">
           <div class="text-field" data-field="baseUrl">
@@ -817,6 +838,16 @@
             </div>
             <span class="supporting body-small" data-hint="点右侧按钮可以从接口获取模型列表，生图模型排在前面"></span>
           </div>
+          <div class="imagegen-quota">
+            <div class="text-field" data-field="perHour">
+              <div class="text-field-box"><input id="imagegen-per-hour" name="perHour" placeholder=" " inputmode="numeric" spellcheck="false"><label for="imagegen-per-hour">每小时最多几张</label></div>
+              <span class="supporting body-small" data-hint="按最近 60 分钟算，0 或留空就是不限"></span>
+            </div>
+            <div class="text-field" data-field="perDay">
+              <div class="text-field-box"><input id="imagegen-per-day" name="perDay" placeholder=" " inputmode="numeric" spellcheck="false"><label for="imagegen-per-day">每天最多几张</label></div>
+              <span class="supporting body-small" data-hint="从每天零点算，0 或留空就是不限"></span>
+            </div>
+          </div>
           <div class="imagegen-actions">
             <button type="button" class="tonal-button label-large state-layer" id="imagegen-test"><svg data-icon="auto_awesome" class="icon-18"></svg>试画一张</button>
             <button type="submit" class="filled-button filled-button-medium state-layer" id="imagegen-save" disabled>保存</button>
@@ -826,6 +857,39 @@
           <img alt="试画的图">
           <figcaption class="body-small"></figcaption>
         </figure>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2 class="headline-small">看视频</h2></div>
+        <p class="panel-desc body-medium">有人发视频找她时，用 ffmpeg 从视频里按时间均匀截几张画面当图片给她看（声音听不到）。要模型能看图，电脑上装了 ffmpeg 才行；截图在沙盒里做，做完就删。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="image_search"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">截几张</div>
+              <div class="list-supporting body-medium" id="video-hint">正在检查 ffmpeg…</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="视频截几张" id="video-frames">
+              <button class="state-layer" role="radio" data-frames="0"><svg data-icon="check" class="icon-18 chip-check"></svg>不看</button>
+              <button class="state-layer" role="radio" data-frames="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4 张</button>
+              <button class="state-layer" role="radio" data-frames="8"><svg data-icon="check" class="icon-18 chip-check"></svg>8 张</button>
+              <button class="state-layer" role="radio" data-frames="12"><svg data-icon="check" class="icon-18 chip-check"></svg>12 张</button>
+              <button class="state-layer" role="radio" data-frames="16"><svg data-icon="check" class="icon-18 chip-check"></svg>16 张</button>
+            </div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="timer"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">看多长</div>
+              <div class="list-supporting body-medium">只截视频开头这么长的一段，长视频也不会截太久</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="视频看多长" id="video-seconds">
+              <button class="state-layer" role="radio" data-seconds="30"><svg data-icon="check" class="icon-18 chip-check"></svg>前 30 秒</button>
+              <button class="state-layer" role="radio" data-seconds="60"><svg data-icon="check" class="icon-18 chip-check"></svg>前 1 分钟</button>
+              <button class="state-layer" role="radio" data-seconds="120"><svg data-icon="check" class="icon-18 chip-check"></svg>前 2 分钟</button>
+              <button class="state-layer" role="radio" data-seconds="300"><svg data-icon="check" class="icon-18 chip-check"></svg>前 5 分钟</button>
+            </div>
+          </li>
+        </ul>
       </div>
     </div>
 

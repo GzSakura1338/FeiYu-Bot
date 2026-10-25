@@ -23,10 +23,19 @@ async function request(method, path = '', body) {
 }
 
 const input = name => $(`#imagegen-form [name="${name}"]`);
+const QUOTA_FIELDS = ['perHour', 'perDay'];
+const quotaText = n => (n > 0 ? String(n) : '');
 
 function dirty() {
   if (!state) return false;
-  return input('apiKey').value.trim() !== '' || FIELDS.some(name => input(name).value.trim() !== (state[name] ?? ''));
+  return input('apiKey').value.trim() !== '' || FIELDS.some(name => input(name).value.trim() !== (state[name] ?? ''))
+    || QUOTA_FIELDS.some(name => input(name).value.trim() !== quotaText(state[name]));
+}
+
+function quotaHint() {
+  if (!state || (!state.perHour && !state.perDay)) return `不限。最近一小时画了 ${state?.usedHour ?? 0} 张，今天 ${state?.usedToday ?? 0} 张`;
+  const limits = [state.perHour && `每小时 ${state.perHour} 张`, state.perDay && `每天 ${state.perDay} 张`].filter(Boolean).join('、');
+  return `${state.scope === 'session' ? '每个群、每个私聊各自' : '所有聊天加起来'}最多${limits}。最近一小时一共画了 ${state.usedHour} 张，今天 ${state.usedToday} 张`;
 }
 
 function updateSave() {
@@ -39,8 +48,11 @@ function render(fill = true) {
   toggle.disabled = !state;
   $('#imagegen-hint').textContent = state?.enabled ? '已开启：有人让她画图时会直接生成，发到当前聊天' : '关着时她看不到 image 工具';
   for (const button of $$('#imagegen-size [role="radio"]')) button.setAttribute('aria-checked', String(button.dataset.size === state?.size));
+  for (const button of $$('#imagegen-scope [role="radio"]')) button.setAttribute('aria-checked', String(button.dataset.scope === (state?.scope ?? 'global')));
+  $('#imagegen-quota-hint').textContent = quotaHint();
   if (fill && state) {
     for (const name of FIELDS) input(name).value = state[name] ?? '';
+    for (const name of QUOTA_FIELDS) input(name).value = quotaText(state[name]);
     input('apiKey').value = '';
   }
   const keyHint = $('#imagegen-form [data-field="apiKey"] .supporting');
@@ -61,9 +73,24 @@ async function load() {
 function formBody() {
   const body = {};
   for (const name of FIELDS) body[name] = input(name).value.trim();
+  for (const name of QUOTA_FIELDS) {
+    const text = input(name).value.trim();
+    if (text !== '' && !/^\d{1,5}$/.test(text)) throw new Error('限额要填 0 到 10000 的整数，留空就是不限');
+    body[name] = text === '' ? 0 : Number(text);
+  }
   const key = input('apiKey').value.trim();
   if (key) body.apiKey = key;
   return body;
+}
+
+async function setScope(scope) {
+  if (!state || scope === state.scope) return;
+  try {
+    state = await request('PUT', '', { scope });
+    render(false);
+  } catch (err) {
+    showSnackbar(`保存失败：${err.message}`, 'error');
+  }
 }
 
 async function save(e) {
@@ -170,6 +197,8 @@ export function initSettingsImageGen() {
   $('#imagegen-fetch').addEventListener('click', fetchModels);
   for (const button of $$('#imagegen-size [role="radio"]')) button.addEventListener('click', () => setSize(button.dataset.size));
   menuSelect($('#imagegen-size'));
+  for (const button of $$('#imagegen-scope [role="radio"]')) button.addEventListener('click', () => setScope(button.dataset.scope));
+  menuSelect($('#imagegen-scope'));
   const model = input('model');
   model.addEventListener('input', () => showModels(false));
   model.addEventListener('click', () => showModels(false));

@@ -4,7 +4,11 @@ import dafeiyu.agent.AgentException;
 import dafeiyu.agent.ImagePart;
 import dafeiyu.util.HttpCalls;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -21,7 +25,8 @@ import java.util.Base64;
 
 public final class ImageLoader {
 
-    private static final int MAX_DOWNLOAD = 10 * 1024 * 1024;
+    public static final int MAX_DOWNLOAD = 32 * 1024 * 1024;
+    public static final String TOO_LARGE = "image is larger than 32 MB";
     private static final int MAX_SEND = 4 * 1024 * 1024;
     private static final int MAX_SIDE = 1568;
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -60,7 +65,7 @@ public final class ImageLoader {
             throw new AgentException("image download failed: HTTP " + response.statusCode());
         }
         if (response.body().length > MAX_DOWNLOAD) {
-            throw new AgentException("image is larger than 10 MB");
+            throw new AgentException(TOO_LARGE);
         }
         return response.body();
     }
@@ -82,7 +87,7 @@ public final class ImageLoader {
             throw new AgentException("empty image");
         }
         if (bytes.length > MAX_DOWNLOAD) {
-            throw new AgentException("image is larger than 10 MB");
+            throw new AgentException(TOO_LARGE);
         }
         String mime = sniff(bytes);
         if (mime == null) {
@@ -101,6 +106,90 @@ public final class ImageLoader {
             throw new AgentException("image is too large to send");
         }
         return new ImagePart(mime, Base64.getEncoder().encodeToString(bytes));
+    }
+
+    public static byte[] shrink(byte[] bytes, int maxSide, long maxBytes) {
+        BufferedImage image;
+        try {
+            image = ImageIO.read(new ByteArrayInputStream(bytes));
+        } catch (IOException | RuntimeException e) {
+            return bytes;
+        }
+        if (image == null || bytes.length <= maxBytes && Math.max(image.getWidth(), image.getHeight()) <= maxSide) {
+            return bytes;
+        }
+        boolean alpha = image.getColorModel().hasAlpha() && !opaque(image);
+        int side = Math.min(maxSide, Math.max(image.getWidth(), image.getHeight()));
+        byte[] best = bytes;
+        for (int round = 0; round < 4; round++) {
+            BufferedImage scaled = scale(image, side, alpha);
+            byte[] out = alpha ? write(scaled, "png") : jpeg(scaled, 0.92f - round * 0.08f);
+            if (out.length < best.length) {
+                best = out;
+            }
+            if (out.length <= maxBytes) {
+                return out;
+            }
+            side = Math.max(256, (int) (side * 0.8));
+        }
+        return best;
+    }
+
+    private static boolean opaque(BufferedImage image) {
+        int[] row = new int[image.getWidth()];
+        for (int y = 0; y < image.getHeight(); y++) {
+            image.getRGB(0, y, row.length, 1, row, 0, row.length);
+            for (int argb : row) {
+                if (argb >>> 24 != 0xFF) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static BufferedImage scale(BufferedImage source, int maxSide, boolean alpha) {
+        double factor = Math.min(1.0, (double) maxSide / Math.max(source.getWidth(), source.getHeight()));
+        int width = Math.max(1, (int) Math.round(source.getWidth() * factor));
+        int height = Math.max(1, (int) Math.round(source.getHeight() * factor));
+        BufferedImage target = new BufferedImage(width, height, alpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = target.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        if (!alpha) {
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, width, height);
+        }
+        g.drawImage(source, 0, 0, width, height, null);
+        g.dispose();
+        return target;
+    }
+
+    private static byte[] write(BufferedImage image, String format) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(image, format, out);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] jpeg(BufferedImage image, float quality) {
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ImageOutputStream stream = ImageIO.createImageOutputStream(out)) {
+            writer.setOutput(stream);
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(Math.max(0.5f, quality));
+            writer.write(null, new IIOImage(image, null, null), param);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        } finally {
+            writer.dispose();
+        }
+        return out.toByteArray();
     }
 
     static ImagePart solid(Color color, int size) {

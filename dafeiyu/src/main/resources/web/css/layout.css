@@ -311,6 +311,12 @@ body {
 .mind-moment-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mind-pace { align-items: center; padding: 0; }
 .mind-pace-label { margin-right: 6px; color: var(--md-sys-color-on-surface-variant); }
+.mind-pace-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.mind-pace-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 4px 0 8px; color: var(--md-sys-color-on-surface-variant); }
+.mind-pace-form label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mind-pace-form input:not([type="checkbox"]) { width: 6.5em; padding: 4px 8px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 8px; background: transparent; color: var(--md-sys-color-on-surface); font: inherit; }
+.mind-pace-form input:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 1px; }
+.mind-pace-form input[type="checkbox"] { accent-color: var(--md-sys-color-primary); width: 18px; height: 18px; margin: 0; }
 .mind-moment-time { margin-left: auto; flex: none; opacity: .8; }
 .mind-step { max-width: 100%; align-self: stretch; }
 .mind-step .bubble-meta { margin: -2px 0 4px 17px; }
@@ -370,6 +376,8 @@ body {
 .field-row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .imagegen-form { display: flex; flex-direction: column; gap: 4px; padding: 4px 24px 16px; }
 .imagegen-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 4px; }
+.imagegen-quota { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 600px) { .imagegen-quota { grid-template-columns: 1fr; } }
 .imagegen-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0; padding: 0 24px 20px; }
 .imagegen-preview[hidden] { display: none; }
 .imagegen-preview img {

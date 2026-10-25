@@ -25,6 +25,7 @@ public final class QqMessages {
     record Incoming(String text, boolean mentionedMe, boolean mentionedOthers, List<String> imageUrls, String replyTo, String attachments) {}
 
     private static final Pattern CQ_CODE = Pattern.compile("\\[CQ:([a-z_]+)((?:,[^\\]]*)?)]");
+    static final String VIDEO_REF = "video:";
     private static final int MAX_NAME = 24;
     private static final String MENTION_STOP = " \t\n，,。.！!？?：:；;、";
     private static final Pattern LABEL_TAIL = Pattern.compile("(?<=[\\p{IsHan}\\p{L}\\p{N}）)])#\\d{4}(?!\\d)");
@@ -71,6 +72,7 @@ public final class QqMessages {
                         String label = other(optString(seg, "type"), name -> optString(data, name));
                         text.append(label);
                         attachOther(attachments, optString(seg, "type"), name -> optString(data, name), label);
+                        addVideo(images, optString(seg, "type"), optString(data, "url"));
                     }
                 }
             }
@@ -96,6 +98,7 @@ public final class QqMessages {
                         String label = other(m.group(1), name -> params.getOrDefault(name, ""));
                         text.append(label);
                         attachOther(attachments, m.group(1), name -> params.getOrDefault(name, ""), label);
+                        addVideo(images, m.group(1), params.getOrDefault("url", ""));
                     }
                 }
                 last = m.end();
@@ -252,6 +255,12 @@ public final class QqMessages {
             text.append("@").append(known == null || known.isBlank() ? qq : unforgeable(known)).append(' ');
         }
         return qq;
+    }
+
+    private static void addVideo(List<String> images, String type, String url) {
+        if (type.equals("video") && (url.startsWith("http://") || url.startsWith("https://"))) {
+            images.add(VIDEO_REF + url);
+        }
     }
 
     private static void addImage(StringBuilder text, List<String> images, String url, String summary, String type,

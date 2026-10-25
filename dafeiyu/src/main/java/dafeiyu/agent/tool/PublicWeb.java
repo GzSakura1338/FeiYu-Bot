@@ -50,7 +50,7 @@ public final class PublicWeb {
 
     public record Saved(URI uri, String type, String disposition, long size) {}
 
-    static Saved save(String url, Path file, long maxBytes, Duration total) throws ToolFailure {
+    public static Saved save(String url, Path file, long maxBytes, Duration total) throws ToolFailure {
         URI uri = parse(url);
         for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
             checkPublic(uri);

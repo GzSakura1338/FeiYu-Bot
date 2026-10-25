@@ -18,7 +18,8 @@ final class ImageGenHandler {
     private static final String PREFIX = "/api/agent/image-gen";
     private static final String TEST_PROMPT = "一只 Q 版的蓝色小鲸鱼女孩在海边挥手，柔和的粉彩配色，可爱插画风格";
 
-    private record UpdateRequest(Boolean enabled, String baseUrl, String apiKey, String model, String size) {}
+    private record UpdateRequest(Boolean enabled, String baseUrl, String apiKey, String model, String size, Integer perHour, Integer perDay,
+                                 String scope) {}
 
     private record TestRequest(String prompt) {}
 
@@ -40,10 +41,17 @@ final class ImageGenHandler {
                 HttpResponses.json(ex, state(agent.imageGen().config()));
             } else if ((rest.isEmpty() || rest.equals("/")) && method.equals("PUT") && Requests.isJson(ex)) {
                 UpdateRequest body = Requests.readJson(ex, UpdateRequest.class);
+                if (body.perHour() != null && (body.perHour() < 0 || body.perHour() > 10_000) || body.perDay() != null && (body.perDay() < 0 || body.perDay() > 10_000)) {
+                    throw new IllegalArgumentException("限额要是 0（不限）到 10000 之间的整数");
+                }
                 ImageGen.Config old = agent.imageGen().config();
                 ImageGen.Config saved = agent.imageGen().save(body.enabled() == null ? old.enabled() : body.enabled(),
                         body.baseUrl() == null ? old.baseUrl() : body.baseUrl(), body.apiKey(),
                         body.model() == null ? old.model() : body.model(), body.size() == null ? old.size() : body.size());
+                if (body.perHour() != null || body.perDay() != null || body.scope() != null) {
+                    ImageGen.Quota quota = agent.imageGen().saveQuota(body.perHour(), body.perDay(), body.scope());
+                    log.info("agent: image quota " + quota.perHour() + "/hour, " + quota.perDay() + "/day, " + quota.scope());
+                }
                 log.info("agent: image generation " + (saved.enabled() ? "ON" : "OFF") + " (" + saved.model() + ")");
                 HttpResponses.json(ex, state(saved));
             } else if (rest.equals("/test") && method.equals("POST") && Requests.isJson(ex)) {
@@ -90,8 +98,15 @@ final class ImageGenHandler {
         }
     }
 
-    private static String state(ImageGen.Config config) {
+    private String state(ImageGen.Config config) {
         JsonObject body = new JsonObject();
+        ImageGen.Quota quota = agent.imageGen().quota();
+        ImageGen.Usage usage = agent.imageGen().usage("");
+        body.addProperty("perHour", quota.perHour());
+        body.addProperty("perDay", quota.perDay());
+        body.addProperty("scope", quota.scope());
+        body.addProperty("usedHour", usage.lastHour());
+        body.addProperty("usedToday", usage.today());
         body.addProperty("enabled", config.enabled());
         body.addProperty("baseUrl", config.baseUrl());
         body.addProperty("model", config.model());

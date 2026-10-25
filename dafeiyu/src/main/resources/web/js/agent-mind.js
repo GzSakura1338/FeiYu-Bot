@@ -35,6 +35,7 @@ function renderStatus() {
   if (status.why) chips.push(chip('info', status.why));
   else if (!status.enabled) chips.push(chip('neurology', '暂停了：页头「自由活动」关着'));
   else if (status.thinking) chips.push(chip('progress_activity', '正在想…', 'tone-active'));
+  else if (status.resting) chips.push(chip('bedtime', `深夜歇着，${status.night.end} 再接着想（托她的事和 @ 她照样会醒）`));
   else {
     const seconds = Math.max(0, Math.round((status.nextAt - Date.now()) / 1000));
     chips.push(chip('schedule', seconds < 2 ? '马上接着想' : seconds < 90 ? `${seconds} 秒后接着想` : `${Math.round(seconds / 60)} 分钟后接着想`));
@@ -48,8 +49,50 @@ function renderStatus() {
   if (todo.parentElement !== bar) bar.append(todo);
   todo.before(...chips);
   if (todoMenu?.matches(':popover-open')) fillTodo();
-  for (const b of $$('#mind-pace button')) b.setAttribute('aria-checked', String(b.dataset.pace === status.pace));
+  for (const b of $$('#mind-pace button[data-pace]')) b.setAttribute('aria-checked', String(b.dataset.pace === status.pace));
+  $('#mind-pace-custom').textContent = status.pace === 'custom' ? `自定义（${paceText(status.paceSeconds)}）` : '自定义';
+  if (!$('#mind-pace-form').contains(document.activeElement)) fillPaceForm();
   if (status.mood) renderMood(status.mood);
+}
+
+const paceText = seconds => (seconds >= 120 && seconds % 60 === 0 ? `${seconds / 60} 分钟` : `${seconds} 秒`);
+
+function fillPaceForm() {
+  $('#mind-pace-seconds').value = String(status.paceSeconds ?? 300);
+  const night = status.night ?? { enabled: false, start: '00:00', end: '08:00', seconds: 0 };
+  $('#mind-night-on').checked = night.enabled;
+  $('#mind-night-start').value = night.start;
+  $('#mind-night-end').value = night.end;
+  $('#mind-night-seconds').value = String(night.seconds);
+}
+
+function togglePaceForm(open = $('#mind-pace-form').hidden) {
+  $('#mind-pace-form').hidden = !open;
+  $('#mind-pace-more').setAttribute('aria-expanded', String(open));
+  if (open && status) fillPaceForm();
+}
+
+async function savePaceForm(e) {
+  e.preventDefault();
+  const seconds = Number($('#mind-pace-seconds').value.trim());
+  const nightSeconds = Number($('#mind-night-seconds').value.trim() || '0');
+  if (!Number.isInteger(seconds) || seconds < 15 || seconds > 3600) return showSnackbar('自定义间隔填 15 到 3600 秒', 'error');
+  if (!Number.isInteger(nightSeconds) || nightSeconds < 0 || nightSeconds > 3600 || (nightSeconds > 0 && nightSeconds < 15)) {
+    return showSnackbar('深夜间隔填 0（停下不想）或 15 到 3600 秒', 'error');
+  }
+  try {
+    await api('PUT', '/pace', seconds !== status?.paceSeconds ? { seconds, pace: 'custom' } : { seconds });
+    status = await api('PUT', '/night', {
+      enabled: $('#mind-night-on').checked,
+      start: $('#mind-night-start').value || '00:00',
+      end: $('#mind-night-end').value || '08:00',
+      seconds: nightSeconds,
+    });
+    renderStatus();
+    showSnackbar('思考节奏已保存', 'success');
+  } catch (err) {
+    showSnackbar(`保存失败：${err.message}`, 'error');
+  }
 }
 
 const placeOf = session => (session?.startsWith('group:') ? `群 ${session.slice(6)}` : session?.startsWith('private:') ? '私聊' : session ?? '');
@@ -194,6 +237,7 @@ export function mindEntry(turn, cards) {
 }
 
 async function setPace(pace) {
+  if (pace === 'custom') togglePaceForm(true);
   try {
     status = await api('PUT', '/pace', { pace });
     renderStatus();
@@ -214,5 +258,7 @@ async function think() {
 
 export function initAgentMind() {
   $('#mind-think').addEventListener('click', think);
-  for (const button of $$('#mind-pace button')) button.addEventListener('click', () => setPace(button.dataset.pace));
+  for (const button of $$('#mind-pace button[data-pace]')) button.addEventListener('click', () => setPace(button.dataset.pace));
+  $('#mind-pace-more').addEventListener('click', () => togglePaceForm());
+  $('#mind-pace-form').addEventListener('submit', savePaceForm);
 }

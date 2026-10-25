@@ -12,6 +12,7 @@ import dafeiyu.agent.ChatMessage;
 import dafeiyu.agent.ChatResult;
 import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.TurnRunner;
+import dafeiyu.agent.model.ModelLimits;
 import dafeiyu.agent.model.ModelProfile;
 import dafeiyu.agent.model.ModelRetry;
 import dafeiyu.agent.persona.Persona;
@@ -66,6 +67,7 @@ public final class Reflection {
     private static final int MAX_SKILL_CHANGES = 4;
     private static final int MAX_EXISTING = 60;
     private static final int MAX_FAILURES = 3;
+    static final int REFLECT_OUTPUT = 16_000;
     private static final int TIDY_SELF_AT = 8;
     private static final long FAILURE_BACKOFF_MS = 10 * 60_000;
     private static final Pattern NOT_A_CLAIM = Pattern.compile("[不没非别才只谁]");
@@ -342,9 +344,18 @@ public final class Reflection {
         return profile;
     }
 
+    static int outputBudget(ModelProfile profile) {
+        int set = profile.maxTokens();
+        if (set <= 0 || set >= REFLECT_OUTPUT) {
+            return set;
+        }
+        int known = ModelLimits.lookup(profile.model()).output();
+        return known > 0 ? Math.max(set, Math.min(REFLECT_OUTPUT, known)) : REFLECT_OUTPUT;
+    }
+
     static String ask(ModelProfile profile, String session, String prompt) throws AgentException {
         ModelProtocol protocol = Protocols.get(profile.protocol());
-        ChatRequest request = new ChatRequest(List.of(ChatMessage.user(prompt)), List.of(), false, "reflect:" + session, profile.maxTokens());
+        ChatRequest request = new ChatRequest(List.of(ChatMessage.user(prompt)), List.of(), false, "reflect:" + session, outputBudget(profile));
         ChatResult result = new ModelRetry(StreamListener.NONE, () -> false).run(() -> protocol.stream(profile, request, StreamListener.NONE));
         return result.content();
     }

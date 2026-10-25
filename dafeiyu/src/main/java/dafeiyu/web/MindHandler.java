@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.memory.Mood;
 import dafeiyu.agent.mind.Mind;
+import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.log.LogBuffer;
 
@@ -17,7 +18,9 @@ final class MindHandler {
 
     private record SwitchRequest(Boolean enabled) {}
 
-    private record PaceRequest(String pace) {}
+    private record PaceRequest(String pace, Integer seconds) {}
+
+    private record NightRequest(Boolean enabled, String start, String end, Integer seconds) {}
 
     private final Gson gson = new Gson();
     private final ChatAgent agent;
@@ -50,7 +53,26 @@ final class MindHandler {
                 }
                 HttpResponses.json(ex, state());
             } else if (rest.equals("/pace") && method.equals("PUT")) {
-                agent.store().setMindPace(String.valueOf(Requests.readJson(ex, PaceRequest.class).pace()));
+                PaceRequest body = Requests.readJson(ex, PaceRequest.class);
+                if (body.seconds() != null) {
+                    agent.store().setMindPaceSeconds(body.seconds());
+                }
+                if (body.pace() != null) {
+                    agent.store().setMindPace(body.pace());
+                }
+                log.info("mind: pace " + agent.store().mindPace() + (agent.store().mindPace().equals("custom") ? " (" + agent.store().mindPaceSeconds() + " s)" : ""));
+                mind.wakeUp();
+                HttpResponses.json(ex, state());
+            } else if (rest.equals("/night") && method.equals("PUT")) {
+                NightRequest body = Requests.readJson(ex, NightRequest.class);
+                AgentStore.MindNight old = agent.store().mindNight();
+                int seconds = body.seconds() == null ? old.seconds() : body.seconds();
+                if (seconds != 0 && (seconds < AgentStore.MIN_PACE_SECONDS || seconds > AgentStore.MAX_PACE_SECONDS)) {
+                    throw new IllegalArgumentException("深夜间隔填 0（停下不想）或 " + AgentStore.MIN_PACE_SECONDS + " 秒到 " + AgentStore.MAX_PACE_SECONDS / 60 + " 分钟");
+                }
+                AgentStore.MindNight night = agent.store().setMindNight(new AgentStore.MindNight(body.enabled() == null ? old.enabled() : body.enabled(),
+                        body.start() == null ? old.start() : body.start(), body.end() == null ? old.end() : body.end(), seconds));
+                log.info("mind: night " + (night.enabled() ? night.start() + "-" + night.end() + (night.seconds() == 0 ? " rest" : " every " + night.seconds() + " s") : "off"));
                 mind.wakeUp();
                 HttpResponses.json(ex, state());
             } else if (rest.equals("/think") && method.equals("POST")) {

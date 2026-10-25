@@ -15,7 +15,10 @@ import { stickToBottom } from './stick-bottom.js';
 
 const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '内心', task: '后台任务' };
 const TASK_STATUS = { queued: '排队中', running: '在做', paused: '暂停了', done: '做好了', failed: '没做成', interrupted: '中断了', ended: '已结束' };
-const TASKS_OPEN_KEY = 'sessions.tasksOpen';
+const TASK_GROUPS = {
+  qq: { label: '后台任务', key: 'sessions.tasksOpen' },
+  mind: { label: '内心的子 agent', key: 'sessions.subagentsOpen' },
+};
 const ARCHIVE_AFTER_MS = 15 * 60_000;
 const TIME_MARK = /^【\d{1,2}月\d{1,2}日 [^】\n]{1,20}】$/;
 const MIND_EMPTY = '她的念头还没开始转。打开页头的「自由活动」就会一直想下去';
@@ -32,7 +35,7 @@ const WEB_EMPTY = '在这里试聊几句，可以粘贴或添加图片测试看�
 
 let sessions = [];
 let filter = 'all';
-let tasksOpen = localStorage.getItem(TASKS_OPEN_KEY) === '1';
+const groupOpen = Object.fromEntries(Object.entries(TASK_GROUPS).map(([id, g]) => [id, localStorage.getItem(g.key) === '1']));
 let selected = null;
 let detail = null;
 let shown = PAGE;
@@ -206,14 +209,21 @@ function sessionItem(s) {
   return item;
 }
 
-function taskGroup(tasks) {
+const taskGroupOf = s => (s.task?.originKind === 'mind' ? 'mind' : 'qq');
+
+function openGroup(id, open) {
+  groupOpen[id] = open;
+  localStorage.setItem(TASK_GROUPS[id].key, open ? '1' : '0');
+}
+
+function taskGroup(id, tasks) {
   const item = el('li', 'session-item session-group state-layer');
   item.setAttribute('role', 'option');
-  item.setAttribute('aria-expanded', String(tasksOpen));
+  item.setAttribute('aria-expanded', String(groupOpen[id]));
   item.setAttribute('aria-selected', 'false');
   const text = el('div', 'session-item-text');
   const head = el('div', 'session-item-head');
-  head.append(el('span', 'title-small session-item-name', '后台任务'), el('span', 'kind-chip label-small kind-task', String(tasks.length)));
+  head.append(el('span', 'title-small session-item-name', TASK_GROUPS[id].label), el('span', 'kind-chip label-small kind-task', String(tasks.length)));
   const working = tasks.filter(s => taskStatus(s) === 'running').length;
   if (working) {
     const busy = el('span', 'busy-chip label-small');
@@ -229,11 +239,10 @@ function taskGroup(tasks) {
   text.append(head, el('div', 'body-small session-item-preview', summary));
   const chevron = createIcon('chevron_right', 'icon-18 session-group-chevron');
   item.append(sessionAvatar({ kind: 'task' }), text, chevron);
-  const sub = fold(tasksOpen, tasks.map(sessionItem));
+  const sub = fold(groupOpen[id], tasks.map(sessionItem));
   onActivate(item, () => {
-    tasksOpen = !tasksOpen;
-    localStorage.setItem(TASKS_OPEN_KEY, tasksOpen ? '1' : '0');
-    toggleFold(item, sub, tasksOpen);
+    openGroup(id, !groupOpen[id]);
+    toggleFold(item, sub, groupOpen[id]);
   });
   return [item, sub];
 }
@@ -279,7 +288,10 @@ function renderList() {
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
   const others = shown.filter(s => s.kind !== 'task');
   const nodes = others.filter(s => s.kind === 'mind').map(sessionItem);
-  if (tasks.length) nodes.push(...taskGroup(tasks));
+  for (const id of ['mind', 'qq']) {
+    const group = tasks.filter(s => taskGroupOf(s) === id);
+    if (group.length) nodes.push(...taskGroup(id, group));
+  }
   nodes.push(...others.filter(s => s.kind !== 'mind').map(sessionItem));
   list.replaceChildren(...nodes);
 }
@@ -656,9 +668,10 @@ async function loadDetail() {
 
 async function select(session) {
   if (isWeb(selected) !== isWeb(session)) clearAttachments();
-  if (session.startsWith('task:') && !tasksOpen) {
-    tasksOpen = true;
-    localStorage.setItem(TASKS_OPEN_KEY, '1');
+  if (session.startsWith('task:')) {
+    const found = sessions.find(s => s.session === session);
+    const id = found ? taskGroupOf(found) : 'qq';
+    if (!groupOpen[id]) openGroup(id, true);
   }
   selected = session;
   detail = null;

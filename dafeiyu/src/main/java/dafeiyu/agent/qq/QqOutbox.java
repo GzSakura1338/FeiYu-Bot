@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.model.AgentStore;
+import dafeiyu.agent.model.ImageLoader;
 import dafeiyu.agent.safety.ContentGuard;
 import dafeiyu.agent.sticker.StickerStore;
 import dafeiyu.agent.tool.FileSink;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import static dafeiyu.agent.qq.QqMessages.segment;
 import static dafeiyu.util.Jsons.optObject;
@@ -52,7 +54,13 @@ final class QqOutbox {
     }
 
     static final int MAX_REPLY_LENGTH = 3000;
-    private static final long MAX_INLINE_IMAGE = 10L * 1024 * 1024;
+    private static final long MAX_IMAGE = 30L * 1024 * 1024;
+    private static final int INLINE_SIDE = 2048;
+    private static final long INLINE_BYTES = 2L * 1024 * 1024;
+    private static final Duration TEXT_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration MEDIA_TIMEOUT = Duration.ofSeconds(60);
+    private static final Set<String> MEDIA_SEGMENTS = Set.of("image", "record", "video", "file");
+    private static final Pattern UNREADABLE_PATH = Pattern.compile("(?i)识别\\s*URL|ENOENT|no such file|not exist|不存在|文件处理失败|找不到");
     private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(3);
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
@@ -64,6 +72,7 @@ final class QqOutbox {
     private final Map<String, GroupState> groups;
     private volatile MessageGate gate = MessageGate.NONE;
     private final Map<String, String> tempGroups = new ConcurrentHashMap<>();
+    private volatile boolean pathsUnreadable;
 
     QqOutbox(ChatAgent agent, NapCatService napcat, MessageArchive archive, LogBuffer log, Map<String, GroupState> groups) {
         this.agent = agent;
@@ -261,21 +270,38 @@ final class QqOutbox {
             } catch (IOException e) {
                 throw new ToolFailure("Unable to read " + name + ": " + e.getMessage());
             }
-            if (IMAGE_EXTENSIONS.contains(extension) && size <= MAX_INLINE_IMAGE) {
-                JsonArray message = new JsonArray();
-                message.add(segment("image", "file", "base64://" + Base64.getEncoder().encodeToString(read(file, name))));
+            if (IMAGE_EXTENSIONS.contains(extension) && size <= MAX_IMAGE) {
                 String number = sentImages.apply(file, target.session());
                 String label = number == null ? "[图片]" : "[图片#" + number + "]";
-                send(target, message, label + " " + name);
-                log.info("agent [" + target.where() + "] sent image " + name);
+                Attempt sent = sendImageFile(target, file, name, label + " " + name);
+                log.info("agent [" + target.where() + "] sent image " + name + " via " + sent.via() + " (message " + sent.messageId() + ")");
                 return "Sent image " + name + " to the user" + (number == null ? "." : " as " + label + " (view_image " + number + " shows it again).");
             }
+            String action = target.group() ? "upload_group_file" : "upload_private_file";
             JsonObject params = destination(target);
-            params.addProperty("file", file.toAbsolutePath().toString());
             params.addProperty("name", name);
-            call(target.group() ? "upload_group_file" : "upload_private_file", params, UPLOAD_TIMEOUT);
+            boolean byPath = !pathsUnreadable;
+            if (byPath) {
+                params.addProperty("file", file.toAbsolutePath().toString());
+                JsonObject response = request(action, params, UPLOAD_TIMEOUT);
+                if (!ok(response)) {
+                    markPathsUnreadable(reason(response));
+                    if (!pathsUnreadable) {
+                        throw new ToolFailure(reason(response));
+                    }
+                    byPath = false;
+                }
+            }
+            if (!byPath) {
+                if (size > MAX_IMAGE) {
+                    throw new ToolFailure("NapCat 读不到这台电脑上的文件（多半跑在没挂工作目录的容器里），超过 " + MAX_IMAGE / 1024 / 1024
+                            + " MB 的文件发不了；把工作目录按相同路径挂进 NapCat 就能发");
+                }
+                params.addProperty("file", reachable(file));
+                call(action, params, UPLOAD_TIMEOUT);
+            }
             archive(target, null, "[文件] " + name);
-            log.info("agent [" + target.where() + "] sent file " + name + " (" + size / 1024 + " KB)");
+            log.info("agent [" + target.where() + "] sent file " + name + " (" + size / 1024 + " KB) via " + (byPath ? "path" : "base64"));
             return "Sent file " + name + " to the user.";
         };
     }
@@ -285,31 +311,118 @@ final class QqOutbox {
     }
 
     private void send(Target target, JsonArray message, String archiveText, boolean mine) throws ToolFailure {
+        Attempt sent = attempt(target, message, archiveText, mine, media(message) ? MEDIA_TIMEOUT : TEXT_TIMEOUT);
+        if (sent.error() != null) {
+            throw new ToolFailure(sent.error());
+        }
+    }
+
+    private record Attempt(String error, String messageId, String via) {}
+
+    private Attempt attempt(Target target, JsonArray message, String archiveText, boolean mine, Duration timeout) throws ToolFailure {
         JsonObject params = destination(target);
         params.add("message", message);
-        JsonObject data = optObject(call(target.group() ? "send_group_msg" : "send_private_msg", params, Duration.ofSeconds(15)), "data");
+        JsonObject response = request(target.group() ? "send_group_msg" : "send_private_msg", params, timeout);
+        if (!ok(response)) {
+            return new Attempt(reason(response), null, null);
+        }
+        JsonObject data = optObject(response, "data");
         String messageId = data == null ? null : optString(data, "message_id");
         archive(target, messageId, archiveText);
         if (target.group() && mine) {
             groups.computeIfAbsent(target.groupId(), GroupState::new).spoke(messageId, archiveText);
         }
+        return new Attempt(null, messageId, null);
+    }
+
+    private Attempt sendImageFile(Target target, Path file, String name, String archiveText) throws ToolFailure {
+        String pathError = null;
+        if (!pathsUnreadable) {
+            JsonArray byPath = new JsonArray();
+            byPath.add(segment("image", "file", file.toAbsolutePath().toString()));
+            Attempt sent = attempt(target, byPath, archiveText, true, MEDIA_TIMEOUT);
+            if (sent.error() == null) {
+                return new Attempt(null, sent.messageId(), "path");
+            }
+            pathError = sent.error();
+            if (!UNREADABLE_PATH.matcher(pathError).find()) {
+                throw new ToolFailure("发图失败：" + pathError);
+            }
+            pathsUnreadable = true;
+            log.warn("qq: NapCat cannot read local files (" + pathError + "), sending images inline from now on. "
+                    + "If NapCat runs in a container, mount the working directory at the same path to send by path");
+        }
+        JsonArray inline = new JsonArray();
+        inline.add(segment("image", "file", "base64://" + Base64.getEncoder().encodeToString(inlineImage(file, name))));
+        Attempt sent = attempt(target, inline, archiveText, true, MEDIA_TIMEOUT);
+        if (sent.error() != null) {
+            throw new ToolFailure(pathError == null ? "发图失败：" + sent.error()
+                    : "发图失败：按文件路径发（" + pathError + "）和直接带图片数据发（" + sent.error() + "）都不行");
+        }
+        return new Attempt(null, sent.messageId(), "base64");
+    }
+
+    String reachable(Path file) throws ToolFailure {
+        if (!pathsUnreadable) {
+            return file.toAbsolutePath().toString();
+        }
+        String name = file.getFileName().toString();
+        String extension = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+        byte[] bytes = IMAGE_EXTENSIONS.contains(extension) ? inlineImage(file, name) : read(file, name);
+        return "base64://" + Base64.getEncoder().encodeToString(bytes);
+    }
+
+    boolean pathsUnreadable() {
+        return pathsUnreadable;
+    }
+
+    void markPathsUnreadable(String error) {
+        if (!pathsUnreadable && UNREADABLE_PATH.matcher(error).find()) {
+            pathsUnreadable = true;
+            log.warn("qq: NapCat cannot read local files (" + error + "), sending files inline from now on");
+        }
+    }
+
+    private byte[] inlineImage(Path file, String name) throws ToolFailure {
+        byte[] bytes = read(file, name);
+        return name.toLowerCase(Locale.ROOT).endsWith(".gif") ? bytes : ImageLoader.shrink(bytes, INLINE_SIDE, INLINE_BYTES);
+    }
+
+    private static boolean media(JsonArray message) {
+        for (int i = 0; i < message.size(); i++) {
+            if (message.get(i).isJsonObject() && MEDIA_SEGMENTS.contains(optString(message.get(i).getAsJsonObject(), "type"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     JsonObject call(String action, JsonObject params, Duration timeout) throws ToolFailure {
-        JsonObject response;
+        JsonObject response = request(action, params, timeout);
+        if (!ok(response)) {
+            throw new ToolFailure(reason(response));
+        }
+        return response;
+    }
+
+    private JsonObject request(String action, JsonObject params, Duration timeout) throws ToolFailure {
         try {
-            response = napcat.callAction(action, params, timeout).get(timeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
+            return napcat.callAction(action, params, timeout).get(timeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ToolFailure("interrupted");
         } catch (Exception e) {
             throw new ToolFailure(e.getCause() != null ? String.valueOf(e.getCause().getMessage()) : e.toString());
         }
-        if (!optString(response, "status").equals("ok")) {
-            String reason = optString(response, "wording").isEmpty() ? optString(response, "message") : optString(response, "wording");
-            throw new ToolFailure(reason.isEmpty() ? "QQ rejected the request" : reason);
-        }
-        return response;
+    }
+
+    private static boolean ok(JsonObject response) {
+        return optString(response, "status").equals("ok");
+    }
+
+    private static String reason(JsonObject response) {
+        String reason = optString(response, "wording").isEmpty() ? optString(response, "message") : optString(response, "wording");
+        return reason.isEmpty() ? "QQ rejected the request" : reason;
     }
 
     private JsonObject destination(Target target) {

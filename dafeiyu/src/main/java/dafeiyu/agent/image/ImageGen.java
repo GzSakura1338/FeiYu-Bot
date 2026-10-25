@@ -22,6 +22,8 @@ import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -70,12 +72,98 @@ public final class ImageGen {
             .build();
     private static final Gson GSON = new Gson();
 
+    public record Quota(int perHour, int perDay, String scope) {
+
+        public Quota {
+            perHour = Math.max(0, perHour);
+            perDay = Math.max(0, perDay);
+            scope = SESSION_SCOPE.equals(scope) ? SESSION_SCOPE : GLOBAL_SCOPE;
+        }
+
+        public boolean perSession() {
+            return scope.equals(SESSION_SCOPE);
+        }
+    }
+
+    public record Usage(int lastHour, int today) {}
+
+    public static final String GLOBAL_SCOPE = "global";
+    public static final String SESSION_SCOPE = "session";
+    private static final String QUOTA_KEY = "agent.imageQuota";
+
+    private final Database db;
     private final Settings settings;
     private final Path folder;
 
     public ImageGen(Database db) {
+        this.db = db;
         this.settings = new Settings(db);
         this.folder = db.file().toAbsolutePath().getParent().resolve("generated");
+    }
+
+    public Quota quota() {
+        String raw = settings.get(QUOTA_KEY);
+        if (raw != null && !raw.isBlank()) {
+            try {
+                Quota saved = GSON.fromJson(raw, Quota.class);
+                if (saved != null) {
+                    return new Quota(saved.perHour(), saved.perDay(), saved.scope());
+                }
+            } catch (JsonParseException ignored) {
+            }
+        }
+        return new Quota(0, 0, GLOBAL_SCOPE);
+    }
+
+    public synchronized Quota saveQuota(Integer perHour, Integer perDay, String scope) {
+        Quota old = quota();
+        Quota next = new Quota(perHour == null ? old.perHour() : perHour, perDay == null ? old.perDay() : perDay,
+                scope == null ? old.scope() : scope);
+        settings.put(QUOTA_KEY, GSON.toJson(next));
+        return next;
+    }
+
+    public Usage usage(String session) {
+        long now = System.currentTimeMillis();
+        String scoped = session == null ? "" : session;
+        return new Usage(used(scoped, now - 3_600_000L), used(scoped, LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()));
+    }
+
+    private int used(String session, long since) {
+        Integer count = session.isEmpty()
+                ? db.one("SELECT COALESCE(SUM(count), 0) FROM image_usage WHERE at >= ?", rs -> rs.getInt(1), since)
+                : db.one("SELECT COALESCE(SUM(count), 0) FROM image_usage WHERE at >= ? AND session = ?", rs -> rs.getInt(1), since, session);
+        return count == null ? 0 : count;
+    }
+
+    public synchronized long reserve(String session, int count) throws ToolFailure {
+        Quota quota = quota();
+        String where = session == null ? "" : session;
+        if (quota.perHour() > 0 || quota.perDay() > 0) {
+            Usage usage = usage(quota.perSession() ? where : "");
+            String scope = quota.perSession() ? (where.startsWith("group:") ? "这个群" : "这个聊天") : "大家一共";
+            if (quota.perHour() > 0 && usage.lastHour() + count > quota.perHour()) {
+                throw new ToolFailure("画图限额到了：" + scope + "这一个小时已经画了 " + usage.lastHour() + " 张，每小时最多 " + quota.perHour()
+                        + " 张，歇一会儿再画吧（这是主人定的规矩，不是坏了）");
+            }
+            if (quota.perDay() > 0 && usage.today() + count > quota.perDay()) {
+                throw new ToolFailure("画图限额到了：" + scope + "今天已经画了 " + usage.today() + " 张，每天最多 " + quota.perDay()
+                        + " 张，明天再画吧（这是主人定的规矩，不是坏了）");
+            }
+        }
+        String model = config().model();
+        return db.transaction(c -> {
+            Database.update(c, "INSERT INTO image_usage (at, session, model, count) VALUES (?, ?, ?, ?)", System.currentTimeMillis(), where, model, count);
+            return Database.list(c, "SELECT last_insert_rowid()", rs -> rs.getLong(1)).getFirst();
+        });
+    }
+
+    public void settle(long reservation, int pictures) {
+        if (pictures <= 0) {
+            db.update("DELETE FROM image_usage WHERE id = ?", reservation);
+        } else {
+            db.update("UPDATE image_usage SET count = ? WHERE id = ?", pictures, reservation);
+        }
     }
 
     public Path folder() {

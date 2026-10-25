@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 
 import static dafeiyu.util.Jsons.optObject;
@@ -68,9 +69,14 @@ final class QqImages {
                 throw new ToolFailure("图片#" + id + " 的文件已经不在了");
             }
         }
+        String why;
         try {
             return ImageLoader.fetch(row.url());
-        } catch (AgentException ignored) {
+        } catch (AgentException e) {
+            why = e.getMessage();
+        }
+        if (ImageLoader.TOO_LARGE.equals(why)) {
+            throw new ToolFailure("图片#" + id + " 太大了（超过 " + ImageLoader.MAX_DOWNLOAD / 1024 / 1024 + " MB），看不了");
         }
         if (!row.file().isBlank()) {
             JsonObject params = new JsonObject();
@@ -80,6 +86,13 @@ final class QqImages {
                 data = optObject(outbox.call("get_image", params, TIMEOUT), "data");
             } catch (ToolFailure e) {
                 data = null;
+            }
+            String inline = data == null ? "" : optString(data, "base64");
+            if (!inline.isBlank()) {
+                try {
+                    return Base64.getMimeDecoder().decode(inline.replaceFirst("^base64://", ""));
+                } catch (IllegalArgumentException ignored) {
+                }
             }
             String local = data == null ? "" : optString(data, "file");
             if (!local.isBlank()) {
@@ -95,10 +108,14 @@ final class QqImages {
             if (fresh.startsWith("http://") || fresh.startsWith("https://")) {
                 try {
                     return ImageLoader.fetch(fresh);
-                } catch (AgentException ignored) {
+                } catch (AgentException e) {
+                    why = e.getMessage();
+                }
+                if (ImageLoader.TOO_LARGE.equals(why)) {
+                    throw new ToolFailure("图片#" + id + " 太大了（超过 " + ImageLoader.MAX_DOWNLOAD / 1024 / 1024 + " MB），看不了");
                 }
             }
         }
-        throw new ToolFailure("图片#" + id + " 已经过期了，QQ 那边拿不到原图了");
+        throw new ToolFailure("图片#" + id + " 拿不到了，多半是 QQ 那边的链接已经过期（最后一次：" + why + "）");
     }
 }

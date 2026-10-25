@@ -26,8 +26,11 @@ import dafeiyu.web.WebConsole;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DateTimeException;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 public final class Main {
 
@@ -35,10 +38,22 @@ public final class Main {
         Path configFile = Path.of(args.length > 0 ? args[0] : "config.properties").toAbsolutePath();
         Path baseDir = configFile.getParent();
         AppConfig config = AppConfig.load(configFile);
+        String zoneProblem = null;
+        if (!config.timeZone().isEmpty()) {
+            try {
+                TimeZone.setDefault(TimeZone.getTimeZone(ZoneId.of(config.timeZone())));
+            } catch (DateTimeException e) {
+                zoneProblem = "time.zone is not a valid zone id (" + config.timeZone() + "), keeping " + ZoneId.systemDefault();
+            }
+        }
         LogBuffer log = new LogBuffer(500);
         if (!Files.exists(configFile)) {
             log.warn("config file not found, using defaults: " + configFile);
         }
+        if (zoneProblem != null) {
+            log.warn(zoneProblem);
+        }
+        log.info("time zone " + ZoneId.systemDefault());
 
         Database db = Database.open(baseDir.resolve(config.dbPath()));
         log.writeTo(db.file().toAbsolutePath().getParent().resolve("logs"));

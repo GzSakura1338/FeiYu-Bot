@@ -20,8 +20,9 @@ final class EventFormatter {
                     : "private";
             JsonObject sender = optObject(event, "sender");
             String name = sender == null ? "" : optString(sender, "nickname");
+            String raw = optString(event, "raw_message");
             return "message [" + where + "] " + name + "(" + optString(event, "user_id") + "): "
-                    + abbreviate(optString(event, "raw_message"), MAX_LENGTH);
+                    + (raw.length() <= MAX_LENGTH ? raw : abbreviate(raw, MAX_LENGTH) + " (truncated in the log, " + raw.length() + " chars in total)");
         }
         return "event " + postType + " " + abbreviate(event.toString(), MAX_LENGTH);
     }

@@ -253,6 +253,18 @@ public final class Migrations {
                 lines       TEXT NOT NULL,
                 created_at  INTEGER NOT NULL
             )
+            """,
+            """
+            CREATE TABLE image_usage (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                at       INTEGER NOT NULL,
+                session  TEXT NOT NULL DEFAULT '',
+                model    TEXT NOT NULL DEFAULT '',
+                count    INTEGER NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX idx_image_usage_at ON image_usage (at)
             """
     );
 

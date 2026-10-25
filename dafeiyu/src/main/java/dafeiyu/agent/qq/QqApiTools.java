@@ -185,7 +185,9 @@ public final class QqApiTools {
         if (!missing.isEmpty()) {
             throw new ToolFailure("缺参数：" + String.join("；", missing) + "\n完整说明：\n" + describe(action));
         }
-        checkFiles(params, "");
+        JsonObject raw = params.deepCopy();
+        List<String> locals = new ArrayList<>();
+        checkFiles(params, "", locals);
         protect(action.name(), params);
         boolean writes = policy.access(action.name()) == Access.WRITE;
         if (writes) {
@@ -199,7 +201,22 @@ public final class QqApiTools {
         if (writes) {
             review(params);
         }
-        JsonObject response = outbox.call(action.name(), params, SLOW.matcher(action.name()).find() ? SLOW_TIMEOUT : TIMEOUT);
+        Duration timeout = SLOW.matcher(action.name()).find() ? SLOW_TIMEOUT : TIMEOUT;
+        JsonObject response;
+        try {
+            response = outbox.call(action.name(), params, timeout);
+        } catch (ToolFailure e) {
+            if (locals.isEmpty() || outbox.pathsUnreadable()) {
+                throw e;
+            }
+            outbox.markPathsUnreadable(e.getMessage());
+            if (!outbox.pathsUnreadable()) {
+                throw e;
+            }
+            JsonObject inline = raw.deepCopy();
+            checkFiles(inline, "", new ArrayList<>());
+            response = outbox.call(action.name(), inline, timeout);
+        }
         log.info("agent [" + context.session() + "] qq api " + action.name() + " " + abbreviate(params.toString(), 200));
         if (writes) {
             noteDone(action, params);
@@ -225,25 +242,25 @@ public final class QqApiTools {
         return parsed;
     }
 
-    private void checkFiles(JsonElement element, String key) throws ToolFailure {
+    private void checkFiles(JsonElement element, String key, List<String> locals) throws ToolFailure {
         if (element == null || element.isJsonNull()) {
             return;
         }
         if (element.isJsonObject()) {
             for (Map.Entry<String, JsonElement> e : element.getAsJsonObject().entrySet()) {
                 if (isString(e.getValue())) {
-                    e.setValue(new JsonPrimitive(checkValue(e.getKey(), e.getValue().getAsString())));
+                    e.setValue(new JsonPrimitive(checkValue(e.getKey(), e.getValue().getAsString(), locals)));
                 } else {
-                    checkFiles(e.getValue(), e.getKey());
+                    checkFiles(e.getValue(), e.getKey(), locals);
                 }
             }
         } else if (element.isJsonArray()) {
             JsonArray array = element.getAsJsonArray();
             for (int i = 0; i < array.size(); i++) {
                 if (isString(array.get(i))) {
-                    array.set(i, new JsonPrimitive(checkValue(key, array.get(i).getAsString())));
+                    array.set(i, new JsonPrimitive(checkValue(key, array.get(i).getAsString(), locals)));
                 } else {
-                    checkFiles(array.get(i), key);
+                    checkFiles(array.get(i), key, locals);
                 }
             }
         }
@@ -253,7 +270,7 @@ public final class QqApiTools {
         return element.isJsonPrimitive() && element.getAsJsonPrimitive().isString();
     }
 
-    private String checkValue(String key, String value) throws ToolFailure {
+    private String checkValue(String key, String value, List<String> locals) throws ToolFailure {
         if (value.toLowerCase(Locale.ROOT).contains("[cq:")) {
             throw new ToolFailure("参数里别写 CQ 码，消息用消息段数组写，比如 [{\"type\":\"text\",\"data\":{\"text\":\"你好\"}}]");
         }
@@ -261,7 +278,14 @@ public final class QqApiTools {
             PublicWeb.requirePublic(value);
             return value;
         }
-        return FILE_KEYS.contains(key) ? safeFile(value) : value;
+        if (!FILE_KEYS.contains(key)) {
+            return value;
+        }
+        String safe = safeFile(value);
+        if (!value.strip().toLowerCase(Locale.ROOT).matches("^(base64|https?)://.*")) {
+            locals.add(safe);
+        }
+        return safe;
     }
 
     private String safeFile(String value) throws ToolFailure {
@@ -289,7 +313,7 @@ public final class QqApiTools {
                 throw new ToolFailure("文件地址不对：" + abbreviate(v, 80));
             }
         }
-        return workspace.existingFile(path).toAbsolutePath().toString();
+        return outbox.reachable(workspace.existingFile(path));
     }
 
     private void protect(String name, JsonObject params) throws ToolFailure {

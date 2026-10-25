@@ -1,10 +1,15 @@
 package dafeiyu.agent.model;
 
+import com.google.gson.JsonParseException;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +23,12 @@ public final class AgentStore {
     private static final String WAKE_WORDS_KEY = "agent.wakeWords";
     private static final String FREE_WILL_KEY = "agent.idleChat";
     private static final String MIND_PACE_KEY = "agent.mindPace";
-    private static final List<String> PACES = List.of("fast", "normal", "slow");
+    private static final List<String> PACES = List.of("fast", "normal", "slow", "custom");
+    private static final String MIND_PACE_SECONDS_KEY = "agent.mindPaceSeconds";
+    private static final String MIND_NIGHT_KEY = "agent.mindNight";
+    public static final int MIN_PACE_SECONDS = 15;
+    public static final int MAX_PACE_SECONDS = 3600;
+    private static final int DEFAULT_PACE_SECONDS = 300;
     private static final String EFFORT_KEY = "agent.reasoningEffort";
     private static final String REPLYING_KEY = "agent.replying";
     private static final String PACING_KEY = "agent.pacing";
@@ -160,9 +170,79 @@ public final class AgentStore {
 
     public synchronized void setMindPace(String pace) {
         if (!PACES.contains(pace)) {
-            throw new IllegalArgumentException("思考节奏只能是 fast、normal 或 slow");
+            throw new IllegalArgumentException("思考节奏只能是 fast、normal、slow 或 custom");
         }
         settings.put(MIND_PACE_KEY, pace);
+    }
+
+    public int mindPaceSeconds() {
+        try {
+            String value = settings.get(MIND_PACE_SECONDS_KEY);
+            return value == null ? DEFAULT_PACE_SECONDS : Math.clamp(Integer.parseInt(value.strip()), MIN_PACE_SECONDS, MAX_PACE_SECONDS);
+        } catch (NumberFormatException e) {
+            return DEFAULT_PACE_SECONDS;
+        }
+    }
+
+    public synchronized void setMindPaceSeconds(int seconds) {
+        if (seconds < MIN_PACE_SECONDS || seconds > MAX_PACE_SECONDS) {
+            throw new IllegalArgumentException("自定义间隔要在 " + MIN_PACE_SECONDS + " 秒到 " + MAX_PACE_SECONDS / 60 + " 分钟之间");
+        }
+        settings.put(MIND_PACE_SECONDS_KEY, String.valueOf(seconds));
+    }
+
+    public record MindNight(boolean enabled, String start, String end, int seconds) {
+
+        public MindNight {
+            start = time(start, "00:00");
+            end = time(end, "08:00");
+            seconds = seconds <= 0 ? 0 : Math.clamp(seconds, MIN_PACE_SECONDS, MAX_PACE_SECONDS);
+        }
+
+        private static String time(String value, String fallback) {
+            try {
+                return value == null ? fallback : LocalTime.parse(value.strip()).toString();
+            } catch (DateTimeParseException e) {
+                return fallback;
+            }
+        }
+
+        public boolean covers(LocalTime now) {
+            LocalTime from = LocalTime.parse(start);
+            LocalTime to = LocalTime.parse(end);
+            if (!enabled || from.equals(to)) {
+                return false;
+            }
+            return from.isBefore(to) ? !now.isBefore(from) && now.isBefore(to) : !now.isBefore(from) || now.isBefore(to);
+        }
+
+        public long millisUntilEnd(LocalDateTime now) {
+            LocalDateTime end = now.toLocalDate().atTime(LocalTime.parse(this.end));
+            if (!end.isAfter(now)) {
+                end = end.plusDays(1);
+            }
+            return Duration.between(now, end).toMillis();
+        }
+    }
+
+    public MindNight mindNight() {
+        String raw = settings.get(MIND_NIGHT_KEY);
+        if (raw != null && !raw.isBlank()) {
+            try {
+                MindNight saved = GSON.fromJson(raw, MindNight.class);
+                if (saved != null) {
+                    return new MindNight(saved.enabled(), saved.start(), saved.end(), saved.seconds());
+                }
+            } catch (JsonParseException ignored) {
+            }
+        }
+        return new MindNight(false, "00:00", "08:00", 0);
+    }
+
+    public synchronized MindNight setMindNight(MindNight night) {
+        MindNight clean = new MindNight(night.enabled(), night.start(), night.end(), night.seconds());
+        settings.put(MIND_NIGHT_KEY, GSON.toJson(clean));
+        return clean;
     }
 
     public record Replying(String session, String userId, String messageId, String speaker, String line, long at) {}

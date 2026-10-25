@@ -9,12 +9,14 @@ import dafeiyu.agent.ChatTurn;
 import dafeiyu.agent.SessionDetail;
 import dafeiyu.agent.StreamListener;
 import dafeiyu.agent.intercom.Intercom;
+import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.agent.qq.QqChatBridge;
 import dafeiyu.agent.tool.ToolSet;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.util.Clock;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
@@ -30,9 +32,9 @@ import static dafeiyu.util.Texts.abbreviate;
 
 public final class Mind implements QqChatBridge.Observer {
 
-    public record Status(boolean enabled, boolean thinking, String pace, long lastAt, long nextAt, int thoughts,
-                         int spokeToday, String why, long contextTokens, int contextWindow, long compactAt,
-                         int compactions) {}
+    public record Status(boolean enabled, boolean thinking, String pace, int paceSeconds, AgentStore.MindNight night, boolean resting,
+                         long lastAt, long nextAt, int thoughts, int spokeToday, String why, long contextTokens, int contextWindow,
+                         long compactAt, int compactions) {}
 
     public static final String SESSION = "mind:self";
     private static final Map<String, Long> PACES = Map.of("fast", 15_000L, "normal", 40_000L, "slow", 120_000L);
@@ -132,7 +134,8 @@ public final class Mind implements QqChatBridge.Observer {
 
     public Status status() {
         SessionDetail detail = agent.session(SESSION, 0);
-        return new Status(agent.store().freeWill(), thinking, agent.store().mindPace(), lastAt, nextAt, thoughts,
+        return new Status(agent.store().freeWill(), thinking, agent.store().mindPace(), agent.store().mindPaceSeconds(), agent.store().mindNight(),
+                resting(), lastAt, nextAt, thoughts,
                 bridge.proactiveToday(), blocker(), agent.contextTokens(SESSION), agent.contextWindow(),
                 agent.compactAt(SESSION), detail.compactions());
     }
@@ -160,8 +163,11 @@ public final class Mind implements QqChatBridge.Observer {
             }
         }
         long now = System.currentTimeMillis();
-        long base = PACES.getOrDefault(agent.store().mindPace(), PACES.get("normal"));
-        stir(toMe || where.startsWith("private:") ? now + CALLED_MS : Math.max(now + NOTICED_MS, lastAt + base / 2));
+        boolean called = toMe || where.startsWith("private:");
+        if (!called && resting()) {
+            return;
+        }
+        stir(called ? now + CALLED_MS : Math.max(now + NOTICED_MS, lastAt + baseMs() / 2));
     }
 
     private void stir(long at) {
@@ -312,13 +318,30 @@ public final class Mind implements QqChatBridge.Observer {
     }
 
     private long pace(boolean acting, boolean eventful) {
-        long base = PACES.getOrDefault(agent.store().mindPace(), PACES.get("normal"));
         if (acting && actingStreak < MAX_ACTING_STREAK) {
             actingStreak++;
             return ACTING_MS;
         }
         actingStreak = 0;
+        if (resting()) {
+            return agent.store().mindNight().millisUntilEnd(LocalDateTime.now()) + 1_000;
+        }
+        long base = baseMs();
         return eventful ? base / 2 : base * (1 + Math.min(quiet, MAX_BOREDOM));
+    }
+
+    private long baseMs() {
+        AgentStore store = agent.store();
+        AgentStore.MindNight night = store.mindNight();
+        if (night.seconds() > 0 && night.covers(LocalTime.now())) {
+            return night.seconds() * 1000L;
+        }
+        return store.mindPace().equals("custom") ? store.mindPaceSeconds() * 1000L : PACES.getOrDefault(store.mindPace(), PACES.get("normal"));
+    }
+
+    private boolean resting() {
+        AgentStore.MindNight night = agent.store().mindNight();
+        return night.seconds() == 0 && night.covers(LocalTime.now());
     }
 
     private boolean pending() {

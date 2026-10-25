@@ -5,6 +5,7 @@ import dafeiyu.agent.context.Compactor;
 import dafeiyu.agent.context.ConversationMemory;
 import dafeiyu.agent.context.HeldLines;
 import dafeiyu.agent.image.ImageGen;
+import dafeiyu.agent.image.VideoFrames;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
@@ -50,6 +51,7 @@ public final class ChatAgent {
     private final Intercom intercom;
     private final HeldLines held;
     private final ImageGen imageGen;
+    private final VideoFrames videoFrames;
     private final BackgroundTasks tasks;
     private final SessionMonitor monitor = new SessionMonitor();
     private final Map<String, ReentrantLock> sessions = new ConcurrentHashMap<>();
@@ -74,6 +76,11 @@ public final class ChatAgent {
         this.held = new HeldLines(db);
         this.tasks = new BackgroundTasks(this, db);
         this.imageGen = new ImageGen(db);
+        this.videoFrames = new VideoFrames(db);
+    }
+
+    public VideoFrames videoFrames() {
+        return videoFrames;
     }
 
     public ImageGen imageGen() {

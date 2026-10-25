@@ -50,7 +50,16 @@ public final class ImageTool {
                     if (verdict != null) {
                         throw new ToolFailure("这张不能画（涉及" + verdict.category().label() + "），换个别的吧");
                     }
-                    ImageGen.Result result = agent.imageGen().generate(prompt, args.text("size"), args.integer("n", 1));
+                    int count = Math.max(1, Math.min(ImageGen.MAX_PICTURES, args.integer("n", 1)));
+                    long ticket = agent.imageGen().reserve(context.session(), count);
+                    ImageGen.Result result;
+                    try {
+                        result = agent.imageGen().generate(prompt, args.text("size"), count);
+                    } catch (ToolFailure | RuntimeException e) {
+                        agent.imageGen().settle(ticket, 0);
+                        throw e;
+                    }
+                    agent.imageGen().settle(ticket, result.pictures().size());
                     List<Path> saved = save(agent.imageGen(), context.workspace(), result.pictures());
                     StringBuilder out = new StringBuilder();
                     if (context.files() == null) {
