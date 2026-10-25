@@ -11,6 +11,7 @@ import dafeiyu.agent.protocol.Protocols;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
+import dafeiyu.util.HttpCalls;
 
 import java.io.IOException;
 import java.net.URI;
@@ -129,7 +130,7 @@ public final class ImageGen {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
                     .build();
-            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            response = HttpCalls.send(HTTP, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), TIMEOUT);
         } catch (HttpTimeoutException e) {
             throw new ToolFailure("生图超时了（等了 " + TIMEOUT.toMinutes() + " 分钟没出图）");
         } catch (IOException e) {

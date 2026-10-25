@@ -2,6 +2,7 @@ package dafeiyu.agent.model;
 
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.ImagePart;
+import dafeiyu.util.HttpCalls;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -46,7 +47,7 @@ public final class ImageLoader {
                     .header("User-Agent", "Mozilla/5.0")
                     .GET()
                     .build();
-            response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            response = HttpCalls.send(HTTP, request, HttpResponse.BodyHandlers.ofByteArray(), Duration.ofSeconds(45));
         } catch (IllegalArgumentException e) {
             throw new AgentException("invalid image url");
         } catch (IOException e) {

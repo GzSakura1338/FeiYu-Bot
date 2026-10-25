@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.AgentException.Kind;
+import dafeiyu.util.HttpCalls;
 import dafeiyu.util.Jsons;
 
 import java.io.BufferedReader;
@@ -90,7 +91,7 @@ final class HttpJson {
     static JsonObject send(HttpRequest request) throws AgentException {
         HttpResponse<String> response;
         try {
-            response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            response = HttpCalls.send(CLIENT, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), LIST_TIMEOUT.multipliedBy(2));
         } catch (IOException | InterruptedException e) {
             throw transportError(request, e);
         }
