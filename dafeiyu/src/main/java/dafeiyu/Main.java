@@ -34,7 +34,10 @@ import java.util.TimeZone;
 
 public final class Main {
 
+    private static final java.util.logging.Logger HTTP_LOG = java.util.logging.Logger.getLogger("jdk.httpclient.HttpClient");
+
     public static void main(String[] args) throws Exception {
+        System.setProperty("jdk.httpclient.HttpClient.log", "errors");
         Path configFile = Path.of(args.length > 0 ? args[0] : "config.properties").toAbsolutePath();
         Path baseDir = configFile.getParent();
         AppConfig config = AppConfig.load(configFile);
@@ -54,6 +57,24 @@ public final class Main {
             log.warn(zoneProblem);
         }
         log.info("time zone " + ZoneId.systemDefault());
+        HTTP_LOG.setUseParentHandlers(false);
+        HTTP_LOG.addHandler(new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                String message = record.getMessage();
+                if (message != null && message.contains("fatal error")) {
+                    log.error("http client: " + message.replaceAll("\\s*\\R\\s*", " | "));
+                }
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        });
 
         Database db = Database.open(baseDir.resolve(config.dbPath()));
         log.writeTo(db.file().toAbsolutePath().getParent().resolve("logs"));

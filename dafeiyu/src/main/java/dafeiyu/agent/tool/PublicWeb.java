@@ -1,6 +1,7 @@
 package dafeiyu.agent.tool;
 
 import dafeiyu.sandbox.Platform;
+import dafeiyu.util.HttpCalls;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,11 +37,11 @@ public final class PublicWeb {
     private static final int MAX_REDIRECTS = 5;
     private static final long PROXY_RECHECK_MS = 10 * 60_000;
     private static final Pattern PROXY_SERVER = Pattern.compile("(?:https=)?([\\w.-]+):(\\d{2,5})");
-    private static final HttpClient DIRECT = HttpClient.newBuilder()
+    private static final HttpCalls.Shared DIRECT = new HttpCalls.Shared(() -> HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NEVER)
             .proxy(HttpClient.Builder.NO_PROXY)
             .connectTimeout(Duration.ofSeconds(8))
-            .build();
+            .build());
     private static final Set<String> PROXIED_HOSTS = ConcurrentHashMap.newKeySet();
     private static final ExecutorService READERS = Executors.newVirtualThreadPerTaskExecutor();
     private static volatile HttpClient proxied;
@@ -155,9 +156,16 @@ public final class PublicWeb {
     private static HttpResponse<InputStream> send(HttpRequest request, String host) throws ToolFailure {
         HttpClient viaProxy = proxied();
         boolean proxyFirst = viaProxy != null && PROXIED_HOSTS.contains(host);
+        HttpClient direct = DIRECT.get();
         try {
-            return (proxyFirst ? viaProxy : DIRECT).send(request, HttpResponse.BodyHandlers.ofInputStream());
+            return (proxyFirst ? viaProxy : direct).send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
+            if (!proxyFirst) {
+                DIRECT.renewIfDead(direct, e);
+            } else if (HttpCalls.dead(e)) {
+                proxied = null;
+                proxyCheckedAt = 0;
+            }
             if (proxyFirst || viaProxy == null) {
                 throw new ToolFailure("连不上 " + host + "：" + reason(e));
             }

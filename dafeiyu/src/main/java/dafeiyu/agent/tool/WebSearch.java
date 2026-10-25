@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dafeiyu.util.HttpCalls;
 
 import java.io.IOException;
 import java.net.URI;
@@ -41,21 +42,23 @@ public final class WebSearch {
     private static final Pattern BING_LINK = Pattern.compile("<h2[^>]*>\\s*<a[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>", Pattern.DOTALL);
     private static final Pattern BING_TEXT = Pattern.compile("<p[^>]*>(.*?)</p>", Pattern.DOTALL);
     private static final Pattern EXA_FIELD = Pattern.compile("(?m)^(Title|URL|Published|Author|Highlights|Text):\\s?(.*)$");
-    private static final HttpClient CLIENT = HttpClient.newBuilder()
+    private static final HttpCalls.Shared CLIENT = new HttpCalls.Shared(() -> HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(10))
-            .build();
+            .build());
 
     private WebSearch() {}
 
     private static HttpResponse<String> fetch(HttpRequest request) throws IOException, InterruptedException {
         Duration limit = request.timeout().orElse(TIMEOUT);
-        CompletableFuture<HttpResponse<String>> pending = CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpClient client = CLIENT.get();
+        CompletableFuture<HttpResponse<String>> pending = client.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         try {
             return pending.get(limit.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             throw new HttpTimeoutException(limit.toSeconds() + " 秒没有传完");
         } catch (ExecutionException e) {
+            CLIENT.renewIfDead(client, e.getCause());
             throw e.getCause() instanceof IOException io ? io : new IOException(e.getCause());
         } finally {
             pending.cancel(true);

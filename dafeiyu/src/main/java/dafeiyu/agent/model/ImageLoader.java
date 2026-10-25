@@ -29,10 +29,10 @@ public final class ImageLoader {
     public static final String TOO_LARGE = "image is larger than 32 MB";
     private static final int MAX_SEND = 4 * 1024 * 1024;
     private static final int MAX_SIDE = 1568;
-    private static final HttpClient HTTP = HttpClient.newBuilder()
+    private static final HttpCalls.Shared HTTP = new HttpCalls.Shared(() -> HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+            .build());
 
     private ImageLoader() {}
 
@@ -46,16 +46,18 @@ public final class ImageLoader {
 
     public static byte[] fetch(String url) throws AgentException {
         HttpResponse<byte[]> response;
+        HttpClient client = HTTP.get();
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(20))
                     .header("User-Agent", "Mozilla/5.0")
                     .GET()
                     .build();
-            response = HttpCalls.send(HTTP, request, HttpResponse.BodyHandlers.ofByteArray(), Duration.ofSeconds(45));
+            response = HttpCalls.send(client, request, HttpResponse.BodyHandlers.ofByteArray(), Duration.ofSeconds(45));
         } catch (IllegalArgumentException e) {
             throw new AgentException("invalid image url");
         } catch (IOException e) {
+            HTTP.renewIfDead(client, e);
             throw new AgentException("image download failed: " + e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

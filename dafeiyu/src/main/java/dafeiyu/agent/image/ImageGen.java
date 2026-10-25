@@ -66,10 +66,10 @@ public final class ImageGen {
     private static final String ENDPOINT = "/images/generations";
     private static final Duration TIMEOUT = Duration.ofMinutes(3);
     private static final int ERROR_MAX = 300;
-    private static final HttpClient HTTP = HttpClient.newBuilder()
+    private static final HttpCalls.Shared HTTP = new HttpCalls.Shared(() -> HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+            .build());
     private static final Gson GSON = new Gson();
 
     public record Quota(int perHour, int perDay, String scope) {
@@ -211,6 +211,7 @@ public final class ImageGen {
         body.addProperty("size", size == null || size.isBlank() ? config.size() : size.strip());
         body.addProperty("n", Math.max(1, Math.min(MAX_PICTURES, count)));
         HttpResponse<String> response;
+        HttpClient client = HTTP.get();
         try {
             HttpRequest request = HttpRequest.newBuilder(endpoint(config.baseUrl()))
                     .timeout(TIMEOUT)
@@ -218,10 +219,13 @@ public final class ImageGen {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
                     .build();
-            response = HttpCalls.send(HTTP, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), TIMEOUT);
+            response = HttpCalls.send(client, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), TIMEOUT);
         } catch (HttpTimeoutException e) {
             throw new ToolFailure("生图超时了（等了 " + TIMEOUT.toMinutes() + " 分钟没出图）");
         } catch (IOException e) {
+            if (HTTP.renewIfDead(client, e)) {
+                throw new ToolFailure("连生图接口的通道坏了，已经换了一个新的，再画一次就行");
+            }
             throw new ToolFailure("生图接口连不上：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

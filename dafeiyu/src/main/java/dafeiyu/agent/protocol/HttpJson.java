@@ -45,7 +45,7 @@ final class HttpJson {
     static final Duration CHUNK_TIMEOUT = Duration.ofSeconds(180);
 
     private static final int ERROR_BODY_MAX = 64 * 1024;
-    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+    private static final HttpCalls.Shared CLIENT = new HttpCalls.Shared(() -> HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build());
     private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "sse-watchdog");
         t.setDaemon(true);
@@ -90,10 +90,11 @@ final class HttpJson {
 
     static JsonObject send(HttpRequest request) throws AgentException {
         HttpResponse<String> response;
+        HttpClient client = CLIENT.get();
         try {
-            response = HttpCalls.send(CLIENT, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), LIST_TIMEOUT.multipliedBy(2));
+            response = HttpCalls.send(client, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), LIST_TIMEOUT.multipliedBy(2));
         } catch (IOException | InterruptedException e) {
-            throw transportError(request, e);
+            throw transportError(request, client, e);
         }
         if (response.statusCode() / 100 != 2) {
             throw httpError(response.statusCode(), response.body(), request.uri(), response.headers().map());
@@ -107,10 +108,11 @@ final class HttpJson {
 
     static void stream(HttpRequest request, SseHandler handler) throws AgentException {
         HttpResponse<InputStream> response;
+        HttpClient client = CLIENT.get();
         try {
-            response = CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException | InterruptedException e) {
-            throw transportError(request, e);
+            throw transportError(request, client, e);
         }
         Thread reader = Thread.currentThread();
         AtomicLong lastRead = new AtomicLong(System.nanoTime());
@@ -232,7 +234,10 @@ final class HttpJson {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    private static AgentException transportError(HttpRequest request, Exception e) {
+    private static AgentException transportError(HttpRequest request, HttpClient client, Exception e) {
+        if (CLIENT.renewIfDead(client, e)) {
+            return new AgentException(Kind.TRANSPORT, "the HTTP client had stopped working and was replaced, try again");
+        }
         if (e instanceof InterruptedException) {
             Thread.currentThread().interrupt();
             return new AgentException(Kind.LOCAL, "request interrupted");
