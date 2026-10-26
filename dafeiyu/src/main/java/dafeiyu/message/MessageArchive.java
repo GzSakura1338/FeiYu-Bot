@@ -87,7 +87,47 @@ public final class MessageArchive {
             return;
         }
         insert(time, "in", optString(event, "message_type"), groupId.isEmpty() ? null : groupId,
-                optString(event, "user_id"), name, messageId, optString(event, "raw_message"));
+                optString(event, "user_id"), name, messageId, content(event));
+    }
+
+    private static String content(JsonObject event) {
+        com.google.gson.JsonElement message = event.get("message");
+        if (message == null || !message.isJsonArray()) {
+            return optString(event, "raw_message");
+        }
+        StringBuilder out = new StringBuilder();
+        for (com.google.gson.JsonElement element : message.getAsJsonArray()) {
+            JsonObject segment = element.isJsonObject() ? element.getAsJsonObject() : null;
+            JsonObject data = segment == null ? null : optObject(segment, "data");
+            String type = segment == null ? "" : optString(segment, "type");
+            if (type.equals("text")) {
+                out.append(cqEscape(data == null ? "" : optString(data, "text"), false));
+                continue;
+            }
+            if (!type.matches("[a-z_]+")) {
+                continue;
+            }
+            out.append("[CQ:").append(type);
+            if (data != null) {
+                List<String> keys = new java.util.ArrayList<>(data.keySet());
+                keys.sort(java.util.Comparator.comparingInt(k -> List.of("id", "qq", "file").contains(k) ? List.of("id", "qq", "file").indexOf(k) : 3));
+                for (String key : keys) {
+                    com.google.gson.JsonElement value = data.get(key);
+                    if (value == null || value.isJsonNull()) {
+                        continue;
+                    }
+                    String text = value.isJsonPrimitive() ? value.getAsString() : value.toString();
+                    out.append(',').append(key).append('=').append(cqEscape(text, true));
+                }
+            }
+            out.append(']');
+        }
+        return out.toString();
+    }
+
+    private static String cqEscape(String text, boolean param) {
+        String escaped = text.replace("&", "&amp;").replace("[", "&#91;").replace("]", "&#93;");
+        return param ? escaped.replace(",", "&#44;") : escaped;
     }
 
     public List<StoredMessage> since(long since, int limit) {

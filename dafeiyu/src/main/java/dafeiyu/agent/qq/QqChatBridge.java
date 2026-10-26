@@ -79,6 +79,8 @@ public final class QqChatBridge {
     private static final java.util.regex.Pattern NAME_PARTS = java.util.regex.Pattern.compile("[\\s|｜/／·・,，_\\-]+");
     private static final java.util.regex.Pattern QUOTED_PICTURE = java.util.regex.Pattern.compile("\\[(图片|表情包)#(\\d+)");
     private static final java.util.regex.Pattern STICKER_MENTION = java.util.regex.Pattern.compile("\\[表情包#(\\d+)]");
+    private static final String FRIEND_ASK = "请求添加你为好友";
+    private static final java.util.regex.Pattern ROLL_CALL = java.util.regex.Pattern.compile("(?i)#sl|SnowLuma\\s*状态\\s+版本\\s*[:：][\\s\\S]*");
     private static final String PICTURE_REF = "picture:";
     private static final String STICKER_REF = "sticker:";
     private static final long AMBIENT_QUIET_MIN_MS = 2_000;
@@ -407,6 +409,19 @@ public final class QqChatBridge {
             return;
         }
         if (optString(event, "post_type").equals("message")) {
+            if (optString(event, "message_type").equals("private") && optString(event, "raw_message").strip().equals(FRIEND_ASK)) {
+                String asker = optString(event, "user_id");
+                executor.submit(() -> {
+                    try {
+                        Thread.sleep(3_000);
+                        requests.friendAsked(asker);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } catch (RuntimeException e) {
+                        log.warn("agent: friend request from " + asker + " not registered: " + e);
+                    }
+                });
+            }
             if (optString(event, "message_type").equals("private") && optString(event, "sub_type").equals("group")) {
                 JsonObject sender = optObject(event, "sender");
                 String via = optString(event, "group_id");
@@ -589,7 +604,7 @@ public final class QqChatBridge {
                 log.warn("plugins: message dispatch failed: " + e);
             }
         }
-        if (!replying) {
+        if (!replying || ROLL_CALL.matcher(incoming.text().strip()).matches()) {
             return;
         }
         if (verdict.drop()) {

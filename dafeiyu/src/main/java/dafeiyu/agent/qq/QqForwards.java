@@ -141,6 +141,9 @@ public final class QqForwards {
         JsonObject params = new JsonObject();
         params.addProperty(group ? "group_id" : "user_id", peer);
         params.addProperty("message_seq", key);
+        if (source.messageId() != null && !source.messageId().isBlank()) {
+            params.addProperty("message_id", source.messageId());
+        }
         params.addProperty("count", 1);
         params.addProperty("parse_mult_msg", true);
         try {

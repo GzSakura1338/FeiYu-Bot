@@ -68,6 +68,7 @@ public final class QqRequests {
     private final LogBuffer log;
     private final Map<String, Request> pending = new LinkedHashMap<>();
     private final Set<String> ignored = new LinkedHashSet<>();
+    private final Map<String, Long> added = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile Consumer<Request> onNew = r -> {};
 
     QqRequests(ChatAgent agent, Database db, QqOutbox outbox, QqContacts contacts, QqActions actions, LogBuffer log) {
@@ -166,9 +167,13 @@ public final class QqRequests {
         try {
             JsonObject params = new JsonObject();
             params.addProperty("count", 20);
-            JsonObject data = optObject(outbox.call("get_group_system_msg", params, BACKFILL_TIMEOUT), "data");
-            fromSystem(data == null ? null : data.get("invited_requests"), INVITE, now);
-            fromSystem(data == null ? null : data.get("join_requests"), JOIN, now);
+            JsonElement data = outbox.call("get_group_system_msg", params, BACKFILL_TIMEOUT).get("data");
+            if (data != null && data.isJsonObject()) {
+                fromSystem(data.getAsJsonObject().get("invited_requests"), INVITE, now);
+                fromSystem(data.getAsJsonObject().get("join_requests"), JOIN, now);
+            } else {
+                fromSystem(data, null, now);
+            }
         } catch (ToolFailure | RuntimeException e) {
             log.warn("agent: could not fetch group requests: " + e.getMessage());
         }
@@ -185,9 +190,9 @@ public final class QqRequests {
         JsonElement data = outbox.call("get_doubt_friends_add_request", params, BACKFILL_TIMEOUT).get("data");
         Set<String> listed = new HashSet<>();
         for (JsonObject o : objects(data)) {
-            String flag = optString(o, "flag");
-            String userId = optString(o, "uin");
-            long at = time(optString(o, "time"));
+            String flag = first(o, "flag", "uid");
+            String userId = first(o, "uin", "user_id");
+            long at = time(first(o, "time", "reqTime"));
             listed.add(flag);
             if (!userId.matches("\\d{5,12}") || flag.isBlank() || ignored(flag) || at <= 0 || now - at > TTL_MS) {
                 continue;
@@ -220,13 +225,15 @@ public final class QqRequests {
     private void fromSystem(JsonElement list, String kind, long now) {
         String self = outbox.selfId();
         for (JsonObject o : objects(list)) {
-            String flag = optString(o, "request_id");
-            long at = time(flag);
+            String type = kind != null ? kind : optString(o, "requester_uin").equals(self) ? INVITE : JOIN;
+            String id = optString(o, "request_id");
+            String flag = first(o, "flag", "request_id");
+            long at = time(id);
             String groupId = optString(o, "group_id");
             boolean checked = o.has("checked") && o.get("checked").isJsonPrimitive() && o.get("checked").getAsBoolean();
             if (checked) {
                 synchronized (this) {
-                    if (pending.values().removeIf(r -> r.kind().equals(kind) && r.flag().equals(flag))) {
+                    if (pending.values().removeIf(r -> r.kind().equals(type) && (r.flag().equals(flag) || r.flag().equals(id)))) {
                         save();
                     }
                 }
@@ -235,16 +242,39 @@ public final class QqRequests {
             if (at <= 0 || now - at > TTL_MS || !groupId.matches("\\d{5,12}")) {
                 continue;
             }
-            String actor = optString(o, "actor");
-            String userId = kind.equals(INVITE) && actor.matches("\\d{5,12}") && !actor.equals(self) ? actor : optString(o, "invitor_uin");
+            String userId;
+            String nick;
+            String via = "";
+            if (kind == null) {
+                userId = optString(o, type.equals(INVITE) ? "invitor_uin" : "requester_uin");
+                nick = displayName(optString(o, type.equals(INVITE) ? "invitor_nick" : "requester_nick"));
+                String invitor = optString(o, "invitor_uin");
+                if (type.equals(JOIN) && invitor.matches("\\d{5,12}") && !invitor.equals(userId)) {
+                    String name = displayName(optString(o, "invitor_nick"));
+                    via = "（是群里的" + (name.isEmpty() ? "QQ " + invitor : name + "（QQ " + invitor + "）") + "邀请来的）";
+                }
+            } else {
+                String actor = optString(o, "actor");
+                userId = type.equals(INVITE) && actor.matches("\\d{5,12}") && !actor.equals(self) ? actor : optString(o, "invitor_uin");
+                nick = type.equals(JOIN) ? displayName(optString(o, "requester_nick")) : "";
+            }
             if (!userId.matches("\\d{5,12}") || userId.equals(self)) {
                 continue;
             }
-            String nick = kind.equals(JOIN) ? displayName(optString(o, "requester_nick")) : "";
             String group = displayName(optString(o, "group_name"));
-            add(new Request(kind, flag, userId, nick.isEmpty() ? nickname(userId) : nick, groupId, group.isEmpty() ? groupName(groupId) : group,
-                    comment(optString(o, "message")), at));
+            add(new Request(type, flag, userId, nick.isEmpty() ? nickname(userId) : nick, groupId, group.isEmpty() ? groupName(groupId) : group,
+                    comment(optString(o, "message") + via), at));
         }
+    }
+
+    private static String first(JsonObject o, String... keys) {
+        for (String key : keys) {
+            String value = optString(o, key).strip();
+            if (!value.isEmpty() && !value.equals("0")) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private static List<JsonObject> objects(JsonElement list) {
@@ -292,7 +322,16 @@ public final class QqRequests {
     }
 
     void friendAdded(String userId) {
+        added.put(userId, System.currentTimeMillis());
         dropKey(FRIEND + ":" + userId);
+    }
+
+    void friendAsked(String userId) {
+        Long at = added.get(userId);
+        if (!userId.matches("\\d{5,12}") || at != null && System.currentTimeMillis() - at < 60_000 || contacts.friends().containsKey(userId)) {
+            return;
+        }
+        add(new Request(FRIEND, userId, userId, nickname(userId), "", "", "", System.currentTimeMillis()));
     }
 
     void joined(String groupId, String userId) {
@@ -352,21 +391,32 @@ public final class QqRequests {
         params.addProperty("flag", r.flag());
         params.addProperty("approve", approve);
         if (r.kind().equals(DOUBT)) {
-            if (!approve) {
+            try {
+                call("set_doubt_friends_add_request", params, r);
+            } catch (ToolFailure e) {
+                if (approve || String.valueOf(e.getMessage()).contains("已经不在了")) {
+                    throw e;
+                }
                 drop(r);
                 ignore(r.flag());
-                log.info("agent: flagged friend request from " + userId + " ignored");
-                return "没理" + name + "的好友申请（QQ 标成有风险的申请只能同意或者不理，不理就行）";
+                log.info("agent: flagged friend request from " + userId + " ignored (" + e.getMessage() + ")");
+                return "没理" + name + "的好友申请（这个有风险提示的申请拒绝不了，不理就行）";
             }
-            call("set_doubt_friends_add_request", params, r);
         } else {
-            if (approve && remark != null && !remark.isBlank()) {
-                params.addProperty("remark", abbreviate(remark.strip(), 30));
-            }
             call("set_friend_add_request", params, r);
         }
         drop(r);
         contacts.forgetFriends();
+        if (approve && remark != null && !remark.isBlank()) {
+            JsonObject note = new JsonObject();
+            note.addProperty("user_id", Long.parseLong(userId));
+            note.addProperty("remark", abbreviate(remark.strip(), 30));
+            try {
+                outbox.call("set_friend_remark", note, TIMEOUT);
+            } catch (ToolFailure e) {
+                log.warn("agent: friend remark for " + userId + " not set: " + e.getMessage());
+            }
+        }
         if (approve) {
             outbox.forgetTempGroup(userId);
         }
@@ -410,7 +460,7 @@ public final class QqRequests {
         try {
             outbox.call(action, params, TIMEOUT);
         } catch (ToolFailure e) {
-            if (String.valueOf(e.getMessage()).contains("No such request")) {
+            if (String.valueOf(e.getMessage()).matches("(?is).*(No such request|request.*not found).*")) {
                 drop(r);
                 throw new ToolFailure("这个申请已经不在了：可能在手机上处理过，或者已经过期了");
             }
