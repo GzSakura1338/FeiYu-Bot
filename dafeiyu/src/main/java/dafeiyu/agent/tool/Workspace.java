@@ -9,6 +9,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -182,6 +183,7 @@ public final class Workspace {
                 } catch (AtomicMoveNotSupportedException e) {
                     Files.move(tmp, dest, StandardCopyOption.REPLACE_EXISTING);
                 }
+                makeWorldReadable(dest);
             } finally {
                 Files.deleteIfExists(tmp);
             }
@@ -207,8 +209,22 @@ public final class Workspace {
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(source, dest, StandardCopyOption.REPLACE_EXISTING);
             }
+            makeWorldReadable(dest);
         } catch (IOException e) {
             throw new ToolFailure("Unable to write " + relative(target) + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * 让同一台机器上别的账户也能读：协议端（SnowLuma 容器里的 QQ）以 uid=1000 跑，
+     * 而 write()/place() 都是先 createTempFile（默认 600）再 move，600 会被原样搬过去，
+     * 结果容器读不到 -> 发图报 EACCES / permission denied。
+     * 这里显式放宽成 644（只读，不给写）。
+     */
+    public static void makeWorldReadable(Path file) {
+        try {
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
+        } catch (UnsupportedOperationException | IOException ignored) {
         }
     }
 

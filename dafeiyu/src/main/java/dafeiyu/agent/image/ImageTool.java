@@ -92,7 +92,9 @@ public final class ImageTool {
             } else {
                 try {
                     Files.createDirectories(gen.folder());
-                    files.add(Files.write(gen.folder().resolve(name), p.bytes()));
+                    Path written = Files.write(gen.folder().resolve(name), p.bytes());
+                    Workspace.makeWorldReadable(written);
+                    files.add(written);
                 } catch (IOException e) {
                     throw new ToolFailure("图画好了但存不下来：" + e.getMessage());
                 }
