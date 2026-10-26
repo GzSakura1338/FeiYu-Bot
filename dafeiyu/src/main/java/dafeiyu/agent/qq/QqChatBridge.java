@@ -96,6 +96,9 @@ public final class QqChatBridge {
     private static final String BARE_MENTION_FALLBACK = "嗯？";
     public static final String LEAVE_GROUP = "leave_group";
     private static final Pattern IMAGE_TALK = Pattern.compile("画面|图里|图中|图上|这张图|照片里|图片里");
+    // 元话题：她在谈"看没看到图/画面进没进来"这件事本身，不是在描述画面内容，不该记 WARN
+    private static final Pattern IMAGE_META = Pattern.compile(
+            "画面(没|不|进不来|没有)|没(有)?(看到|看清|看见|画面)|看不到|看不清|看不见|瞎猜|编的|猜的|照猜|只回|没进去|工具只|没真看|白描");
     private static final long LEAVE_DELAY_MS = 3_000;
     private static final long ELSEWHERE_MS = 20 * 60_000L;
     private static final int ELSEWHERE_CHATS = 6;
@@ -1208,7 +1211,8 @@ public final class QqChatBridge {
             log.info("agent [" + target.where() + "] stayed quiet");
             return null;
         }
-        if (!looked[0] && IMAGE_TALK.matcher(result.content()).find()) {
+        if (!looked[0] && IMAGE_TALK.matcher(result.content()).find()
+                && !IMAGE_META.matcher(result.content()).find()) {
             log.warn("agent [" + target.where() + "] talked about a picture without looking at one this turn: "
                     + abbreviate(result.content().replace('\n', ' '), 120));
         }
