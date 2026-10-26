@@ -40,6 +40,7 @@ public final class Mind implements QqChatBridge.Observer {
     private static final Map<String, Long> PACES = Map.of("fast", 15_000L, "normal", 40_000L, "slow", 120_000L);
     private static final long ACTING_MS = 3_000;
     private static final long PAUSED_MS = 30_000;
+    private static final String OFFLINE = "QQ 没连上";
     private static final long FAILED_MS = 60_000;
     private static final long CALLED_MS = 2_000;
     private static final long NOTICED_MS = 8_000;
@@ -71,6 +72,7 @@ public final class Mind implements QqChatBridge.Observer {
     private final List<String> errands = new ArrayList<>();
     private volatile boolean thinking;
     private volatile boolean wake;
+    private volatile boolean wasOffline;
     private volatile long lastAt;
     private volatile long nextAt;
     private volatile int thoughts;
@@ -209,12 +211,19 @@ public final class Mind implements QqChatBridge.Observer {
         while (true) {
             long pause;
             boolean blocked = false;
+            boolean held = false;
             try {
-                if (blocker() == null && agent.intercom().nextReminder() <= System.currentTimeMillis()) {
+                String why = blocker();
+                held = why != null;
+                if (OFFLINE.equals(why) != wasOffline) {
+                    wasOffline = OFFLINE.equals(why);
+                    log.info(wasOffline ? "mind: paused, QQ is not connected" : "mind: QQ is connected, thinking again");
+                }
+                if (!held && agent.intercom().nextReminder() <= System.currentTimeMillis()) {
                     wake = true;
                 }
                 boolean asked = wake;
-                if (blocker() != null || (!agent.store().freeWill() && !asked)) {
+                if (held || (!agent.store().freeWill() && !asked)) {
                     pause = PAUSED_MS;
                     blocked = true;
                 } else {
@@ -230,6 +239,9 @@ public final class Mind implements QqChatBridge.Observer {
             synchronized (bell) {
                 try {
                     while (!wake) {
+                        if (held && blocker() == null) {
+                            break;
+                        }
                         long reminder = blocker() == null ? agent.intercom().nextReminder() : Long.MAX_VALUE;
                         long due = Math.min(blocked ? until : Math.min(until, stirAt), reminder);
                         long left = due - System.currentTimeMillis();
@@ -433,6 +445,15 @@ public final class Mind implements QqChatBridge.Observer {
         if (agent.store().active() == null) {
             return "没有选模型";
         }
+        if (!bridge.connected()) {
+            return OFFLINE;
+        }
         return null;
+    }
+
+    public void resume() {
+        synchronized (bell) {
+            bell.notifyAll();
+        }
     }
 }

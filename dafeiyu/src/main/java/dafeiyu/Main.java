@@ -136,6 +136,7 @@ public final class Main {
         onebot.addEventListener(plugins::onOneBotEvent);
         onebot.addConnectListener(bridge::onConnected);
         onebot.addConnectListener(plugins::onConnected);
+        onebot.addConnectListener(mind::resume);
         plugins.start();
         mcp.start();
         onebot.start();
