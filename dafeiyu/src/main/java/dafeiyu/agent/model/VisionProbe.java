@@ -20,6 +20,9 @@ public final class VisionProbe {
     private static final Pattern IMAGE_ERROR = Pattern.compile(
             "image|vision|multimodal|multi-modal|多模态|图片|图像|image_url|input_image|unsupported content|content type",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern TOO_MUCH = Pattern.compile(
+            "too many|too large|too big|too long|exceed|maximum|at most|limit|entity too large|payload|超过|过大|太多|太大|上限",
+            Pattern.CASE_INSENSITIVE);
 
     private VisionProbe() {}
 
@@ -38,7 +41,11 @@ public final class VisionProbe {
     }
 
     static boolean isImageError(AgentException e) {
-        return (e.kind() == Kind.INVALID_REQUEST || e.kind() == Kind.PAYLOAD_TOO_LARGE)
-                && e.getMessage() != null && IMAGE_ERROR.matcher(e.getMessage()).find();
+        return e.kind() == Kind.INVALID_REQUEST && e.getMessage() != null && IMAGE_ERROR.matcher(e.getMessage()).find() && !tooMuch(e);
+    }
+
+    public static boolean tooMuch(AgentException e) {
+        return e.kind() == Kind.PAYLOAD_TOO_LARGE
+                || e.kind() == Kind.INVALID_REQUEST && e.getMessage() != null && TOO_MUCH.matcher(e.getMessage()).find();
     }
 }

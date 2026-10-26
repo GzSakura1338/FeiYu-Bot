@@ -68,6 +68,10 @@ public record ChatMessage(
         return new ChatMessage(role, text.toString(), reasoning, null, toolCalls, toolCallId, toolName, toolError);
     }
 
+    public ChatMessage withImages(List<ImagePart> kept, String note) {
+        return new ChatMessage(role, content + (note.isEmpty() ? "" : "\n" + note), reasoning, kept, toolCalls, toolCallId, toolName, toolError);
+    }
+
     public ChatMessage withoutReasoning() {
         return reasoning.isEmpty() ? this
                 : new ChatMessage(role, content, "", images, toolCalls, toolCallId, toolName, toolError);

@@ -12,7 +12,7 @@ final class VideoHandler {
 
     private static final String PREFIX = "/api/agent/video";
 
-    private record UpdateRequest(Integer frames, Integer seconds) {}
+    private record UpdateRequest(Integer intervalMs) {}
 
     private final ChatAgent agent;
     private final LogBuffer log;
@@ -31,14 +31,11 @@ final class VideoHandler {
                 HttpResponses.json(ex, state());
             } else if ((rest.isEmpty() || rest.equals("/")) && method.equals("PUT") && Requests.isJson(ex)) {
                 UpdateRequest body = Requests.readJson(ex, UpdateRequest.class);
-                if (body.frames() != null && (body.frames() < 0 || body.frames() > VideoFrames.MAX_FRAMES)) {
-                    throw new IllegalArgumentException("截几帧要在 0（不看）到 " + VideoFrames.MAX_FRAMES + " 之间");
+                if (body.intervalMs() == null || body.intervalMs() < 0) {
+                    throw new IllegalArgumentException("抽帧间隔要填毫秒数，0 是不看");
                 }
-                if (body.seconds() != null && (body.seconds() < VideoFrames.MIN_SECONDS || body.seconds() > VideoFrames.MAX_SECONDS)) {
-                    throw new IllegalArgumentException("看多长要在 " + VideoFrames.MIN_SECONDS + " 到 " + VideoFrames.MAX_SECONDS + " 秒之间");
-                }
-                VideoFrames.Config saved = agent.videoFrames().save(body.frames(), body.seconds());
-                log.info("agent: video frames " + saved.frames() + ", first " + saved.seconds() + " s");
+                VideoFrames.Config saved = agent.videoFrames().save(body.intervalMs());
+                log.info("agent: video frames every " + saved.intervalMs() + " ms" + (saved.enabled() ? "" : " (off)"));
                 HttpResponses.json(ex, state());
             } else {
                 HttpResponses.json(ex, 404, error("没有这个接口"));
@@ -51,8 +48,7 @@ final class VideoHandler {
     private String state() {
         VideoFrames.Config config = agent.videoFrames().config();
         JsonObject body = new JsonObject();
-        body.addProperty("frames", config.frames());
-        body.addProperty("seconds", config.seconds());
+        body.addProperty("intervalMs", config.intervalMs());
         body.addProperty("ffmpeg", agent.videoFrames().ffmpeg());
         body.addProperty("vision", agent.vision());
         return body.toString();

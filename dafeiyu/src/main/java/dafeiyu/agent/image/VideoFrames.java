@@ -1,7 +1,6 @@
 package dafeiyu.agent.image;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
+import com.google.gson.JsonObject;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.ImagePart;
 import dafeiyu.agent.model.ImageLoader;
@@ -12,6 +11,7 @@ import dafeiyu.db.Settings;
 import dafeiyu.sandbox.Platform;
 import dafeiyu.sandbox.Sandbox;
 import dafeiyu.sandbox.Sandboxes;
+import dafeiyu.util.Jsons;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,32 +33,31 @@ import java.util.stream.Stream;
 
 public final class VideoFrames {
 
-    public record Config(int frames, int seconds) {
+    public record Config(int intervalMs) {
 
         public Config {
-            frames = frames <= 0 ? 0 : Math.min(frames, MAX_FRAMES);
-            seconds = seconds <= 0 ? DEFAULT_SECONDS : Math.clamp(seconds, MIN_SECONDS, MAX_SECONDS);
+            intervalMs = Math.max(0, intervalMs);
         }
 
         public boolean enabled() {
-            return frames > 0;
+            return intervalMs > 0;
         }
     }
 
     public record Frames(List<ImagePart> parts, String note) {}
 
-    public static final int MAX_FRAMES = 16;
-    public static final int MIN_SECONDS = 5;
-    public static final int MAX_SECONDS = 300;
-    private static final int DEFAULT_FRAMES = 8;
-    private static final int DEFAULT_SECONDS = 60;
+    private record Probe(double seconds, String size, double fps, boolean audio) {}
+
+    private static final int DEFAULT_INTERVAL_MS = 1000;
     private static final String KEY = "agent.video";
-    private static final long MAX_BYTES = 100L * 1024 * 1024;
-    private static final Duration DOWNLOAD = Duration.ofMinutes(2);
-    private static final long RUN_MS = 90_000;
+    private static final Duration DOWNLOAD = Duration.ofMinutes(30);
+    private static final long RUN_BASE_MS = 120_000;
     private static final Pattern DURATION = Pattern.compile("Duration:\\s*(\\d+):(\\d{2}):(\\d{2}(?:\\.\\d+)?)");
+    private static final Pattern VIDEO_STREAM = Pattern.compile("Stream #[^\\n]*Video:[^\\n]*");
+    private static final Pattern SIZE = Pattern.compile("\\b(\\d{2,5})x(\\d{2,5})\\b");
+    private static final Pattern FPS = Pattern.compile("(\\d+(?:\\.\\d+)?) fps");
+    private static final Pattern AUDIO_STREAM = Pattern.compile("Stream #[^\\n]*Audio:");
     private static final Semaphore SLOTS = new Semaphore(2);
-    private static final Gson GSON = new Gson();
 
     private final Settings settings;
     private final Path temp;
@@ -71,23 +70,26 @@ public final class VideoFrames {
     }
 
     public Config config() {
-        String raw = settings.get(KEY);
-        if (raw != null && !raw.isBlank()) {
+        JsonObject saved = Jsons.parseObject(settings.get(KEY));
+        if (saved != null) {
             try {
-                Config saved = GSON.fromJson(raw, Config.class);
-                if (saved != null) {
-                    return new Config(saved.frames(), saved.seconds());
+                if (saved.has("intervalMs")) {
+                    return new Config(saved.get("intervalMs").getAsInt());
                 }
-            } catch (JsonParseException ignored) {
+                if (saved.has("frames") && saved.get("frames").getAsInt() <= 0) {
+                    return new Config(0);
+                }
+            } catch (RuntimeException ignored) {
             }
         }
-        return new Config(DEFAULT_FRAMES, DEFAULT_SECONDS);
+        return new Config(DEFAULT_INTERVAL_MS);
     }
 
-    public synchronized Config save(Integer frames, Integer seconds) {
-        Config old = config();
-        Config next = new Config(frames == null ? old.frames() : frames, seconds == null ? old.seconds() : seconds);
-        settings.put(KEY, GSON.toJson(next));
+    public synchronized Config save(int intervalMs) {
+        Config next = new Config(intervalMs);
+        JsonObject o = new JsonObject();
+        o.addProperty("intervalMs", next.intervalMs());
+        settings.put(KEY, o.toString());
         return next;
     }
 
@@ -131,7 +133,7 @@ public final class VideoFrames {
             throw new ToolFailure("这台电脑上找不到 ffmpeg，看不了视频");
         }
         try {
-            if (!SLOTS.tryAcquire(30, TimeUnit.SECONDS)) {
+            if (!SLOTS.tryAcquire(10, TimeUnit.MINUTES)) {
                 throw new ToolFailure("同时在看的视频太多了");
             }
         } catch (InterruptedException e) {
@@ -142,15 +144,17 @@ public final class VideoFrames {
         try {
             Files.createDirectories(dir);
             Path video = dir.resolve("video");
-            PublicWeb.save(url, video, MAX_BYTES, DOWNLOAD);
-            double duration = probe(exe, dir, video);
-            double span = duration > 0 ? Math.min(duration, config.seconds()) : config.seconds();
-            int count = duration > 0 && duration < config.frames() ? Math.max(1, (int) Math.ceil(duration)) : config.frames();
-            double fps = count / Math.max(span, 0.5);
+            PublicWeb.save(url, video, Long.MAX_VALUE, DOWNLOAD);
+            Probe probe = probe(exe, dir, video);
+            double wanted = 1000.0 / config.intervalMs();
+            double fps = probe.fps() > 0 ? Math.min(wanted, probe.fps()) : wanted;
+            long expected = probe.seconds() > 0 ? (long) Math.ceil(probe.seconds() * fps) : 0;
+            int side = expected <= 300 ? 1024 : expected <= 600 ? 768 : expected <= 1200 ? 512 : 384;
+            long runMs = probe.seconds() > 0 ? RUN_BASE_MS + (long) (probe.seconds() * 2000) : TimeUnit.MINUTES.toMillis(30);
             Sandbox.Result result = run(exe, dir, List.of(exe, "-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "2",
-                    "-t", number(span), "-i", video.toString(),
-                    "-vf", "fps=" + number(fps) + ",scale=w=768:h=768:force_original_aspect_ratio=decrease",
-                    "-frames:v", String.valueOf(count), "-q:v", "4", dir.resolve("f%02d.jpg").toString()));
+                    "-i", video.toString(),
+                    "-vf", "fps=" + number(fps) + ",scale=w=" + side + ":h=" + side + ":force_original_aspect_ratio=decrease",
+                    "-q:v", "4", dir.resolve("f%06d.jpg").toString()), runMs);
             List<ImagePart> parts = new ArrayList<>();
             try (Stream<Path> files = Files.list(dir)) {
                 for (Path frame : files.filter(p -> p.getFileName().toString().matches("f\\d+\\.jpg")).sorted(Comparator.naturalOrder()).toList()) {
@@ -160,10 +164,7 @@ public final class VideoFrames {
             if (parts.isEmpty()) {
                 throw new ToolFailure("ffmpeg 没截出画面" + (result.stderr().isBlank() ? "" : "：" + result.stderr().strip()));
             }
-            String length = duration > 0 ? "视频长约 " + Math.round(duration) + " 秒，" : "";
-            String part = duration > span ? "只看了前 " + Math.round(span) + " 秒，" : "";
-            return new Frames(parts, "（附上的 " + parts.size() + " 张图是那段视频按时间顺序截的画面，" + length + part
-                    + "大约每隔 " + number(Math.max(span / parts.size(), 0.1)) + " 秒一张；视频里的声音听不到）");
+            return new Frames(parts, note(parts.size(), probe, 1.0 / fps, side));
         } catch (IOException e) {
             throw new ToolFailure("看视频失败：" + e.getMessage());
         } catch (AgentException e) {
@@ -174,13 +175,46 @@ public final class VideoFrames {
         }
     }
 
-    private double probe(String exe, Path dir, Path video) throws ToolFailure {
-        Sandbox.Result result = run(exe, dir, List.of(exe, "-hide_banner", "-nostdin", "-i", video.toString()));
-        Matcher m = DURATION.matcher(result.stderr());
-        return m.find() ? Integer.parseInt(m.group(1)) * 3600 + Integer.parseInt(m.group(2)) * 60 + Double.parseDouble(m.group(3)) : -1;
+    private static String note(int count, Probe probe, double step, int side) {
+        StringBuilder out = new StringBuilder("（附上的 ").append(count).append(" 张图是这段视频从头到尾按时间顺序截的画面");
+        if (probe.seconds() > 0) {
+            out.append("，视频长 ").append(clock(probe.seconds()));
+        }
+        if (!probe.size().isEmpty()) {
+            out.append("，原画面 ").append(probe.size());
+        }
+        out.append("；每隔 ").append(number(step)).append(" 秒截一张，第 k 张大约在第 (k-1)×").append(number(step)).append(" 秒");
+        if (count > 1) {
+            out.append("（最后一张约在 ").append(clock(step * (count - 1))).append("）");
+        }
+        out.append("；截图最长边缩到 ").append(side).append(" 像素");
+        out.append(probe.audio() ? "；视频有声音，但你听不到，只能看画面" : "；这段视频没有声音").append("）");
+        return out.toString();
     }
 
-    private Sandbox.Result run(String exe, Path dir, List<String> argv) throws ToolFailure {
+    private static String clock(double seconds) {
+        long total = Math.round(seconds);
+        return total >= 3600 ? String.format(Locale.ROOT, "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
+                : String.format(Locale.ROOT, "%d:%02d", total / 60, total % 60);
+    }
+
+    private Probe probe(String exe, Path dir, Path video) throws ToolFailure {
+        String info = run(exe, dir, List.of(exe, "-hide_banner", "-nostdin", "-i", video.toString()), RUN_BASE_MS).stderr();
+        Matcher d = DURATION.matcher(info);
+        double seconds = d.find() ? Integer.parseInt(d.group(1)) * 3600 + Integer.parseInt(d.group(2)) * 60 + Double.parseDouble(d.group(3)) : -1;
+        Matcher v = VIDEO_STREAM.matcher(info);
+        String size = "";
+        double fps = -1;
+        if (v.find()) {
+            Matcher s = SIZE.matcher(v.group());
+            size = s.find() ? s.group(1) + "×" + s.group(2) : "";
+            Matcher f = FPS.matcher(v.group());
+            fps = f.find() ? Double.parseDouble(f.group(1)) : -1;
+        }
+        return new Probe(seconds, size, fps, AUDIO_STREAM.matcher(info).find());
+    }
+
+    private Sandbox.Result run(String exe, Path dir, List<String> argv, long runMs) throws ToolFailure {
         Sandbox sandbox = Sandboxes.current();
         boolean isolated = sandbox.missing() == null;
         Map<String, String> env = isolated ? sandbox.environment(dir, List.of(Path.of(exe).getParent())) : new HashMap<>(System.getenv());
@@ -189,7 +223,7 @@ public final class VideoFrames {
                 .reading(List.of(), Sandboxes.runtimeRoots(Path.of(exe)))
                 .writing(List.of(temp))
                 .limits(1024L << 20, 50, 16);
-        return sandbox.run(spec, RUN_MS);
+        return sandbox.run(spec, runMs);
     }
 
     private static String number(double value) {

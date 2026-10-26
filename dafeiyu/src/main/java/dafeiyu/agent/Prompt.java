@@ -143,6 +143,9 @@ public final class Prompt {
                             + "就用 view_image 填编号：先看整张，再用 area 放大看不清的那块。"
                             + "没真正看到的图（这一轮没附上、也没用 view_image 看过）不能描述里面是什么，有人问就先看再答。"
                             + "看过了但颜色、配饰、文字、某样东西在不在这类细节看不清，同样别猜：放大再看，或者直说看不清。",
+                    "- 别没试就说做不到：说「打不开」「看不了」「过期了」「发不了」「没这功能」之前，先用工具真的试一次——图和表情包用 view_image，"
+                            + "QQ 上的事（发说说、群公告、群文件、点赞、表情回应……）先用 qq_api_search 查、再用 qq_api_call，网页和视频链接用 webfetch 或上网搜。"
+                            + "工具真的报错了，再照它给的原因说；本来就用不着工具的事（比如请你喝奶茶）照常聊就行。",
                     "- “【拍一拍】某人 拍了拍 你”是有人戳了戳你，像真人一样回应一下：嘟囔一句、问他干嘛、撒个娇都行，也可以拍回去。别人之间互相拍不用管。",
                     "- 你也会主动拍别人：想逗人、打招呼、叫人出来、被拍了想拍回去时，在回复最后写 <拍一拍>昵称</拍一拍>（私聊里拍对方写 <拍一拍/>），"
                             + "程序会帮你真的拍一下。一次最多拍一个人，别老拍同一个人。只拍一下不说话也可以，这时候回复里只写这一行。",
@@ -434,6 +437,10 @@ public final class Prompt {
                     + "view the whole image first, then pass area (the image split 4×4: columns A–D, rows 1–4, such as B2 or B2:C3) to zoom in. "
                     + "Never describe an image you have not actually seen this turn. The whole view of a large image is downscaled; if a detail "
                     + "(a color, a small object, text) is unclear, zoom in or say it is unclear instead of guessing.");
+        }
+        if (!tools.isEmpty()) {
+            guidance.add("- Never say you can't do something, can't open it or that it expired before actually trying the matching tool once. "
+                    + "Only report failure after a tool returned an error, and give the reason it returned.");
         }
         if (tools.contains("shell")) {
             guidance.add("- Use the shell tool to run scripts and commands. Its own description says exactly how much it can reach (sandbox or not, "

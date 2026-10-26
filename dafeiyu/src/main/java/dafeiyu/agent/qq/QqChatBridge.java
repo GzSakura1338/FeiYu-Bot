@@ -758,7 +758,9 @@ public final class QqChatBridge {
             boolean resumed;
             synchronized (inbox) {
                 target = inbox.target;
-                images = List.copyOf(inbox.images.subList(Math.max(0, inbox.images.size() - MAX_IMAGES), inbox.images.size()));
+                List<String> pictures = inbox.images.stream().filter(u -> !u.startsWith(QqMessages.VIDEO_REF)).toList();
+                images = Stream.concat(pictures.subList(Math.max(0, pictures.size() - MAX_IMAGES), pictures.size()).stream(),
+                        inbox.images.stream().filter(u -> u.startsWith(QqMessages.VIDEO_REF))).toList();
                 latest = List.copyOf(inbox.lines.subList(Math.max(0, inbox.lines.size() - 3), inbox.lines.size()));
                 resumed = inbox.resumed;
                 inbox.images.clear();
@@ -1587,19 +1589,24 @@ public final class QqChatBridge {
 
     private Media media(Target target, List<String> urls) {
         List<ImagePart> parts = new ArrayList<>(download(target, urls.stream().filter(u -> !u.startsWith(QqMessages.VIDEO_REF)).toList()));
-        String video = urls.stream().filter(u -> u.startsWith(QqMessages.VIDEO_REF)).findFirst().orElse(null);
-        if (video == null || !agent.vision() || !agent.videoFrames().config().enabled()) {
+        List<String> videos = urls.stream().filter(u -> u.startsWith(QqMessages.VIDEO_REF)).distinct().toList();
+        if (videos.isEmpty() || !agent.vision() || !agent.videoFrames().config().enabled()) {
             return new Media(parts, "");
         }
-        try {
-            VideoFrames.Frames frames = agent.videoFrames().extract(video.substring(QqMessages.VIDEO_REF.length()));
-            parts.addAll(frames.parts());
-            log.info("agent [" + target.where() + "] looked at a video through " + frames.parts().size() + " frames");
-            return new Media(parts, frames.note());
-        } catch (ToolFailure e) {
-            log.warn("agent [" + target.where() + "] video skipped: " + e.getMessage());
-            return new Media(parts, "");
+        List<String> notes = new ArrayList<>();
+        for (int i = 0; i < videos.size(); i++) {
+            try {
+                VideoFrames.Frames frames = agent.videoFrames().extract(videos.get(i).substring(QqMessages.VIDEO_REF.length()));
+                int start = parts.size() + 1;
+                parts.addAll(frames.parts());
+                String which = videos.size() > 1 ? "第 " + (i + 1) + " 个视频" : "视频";
+                notes.add(start > 1 || videos.size() > 1 ? "（第 " + start + " 到第 " + parts.size() + " 张图是" + which + "的截图）" + frames.note() : frames.note());
+                log.info("agent [" + target.where() + "] looked at a video through " + frames.parts().size() + " frames");
+            } catch (ToolFailure e) {
+                log.warn("agent [" + target.where() + "] video skipped: " + e.getMessage());
+            }
         }
+        return new Media(parts, String.join("\n", notes));
     }
 
     private List<ImagePart> download(Target target, List<String> imageUrls) {

@@ -860,36 +860,31 @@
       </div>
       <div class="panel">
         <div class="panel-header"><h2 class="headline-small">看视频</h2></div>
-        <p class="panel-desc body-medium">有人发视频找她时，用 ffmpeg 从视频里按时间均匀截几张画面当图片给她看（声音听不到）。要模型能看图，电脑上装了 ffmpeg 才行；截图在沙盒里做，做完就删。</p>
+        <p class="panel-desc body-medium">有人发视频找她时，用 ffmpeg 把整段视频从头到尾按固定间隔抽帧当图片给她看，不限时长、不限张数；每张对应的时间点、视频多长、原画面多大、有没有声音都会告诉她（声音本身听不到）。帧很多时每张会缩小（最长边从 1024 依次降到 768、512、384 像素），让整个请求不超过接口上限；万一还是太大，会隔一张去一张再发。要模型能看图，电脑上装了 ffmpeg 才行；抽帧在沙盒里做，做完就删。</p>
         <ul class="list">
           <li class="list-item settings-row">
             <span class="list-icon"><svg data-icon="image_search"></svg></span>
             <div class="list-text">
-              <div class="list-headline body-large">截几张</div>
+              <div class="list-headline body-large">抽帧间隔</div>
               <div class="list-supporting body-medium" id="video-hint">正在检查 ffmpeg…</div>
             </div>
-            <div class="segmented label-large" role="radiogroup" aria-label="视频截几张" id="video-frames">
-              <button class="state-layer" role="radio" data-frames="0"><svg data-icon="check" class="icon-18 chip-check"></svg>不看</button>
-              <button class="state-layer" role="radio" data-frames="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4 张</button>
-              <button class="state-layer" role="radio" data-frames="8"><svg data-icon="check" class="icon-18 chip-check"></svg>8 张</button>
-              <button class="state-layer" role="radio" data-frames="12"><svg data-icon="check" class="icon-18 chip-check"></svg>12 张</button>
-              <button class="state-layer" role="radio" data-frames="16"><svg data-icon="check" class="icon-18 chip-check"></svg>16 张</button>
-            </div>
-          </li>
-          <li class="list-item settings-row">
-            <span class="list-icon"><svg data-icon="timer"></svg></span>
-            <div class="list-text">
-              <div class="list-headline body-large">看多长</div>
-              <div class="list-supporting body-medium">只截视频开头这么长的一段，长视频也不会截太久</div>
-            </div>
-            <div class="segmented label-large" role="radiogroup" aria-label="视频看多长" id="video-seconds">
-              <button class="state-layer" role="radio" data-seconds="30"><svg data-icon="check" class="icon-18 chip-check"></svg>前 30 秒</button>
-              <button class="state-layer" role="radio" data-seconds="60"><svg data-icon="check" class="icon-18 chip-check"></svg>前 1 分钟</button>
-              <button class="state-layer" role="radio" data-seconds="120"><svg data-icon="check" class="icon-18 chip-check"></svg>前 2 分钟</button>
-              <button class="state-layer" role="radio" data-seconds="300"><svg data-icon="check" class="icon-18 chip-check"></svg>前 5 分钟</button>
+            <div class="segmented label-large" role="radiogroup" aria-label="视频抽帧间隔" id="video-interval">
+              <button class="state-layer" role="radio" data-interval="0"><svg data-icon="check" class="icon-18 chip-check"></svg>不看</button>
+              <button class="state-layer" role="radio" data-interval="250"><svg data-icon="check" class="icon-18 chip-check"></svg>0.25 秒</button>
+              <button class="state-layer" role="radio" data-interval="500"><svg data-icon="check" class="icon-18 chip-check"></svg>0.5 秒</button>
+              <button class="state-layer" role="radio" data-interval="1000"><svg data-icon="check" class="icon-18 chip-check"></svg>1 秒</button>
+              <button class="state-layer" role="radio" data-interval="2000"><svg data-icon="check" class="icon-18 chip-check"></svg>2 秒</button>
+              <button class="state-layer" role="radio" data-interval="5000"><svg data-icon="check" class="icon-18 chip-check"></svg>5 秒</button>
             </div>
           </li>
         </ul>
+        <form class="workspace-row" id="video-custom" novalidate autocomplete="off">
+          <div class="text-field" data-field="intervalMs">
+            <div class="text-field-box"><input id="video-interval-ms" name="intervalMs" placeholder=" " inputmode="numeric" spellcheck="false"><label for="video-interval-ms">自定义间隔（毫秒）</label></div>
+            <span class="supporting body-small">每隔这么多毫秒抽一帧，比如 100 就是每秒 10 张；比视频本身的帧间隔还短就是每一帧都看；0 是不看</span>
+          </div>
+          <button type="submit" class="filled-button filled-button-medium state-layer" id="video-save" disabled>保存</button>
+        </form>
       </div>
     </div>
 

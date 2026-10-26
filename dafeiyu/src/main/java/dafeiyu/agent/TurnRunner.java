@@ -69,6 +69,10 @@ public final class TurnRunner {
     public static final String SILENCE = "[沉默]";
     private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
     public static final String AMBIENT = "【旁听】";
+    private static final java.util.regex.Pattern GIVE_UP = java.util.regex.Pattern.compile(
+            "做不了|做不到|办不到|帮不了|没办法|无法|打不开|看不了|看不到|听不了|发不了|画不了|查不了|搜不了|用不了|弄不了|搞不了|点不了|点不下去"
+                    + "|不支持|没有这个功能|没这个功能|没有这个工具|没这个工具|没这件工具|过期了|拿不到|读不到|没权限|没有权限|权限不够"
+                    + "|我不会(?:弄|做|画|看|发|查|用|打开|这个)");
 
     private final ChatAgent agent;
     private final ConversationMemory memory;
@@ -111,6 +115,8 @@ public final class TurnRunner {
     private long heardId;
     private boolean revised;
     private boolean overheard;
+    private boolean triedTools;
+    private boolean pushedToTry;
     private boolean userSaved;
     private ChatMessage marker;
     private long startedAt;
@@ -227,6 +233,9 @@ public final class TurnRunner {
                     compact(Trigger.OVERFLOW);
                     continue;
                 }
+                if ((VisionProbe.tooMuch(e) || e.isContextOverflow()) && thinLiveImages()) {
+                    continue;
+                }
                 if (hasLiveImages() && capabilities.rejectsImages(profile, e)) {
                     live.replaceAll(m -> m.withoutImages(VisionProbe.UNSUPPORTED));
                     continue;
@@ -257,10 +266,18 @@ public final class TurnRunner {
             if (calls.isEmpty() && quiet && !acts) {
                 return silence(result, started);
             }
+            if (calls.isEmpty() && !lastStep && gaveUpUntried(content)) {
+                pushToTry(content);
+                step++;
+                continue;
+            }
             if (calls.isEmpty() && !lastStep && overtaken()) {
                 reconsider(result.content());
                 step++;
                 continue;
+            }
+            if (!calls.isEmpty()) {
+                triedTools = true;
             }
             boolean blocked = false;
             if (calls.isEmpty() && !turn.mind() && !subagent() && !content.isBlank()) {
@@ -717,6 +734,19 @@ public final class TurnRunner {
         return arrived.size() >= (ambient() ? 2 : 1);
     }
 
+    private boolean gaveUpUntried(String content) {
+        return !pushedToTry && !triedTools && !turn.mind() && !subagent() && tools != null && !tools.isEmpty()
+                && content != null && GIVE_UP.matcher(content).find();
+    }
+
+    private void pushToTry(String draft) {
+        pushedToTry = true;
+        live.add(ChatMessage.user("（你刚写好、还没发出去的回复是：「" + draft.strip() + "」。这一轮你一个工具都没用，就说做不到、打不开、看不了或者过期了。"
+                + "先用合适的工具真的试一次：看图、看表情包、看清细节用 view_image；QQ 上的事（发说说、群公告、群文件、点赞、表情回应……）先用 qq_api_search 查有没有接口，再用 qq_api_call；"
+                + "网页、视频链接用读网页或上网搜的工具；要做出来的东西用对应的工具。工具真的报错了，再照工具给的原因说。"
+                + "这件事本来就不需要工具、或者你的工具里确实没有能做的，就照原来的回复说。）"));
+    }
+
     private void reconsider(String draft) {
         revised = true;
         overheard = true;
@@ -782,6 +812,23 @@ public final class TurnRunner {
 
     private boolean hasLiveImages() {
         return live.stream().anyMatch(m -> !m.images().isEmpty());
+    }
+
+    private boolean thinLiveImages() {
+        boolean thinned = false;
+        for (int i = 0; i < live.size(); i++) {
+            List<ImagePart> images = live.get(i).images();
+            if (images.size() < 2) {
+                continue;
+            }
+            List<ImagePart> kept = new ArrayList<>();
+            for (int j = 0; j < images.size(); j += 2) {
+                kept.add(images.get(j));
+            }
+            live.set(i, live.get(i).withImages(kept, "（附的图太多，请求发不出去，隔一张去掉了一张，现在剩 " + kept.size() + " 张，相邻两张之间的间隔比上面说的长一倍）"));
+            thinned = true;
+        }
+        return thinned;
     }
 
     private ChatMessage prepareImages(ChatMessage user) {
