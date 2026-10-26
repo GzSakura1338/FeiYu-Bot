@@ -7,8 +7,8 @@ import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.model.ModelProfile;
 import dafeiyu.agent.persona.Persona;
 import dafeiyu.agent.usage.UsageStore;
-import dafeiyu.onebot.NapCatService;
-import dafeiyu.onebot.NapCatStatus;
+import dafeiyu.onebot.OneBotService;
+import dafeiyu.onebot.OneBotStatus;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -25,13 +25,13 @@ final class UsageHandler {
     private final ChatAgent agent;
     private final UsageStore usage;
     private final QqDirectory directory;
-    private final NapCatService napcat;
+    private final OneBotService onebot;
 
-    UsageHandler(ChatAgent agent, UsageStore usage, QqDirectory directory, NapCatService napcat) {
+    UsageHandler(ChatAgent agent, UsageStore usage, QqDirectory directory, OneBotService onebot) {
         this.agent = agent;
         this.usage = usage;
         this.directory = directory;
-        this.napcat = napcat;
+        this.onebot = onebot;
     }
 
     void handle(HttpExchange ex) throws IOException {
@@ -46,7 +46,7 @@ final class UsageHandler {
         JsonObject body = new JsonObject();
         Persona persona = agent.personas().active();
         ModelProfile model = agent.store().active();
-        NapCatStatus status = napcat.status();
+        OneBotStatus status = onebot.status();
         JsonObject profile = new JsonObject();
         profile.addProperty("name", persona == null ? "大肥鱼" : persona.name());
         profile.addProperty("avatar", persona == null ? "" : persona.avatar());

@@ -17,9 +17,10 @@ public final class QqApi {
 
     public record Param(String name, String type, boolean required, String description) {}
 
-    public record Action(String name, String summary, String description, String category, String origin, List<Param> params) {
+    public record Action(String name, List<String> aliases, String summary, String description, String category, String origin, List<Param> params) {
 
         public Action {
+            aliases = aliases == null ? List.of() : List.copyOf(aliases);
             summary = summary == null || summary.isBlank() ? name : summary;
             description = description == null ? "" : description;
             category = category == null ? "" : category;
@@ -30,18 +31,21 @@ public final class QqApi {
 
     private record Catalog(String version, List<String> categories, List<Action> actions) {}
 
-    private static final String RESOURCE = "/napcat-api.json";
+    private static final String RESOURCE = "/snowluma-api.json";
 
     private final String version;
     private final List<String> categories;
     private final Map<String, Action> actions = new LinkedHashMap<>();
+    private final Map<String, String> aliases = new LinkedHashMap<>();
 
     private QqApi(Catalog catalog) {
         this.version = catalog.version() == null ? "" : catalog.version();
         this.categories = catalog.categories() == null ? List.of() : List.copyOf(catalog.categories());
         for (Action a : catalog.actions() == null ? List.<Action>of() : catalog.actions()) {
             if (a != null && a.name() != null && !a.name().isBlank()) {
-                actions.put(a.name(), new Action(a.name(), a.summary(), a.description(), a.category(), a.origin(), a.params()));
+                Action action = new Action(a.name(), a.aliases(), a.summary(), a.description(), a.category(), a.origin(), a.params());
+                actions.put(action.name(), action);
+                action.aliases().forEach(alias -> aliases.put(alias, action.name()));
             }
         }
     }
@@ -70,7 +74,11 @@ public final class QqApi {
     }
 
     public Action get(String name) {
-        return name == null ? null : actions.get(name.strip());
+        if (name == null) {
+            return null;
+        }
+        String key = name.strip();
+        return actions.get(aliases.getOrDefault(key, key));
     }
 
     public List<Action> inCategory(String category) {
@@ -101,7 +109,7 @@ public final class QqApi {
         if (word.isEmpty()) {
             return 0;
         }
-        String name = a.name().toLowerCase(Locale.ROOT);
+        String name = (a.name() + " " + String.join(" ", a.aliases())).toLowerCase(Locale.ROOT);
         String params = String.join(" ", a.params().stream().map(p -> p.name() + " " + p.description()).toList()).toLowerCase(Locale.ROOT);
         int score = (name.contains(word) ? 30 : 0) + (a.summary().toLowerCase(Locale.ROOT).contains(word) ? 24 : 0)
                 + (a.description().toLowerCase(Locale.ROOT).contains(word) ? 10 : 0) + (a.category().contains(word) ? 6 : 0)

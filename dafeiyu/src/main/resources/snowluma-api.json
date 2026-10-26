@@ -1,0 +1,4667 @@
+{
+ "version": "2.2.0",
+ "categories": [
+  "消息",
+  "好友和进群申请",
+  "群文件",
+  "群相册",
+  "QQ 空间和其他",
+  "群管理和群信息",
+  "好友和用户",
+  "自己的资料和在线状态",
+  "图片、语音和文件",
+  "流式传输",
+  "闪传",
+  "表情包和收藏",
+  "AI 语音",
+  "账号和系统"
+ ],
+ "actions": [
+  {
+   "name": "_del_group_notice",
+   "aliases": [],
+   "summary": "删除群公告（fid 或 notice_id 二选一）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "fid",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "notice_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "_get_friend_dress",
+   "aliases": [],
+   "summary": "获取指定 QQ 号正在使用的个性装扮（挂件/名片/来电/输入状态等）",
+   "description": "返回：装扮信息；目标未使用任何可查询装扮时 items 为空数组。网络失败、未登录态/风控、页面改版、返回账号与请求不一致时返回失败并附具体原因",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "目标 QQ 号"
+    }
+   ]
+  },
+  {
+   "name": "_get_group_notice",
+   "aliases": [],
+   "summary": "获取群公告",
+   "description": "返回：普通公告与新成员公告的合并数组；send_to_new_members 标识后者；图片含 id、url、宽高",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "_get_model_show",
+   "aliases": [],
+   "summary": "获取机型展示（兼容 mock）",
+   "description": "返回：数组，每项含 variants（回显请求的机型名与 need_pay 标记）。",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "model",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "_mark_all_as_read",
+   "aliases": [],
+   "summary": "标记全部已读",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "_send_group_notice",
+   "aliases": [],
+   "summary": "发送群公告（支持置顶、弹窗、新成员、群昵称引导与确认）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": "公告正文"
+    },
+    {
+     "name": "image",
+     "type": "string",
+     "required": false,
+     "description": "可选公告图片（本地路径、URL 或 base64）"
+    },
+    {
+     "name": "pinned",
+     "type": "number",
+     "required": false,
+     "description": "是否置顶：1=置顶，0=不置顶；默认 0"
+    },
+    {
+     "name": "type",
+     "type": "number",
+     "required": false,
+     "description": "发布类型：1=普通公告，20=新成员公告；建议使用 send_to_new_members"
+    },
+    {
+     "name": "send_to_new_members",
+     "type": "boolean",
+     "required": false,
+     "description": "是否在成员新加入群时发送（与 type=20 等价）"
+    },
+    {
+     "name": "is_show_edit_card",
+     "type": "number",
+     "required": false,
+     "description": "是否引导群成员修改群昵称：1=是，0=否；默认 1"
+    },
+    {
+     "name": "tip_window_type",
+     "type": "number",
+     "required": false,
+     "description": "弹窗展示：0=开启弹窗，1=关闭弹窗（QQ 原始字段为反向语义）；默认 1"
+    },
+    {
+     "name": "confirm_required",
+     "type": "number",
+     "required": false,
+     "description": "是否需要群成员确认收到：1=是，0=否；默认 1"
+    }
+   ]
+  },
+  {
+   "name": "_set_model_show",
+   "aliases": [],
+   "summary": "设置机型展示（占位）",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": ".get_word_slices",
+   "aliases": [],
+   "summary": "分词（未实现）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "add_custom_face",
+   "aliases": [],
+   "summary": "添加收藏表情",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "add_group_tag",
+   "aliases": [],
+   "summary": "向某个群分类添加资料标签",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_class",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "bot_exit",
+   "aliases": [],
+   "summary": "退出机器人",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "can_send_image",
+   "aliases": [],
+   "summary": "can_send_image",
+   "description": "返回：能力查询结果。",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "can_send_record",
+   "aliases": [],
+   "summary": "can_send_record",
+   "description": "返回：能力查询结果。",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "cancel_group_album_media_like",
+   "aliases": [],
+   "summary": "cancel_group_album_media_like",
+   "description": "",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "batch_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "cancel_group_todo",
+   "aliases": [],
+   "summary": "取消群待办",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "check_url_safely",
+   "aliases": [],
+   "summary": "检查链接安全性",
+   "description": "返回：{ level }：安全等级（占位实现，恒为 1）。",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "clean_cache",
+   "aliases": [],
+   "summary": "清理缓存",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "clean_stream_temp_file",
+   "aliases": [],
+   "summary": "清理流式传输临时文件(仅清理 stream 上传/下载目录)",
+   "description": "返回：{ message, removed }",
+   "category": "流式传输",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "click_inline_keyboard_button",
+   "aliases": [],
+   "summary": "点击内联键盘按钮",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "bot_appid",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "msg_seq",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "button_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "callback_data",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "comment_qzone",
+   "aliases": [],
+   "summary": "评论说说或回复指定评论（普通评论支持带图，楼中楼仅支持文字）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid"
+    },
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": "评论内容"
+    },
+    {
+     "name": "target_uin",
+     "type": "number",
+     "required": false,
+     "description": "说说所属 QQ 号，省略则为机器人自己"
+    },
+    {
+     "name": "comment_id",
+     "type": "string",
+     "required": false,
+     "description": "一级父评论 ID，与 comment_uin 同时提供；编号 0 有效，不能传二级回复自身的 ID"
+    },
+    {
+     "name": "comment_uin",
+     "type": "number",
+     "required": false,
+     "description": "一级父评论作者 QQ 号，与 comment_id 同时提供；不是说说所属账号"
+    },
+    {
+     "name": "reply_uin",
+     "type": "number",
+     "required": false,
+     "description": "楼中楼中要回复的用户 QQ 号，与 reply_name 同时提供，需指定父评论"
+    },
+    {
+     "name": "reply_name",
+     "type": "string",
+     "required": false,
+     "description": "要回复的用户昵称，来自评论详情的 name；与 reply_uin 同时提供"
+    },
+    {
+     "name": "images",
+     "type": "array",
+     "required": false,
+     "description": "图片数组（可选），支持 file:// http:// base64://；自动上传"
+    }
+   ]
+  },
+  {
+   "name": "complete_group_todo",
+   "aliases": [],
+   "summary": "完成群待办",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "create_collection",
+   "aliases": [],
+   "summary": "创建收藏（未实现）",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "create_flash_task",
+   "aliases": [],
+   "summary": "创建闪传任务",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "files",
+     "type": "any",
+     "required": false,
+     "description": "路径、{ file, name }，或它们的数组"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "thumb_path",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "create_group_file_folder",
+   "aliases": [],
+   "summary": "创建群文件夹",
+   "description": "返回：{ result: { retCode, retMsg }, groupItem: { folderInfo: { folderId, folderName, folderPath, createTime, modifyTime, createUin, modifyUin } } }",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "parent_id",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"/\""
+    }
+   ]
+  },
+  {
+   "name": "del_group_album_media",
+   "aliases": [],
+   "summary": "删除群相册图片或视频",
+   "description": "",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": true,
+     "description": "图片长定位标识，或视频 id"
+    }
+   ]
+  },
+  {
+   "name": "delete_custom_face",
+   "aliases": [],
+   "summary": "删除收藏表情",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_essence_msg",
+   "aliases": [],
+   "summary": "移除精华消息",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_flash_file",
+   "aliases": [],
+   "summary": "删除闪传文件",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_friend",
+   "aliases": [],
+   "summary": "删除好友",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "block",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "delete_group_file",
+   "aliases": [],
+   "summary": "删除群文件",
+   "description": "",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_group_file_folder",
+   "aliases": [],
+   "summary": "删除群文件夹",
+   "description": "",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_group_folder",
+   "aliases": [],
+   "summary": "删除群文件夹",
+   "description": "",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_group_tag",
+   "aliases": [],
+   "summary": "从某个群分类移除资料标签",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_class",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_msg",
+   "aliases": [],
+   "summary": "撤回消息",
+   "description": "",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "delete_qzone_msg",
+   "aliases": [],
+   "summary": "删除一条说说（QQ 空间，按 tid）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid（来自 get_qzone_msg_list / send_qzone_msg）"
+    }
+   ]
+  },
+  {
+   "name": "do_group_album_comment",
+   "aliases": [],
+   "summary": "do_group_album_comment",
+   "description": "",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "download_file",
+   "aliases": [],
+   "summary": "下载文件（url 或 base64）到 data/downloads",
+   "description": "返回：{ file }",
+   "category": "图片、语音和文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "url",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "base64",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "headers",
+     "type": "any",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "download_file_image_stream",
+   "aliases": [],
+   "summary": "以流式方式下载图片(缓存图片 id / URL / stream 目录本地文件)",
+   "description": "返回：流式帧:file_info → file_chunk* → file_complete",
+   "category": "流式传输",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径(限 stream 临时目录)/ http(s) URL"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件 ID(缓存的图片/语音 id)"
+    },
+    {
+     "name": "chunk_size",
+     "type": "number",
+     "required": false,
+     "description": "分块大小(字节,默认 64KB)"
+    }
+   ]
+  },
+  {
+   "name": "download_file_record_stream",
+   "aliases": [],
+   "summary": "以流式方式下载语音(缓存语音 id / URL / stream 目录本地文件)",
+   "description": "返回：流式帧:file_info → file_chunk* → file_complete",
+   "category": "流式传输",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径(限 stream 临时目录)/ http(s) URL"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件 ID(缓存的图片/语音 id)"
+    },
+    {
+     "name": "chunk_size",
+     "type": "number",
+     "required": false,
+     "description": "分块大小(字节,默认 64KB)"
+    }
+   ]
+  },
+  {
+   "name": "download_file_stream",
+   "aliases": [],
+   "summary": "以流式方式下载文件(stream 目录本地文件 / URL / 缓存媒体)",
+   "description": "返回：流式帧:file_info → file_chunk* → file_complete",
+   "category": "流式传输",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": "文件路径(限 stream 临时目录)/ http(s) URL"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": "文件 ID(缓存的图片/语音 id)"
+    },
+    {
+     "name": "chunk_size",
+     "type": "number",
+     "required": false,
+     "description": "分块大小(字节,默认 64KB)"
+    }
+   ]
+  },
+  {
+   "name": "download_fileset",
+   "aliases": [],
+   "summary": "解析闪传文件下载直链（不下载，由调用方实现下载）",
+   "description": "返回：{ url, file_name, file_size }",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "file_name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "file_index",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "fetch_custom_face",
+   "aliases": [],
+   "summary": "获取自定义表情",
+   "description": "返回：字符串数组：return_type=url 时为图片 URL，return_type=id 时为 emoji_id。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 10"
+    },
+    {
+     "name": "return_type",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"url\""
+    }
+   ]
+  },
+  {
+   "name": "fetch_custom_face_detail",
+   "aliases": [],
+   "summary": "获取自定义表情详情",
+   "description": "返回：自定义表情详情数组，包含资源标识、图片地址、摘要与描述。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 48"
+    }
+   ]
+  },
+  {
+   "name": "fetch_emoji_like",
+   "aliases": [],
+   "summary": "获取表情回应用户（NapCat 分页）",
+   "description": "返回：分页的表情回应用户列表（NapCat 形状），含分页游标 cookie 与首/末页标记。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "emojiId",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 10"
+    },
+    {
+     "name": "cookie",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "fetch_face_entity",
+   "aliases": [],
+   "summary": "按编号查询 QQ 系统表情",
+   "description": "返回：表情详情；编号不存在时返回 null。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "face_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 系统表情编号"
+    },
+    {
+     "name": "refresh",
+     "type": "boolean",
+     "required": false,
+     "description": "是否强制从 QQ 刷新目录；默认 false"
+    }
+   ]
+  },
+  {
+   "name": "fetch_ptt_text",
+   "aliases": [
+    "get_ptt_text",
+    "get_record_text"
+   ],
+   "summary": "获取语音转文字结果",
+   "description": "返回：{ text }：语音识别出的文本。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "fetch_super_face_id",
+   "aliases": [],
+   "summary": "判断 QQ 系统表情是否使用超级表情格式",
+   "description": "返回：是否使用超级表情格式。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "face_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 系统表情编号"
+    },
+    {
+     "name": "refresh",
+     "type": "boolean",
+     "required": false,
+     "description": "是否强制从 QQ 刷新目录；默认 false"
+    }
+   ]
+  },
+  {
+   "name": "fetch_sys_faces",
+   "aliases": [],
+   "summary": "获取 QQ 系统表情目录",
+   "description": "返回：按分组返回完整的 QQ 系统表情映射。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "refresh",
+     "type": "boolean",
+     "required": false,
+     "description": "是否强制从 QQ 刷新目录；默认 false"
+    }
+   ]
+  },
+  {
+   "name": "forward_friend_single_msg",
+   "aliases": [],
+   "summary": "转发单条消息给好友",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "forward_group_single_msg",
+   "aliases": [],
+   "summary": "转发单条消息到群",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "friend_poke",
+   "aliases": [],
+   "summary": "好友拍一拍",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "target_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_ai_characters",
+   "aliases": [],
+   "summary": "获取 AI 语音角色",
+   "description": "返回：按分类分组的 AI 语音角色列表，每组含分类名与角色（id、名称、试听 URL）。",
+   "category": "AI 语音",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "chat_type",
+     "type": "number",
+     "required": false,
+     "description": "默认 1"
+    }
+   ]
+  },
+  {
+   "name": "get_ai_record",
+   "aliases": [],
+   "summary": "生成 AI 语音",
+   "description": "",
+   "category": "AI 语音",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "character",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "chat_type",
+     "type": "number",
+     "required": false,
+     "description": "默认 1"
+    }
+   ]
+  },
+  {
+   "name": "get_clientkey",
+   "aliases": [],
+   "summary": "获取 clientkey",
+   "description": "返回：{ clientKey, expireTime, keyIndex }：clientkey 及其过期时间与索引。",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_collection_list",
+   "aliases": [],
+   "summary": "获取收藏列表",
+   "description": "返回：返回收藏条目、是否还有更多数据及底部时间游标。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "category",
+     "type": "number",
+     "required": false,
+     "description": "收藏分类 ID；0 表示全部分类；默认 0"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "最多返回的收藏数量；默认 50"
+    }
+   ]
+  },
+  {
+   "name": "get_cookies",
+   "aliases": [],
+   "summary": "获取 Cookies",
+   "description": "返回：{ cookies }：指定域名的 Cookie 字符串。",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "domain",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"qun.qq.com\""
+    }
+   ]
+  },
+  {
+   "name": "get_credentials",
+   "aliases": [],
+   "summary": "获取凭证",
+   "description": "返回：{ cookies, token, csrf_token }：Cookie 字符串与 CSRF 令牌（token 与 csrf_token 同值）。",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "domain",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"qun.qq.com\""
+    }
+   ]
+  },
+  {
+   "name": "get_csrf_token",
+   "aliases": [],
+   "summary": "获取 CSRF 令牌",
+   "description": "返回：{ token }：CSRF 令牌（bkn，数值）。",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_doubt_friends_add_request",
+   "aliases": [],
+   "summary": "获取可疑好友申请",
+   "description": "返回：可疑好友申请数组，每项含 uid（作为处理用 flag）、昵称、来源、留言与申请时间。",
+   "category": "好友和进群申请",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 50"
+    }
+   ]
+  },
+  {
+   "name": "get_emoji_likes",
+   "aliases": [],
+   "summary": "获取表情回应用户",
+   "description": "返回：{ emoji_like_list }：回应该表情的用户列表（nick_name 恒为空串）。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_essence_msg_list",
+   "aliases": [],
+   "summary": "获取精华消息列表",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_file",
+   "aliases": [],
+   "summary": "获取文件信息（仅图片/语音缓存；群文件请用 get_group_file_url）",
+   "description": "",
+   "category": "图片、语音和文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_fileset_id",
+   "aliases": [],
+   "summary": "从 QQ 闪传分享码或官方分享链接获取 fileset_id",
+   "description": "返回：{ fileset_id }：解析出的文件集 ID。",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "share_code",
+     "type": "string",
+     "required": true,
+     "description": "QQ 闪传分享码，或 https://qfile.qq.com/q/... 官方分享链接"
+    }
+   ]
+  },
+  {
+   "name": "get_fileset_info",
+   "aliases": [],
+   "summary": "获取文件集信息",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_flash_file_list",
+   "aliases": [],
+   "summary": "获取闪传文件列表",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_flash_file_url",
+   "aliases": [],
+   "summary": "获取闪传文件链接",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "file_name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "file_index",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_forward_msg",
+   "aliases": [],
+   "summary": "获取合并转发消息（id 或 message_id）",
+   "description": "返回：{ messages }：转发内的消息节点数组（每项为 OneBot 消息事件）；reply 保留 id，有内嵌引用内容时附带 message 和可用的 qq/time/seq，可作为转发节点 content 再次发送。",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "message_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_friend_list",
+   "aliases": [],
+   "summary": "获取好友列表",
+   "description": "返回：好友列表数组，每项含 QQ 号、昵称与备注。",
+   "category": "好友和用户",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_friend_msg_history",
+   "aliases": [],
+   "summary": "获取好友消息历史（无锚点时从服务器获取最新双向记录）",
+   "description": "返回：{ messages }：好友消息事件对象数组（每项为 OneBot 消息事件，内部字段不固定）。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "无锚点时从 QQ 服务器获取最新双向历史；服务器或身份解析失败时动作失败，不返回不完整的本地缓存；默认 20"
+    },
+    {
+     "name": "reverse_order",
+     "type": "boolean",
+     "required": false,
+     "description": "仅在 message_id 非 0 时生效；true 返回锚点及更旧消息，false 返回锚点及更新消息；默认 true"
+    }
+   ]
+  },
+  {
+   "name": "get_friends_with_category",
+   "aliases": [],
+   "summary": "获取分组好友列表",
+   "description": "返回：好友分组数组；每组包含 categoryId、categoryName、categoryMbCount 和 buddyList。",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_group_admin_settings",
+   "aliases": [],
+   "summary": "获取群管理设置的当前值",
+   "description": "返回：与对应设置接口字段对齐的当前群管理设置。",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_album_list",
+   "aliases": [],
+   "summary": "get_group_album_list",
+   "description": "返回：群相册列表数组，每项为一个相册的基本信息。",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_album_media_list",
+   "aliases": [],
+   "summary": "get_group_album_media_list",
+   "description": "返回：相册图片/视频列表及下一页分页游标；视频项包含 id、url、cover、尺寸、时长和多规格地址。",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "attach_info",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_group_at_all_remain",
+   "aliases": [],
+   "summary": "获取群 @全体成员 剩余次数",
+   "description": "返回：{ can_at_all, remain_at_all_count_for_group, remain_at_all_count_for_uin }：@全体可用性与剩余次数。",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_detail_info",
+   "aliases": [],
+   "summary": "获取群详细信息",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_group_file_system_info",
+   "aliases": [],
+   "summary": "获取群文件系统信息",
+   "description": "返回：{ file_count, limit_count, used_space, total_space }：群文件数量与容量信息（均为服务端实际值）。",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_file_url",
+   "aliases": [],
+   "summary": "获取群文件下载链接",
+   "description": "返回：群文件下载链接。",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "busid",
+     "type": "any",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_group_files_by_folder",
+   "aliases": [],
+   "summary": "获取群子目录文件列表",
+   "description": "返回：群文件系统信息（文件与文件夹列表）。",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "folder",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_group_honor_info",
+   "aliases": [],
+   "summary": "获取群荣誉信息",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "type",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_group_ignore_add_request",
+   "aliases": [],
+   "summary": "获取被忽略的入群请求（NapCat）",
+   "description": "返回：被忽略的入群请求数组（NapCat 字段命名），每项含请求序列、邀请人、群信息与处理标记。",
+   "category": "好友和进群申请",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_group_ignored_notifies",
+   "aliases": [],
+   "summary": "获取被过滤的入群请求",
+   "description": "返回：被过滤的入群请求数组，每项含群号、申请人、邀请人、留言与处理标记。",
+   "category": "好友和进群申请",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_group_info",
+   "aliases": [],
+   "summary": "获取群信息",
+   "description": "返回：群信息对象。",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_group_info_ex",
+   "aliases": [],
+   "summary": "获取群信息（扩展）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_group_list",
+   "aliases": [],
+   "summary": "获取群列表",
+   "description": "返回：群信息对象数组。",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_group_member_info",
+   "aliases": [],
+   "summary": "获取群成员信息",
+   "description": "返回：群成员信息对象。",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_group_member_list",
+   "aliases": [],
+   "summary": "获取群成员列表",
+   "description": "返回：群成员信息对象数组。",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_group_msg_history",
+   "aliases": [],
+   "summary": "获取群消息历史",
+   "description": "返回：{ messages }：群消息事件对象数组（每项为 OneBot 消息事件，内部字段不固定）。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 20"
+    },
+    {
+     "name": "reverse_order",
+     "type": "boolean",
+     "required": false,
+     "description": "仅在 message_id 非 0 时生效；true 返回锚点及更旧消息，false 返回锚点及更新消息；默认 true"
+    }
+   ]
+  },
+  {
+   "name": "get_group_root_files",
+   "aliases": [],
+   "summary": "获取群根目录文件列表",
+   "description": "返回：群文件系统信息（文件与文件夹列表）。",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_share_link",
+   "aliases": [],
+   "summary": "获取群分享链接",
+   "description": "返回：用于分享或邀请加群的链接，可作为群二维码内容。",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "need_short_url",
+     "type": "boolean",
+     "required": false,
+     "description": "是否获取短链接；默认 true"
+    },
+    {
+     "name": "src_id",
+     "type": "number",
+     "required": false,
+     "description": "来源标识（兼容参数）；默认 73"
+    },
+    {
+     "name": "additional_param",
+     "type": "string",
+     "required": false,
+     "description": "附加参数"
+    }
+   ]
+  },
+  {
+   "name": "get_group_shut_list",
+   "aliases": [],
+   "summary": "获取群禁言列表",
+   "description": "返回：仍在禁言中的成员数组，每项含 QQ 号、昵称与禁言到期时间戳（秒）。",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_signed_list",
+   "aliases": [],
+   "summary": "获取群今日打卡列表",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_group_system_msg",
+   "aliases": [],
+   "summary": "获取群系统消息",
+   "description": "返回：群系统消息数组，可按群号或未处理状态过滤。",
+   "category": "好友和进群申请",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "only_pending",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "每个收件箱最多读取的记录数；默认 50"
+    }
+   ]
+  },
+  {
+   "name": "get_group_tags",
+   "aliases": [],
+   "summary": "读取某个群分类下的资料标签",
+   "description": "返回：该分类下的资料标签列表。",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_class",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_group_todo_list",
+   "aliases": [],
+   "summary": "获取群待办列表",
+   "description": "返回：群待办数组，包含可用于待办操作的消息标识、服务端摘要与时间",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "get_image",
+   "aliases": [],
+   "summary": "获取图片信息",
+   "description": "",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_login_info",
+   "aliases": [],
+   "summary": "get_login_info",
+   "description": "返回：当前登录账号的 QQ 号与昵称。",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_mini_app_ark",
+   "aliases": [],
+   "summary": "获取小程序卡片 ark",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "type",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "title",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "desc",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "picUrl",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "pic_url",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "jumpUrl",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "jump_url",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_msg",
+   "aliases": [],
+   "summary": "获取消息",
+   "description": "返回：消息事件对象（去除 post_type/self_id，附带 real_id）；逐个尝试刷新图片、语音和视频 URL，成功使用新地址，失败保留该段原地址并继续返回消息；地址更新时同步 raw_message。",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_msg_emoji_likes",
+   "aliases": [],
+   "summary": "获取一条消息的全部表情回应",
+   "description": "返回：该消息上每个表情回应的编号、数量与用户列表。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_online_clients",
+   "aliases": [],
+   "summary": "获取在线客户端",
+   "description": "返回：{ clients }：QQ 本次会话最近推送的在线设备快照。",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "no_cache",
+     "type": "boolean",
+     "required": false,
+     "description": "是否强制刷新；QQ 当前仅暴露本地快照，true 会明确失败；默认 false"
+    }
+   ]
+  },
+  {
+   "name": "get_private_file_url",
+   "aliases": [],
+   "summary": "获取私聊文件下载链接",
+   "description": "返回：私聊文件下载链接。",
+   "category": "图片、语音和文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "file_hash",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_profile_like",
+   "aliases": [],
+   "summary": "获取资料点赞",
+   "description": "返回：点赞资料：uid、最近点赞时间、收藏与点赞统计及用户明细。",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    },
+    {
+     "name": "start",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 10"
+    }
+   ]
+  },
+  {
+   "name": "get_qun_album_list",
+   "aliases": [],
+   "summary": "get_qun_album_list",
+   "description": "返回：NapCat 风格的相册列表封套：{album_list, attach_info, has_more}。",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "attach_info",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_qzone_feeds",
+   "aliases": [],
+   "summary": "获取 QQ 空间好友动态，支持结构化正文与游标分页",
+   "description": "返回：好友动态、可提取的正文与图片、统计值及下一页游标；未知内容或统计为 null，HTML 保留。",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "page_num",
+     "type": "number",
+     "required": false,
+     "description": "页码（1 起）；不传 cursor 时从首页顺序定位，较深页可能耗时较长；默认 1"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "本页数量；默认 10"
+    },
+    {
+     "name": "cursor",
+     "type": "string",
+     "required": false,
+     "description": "上一次返回的 next_cursor；原样传递，省略 page_num 或传入对应页码"
+    }
+   ]
+  },
+  {
+   "name": "get_qzone_msg_detail",
+   "aliases": [],
+   "summary": "获取 QQ 空间说说详情与一页评论（含服务端内联回复，需有访问权限）",
+   "description": "返回：说说详情、服务端报告的评论总数与本页评论；replies 仅含服务端内联返回的二级回复，不保证完整。",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid（来自 get_qzone_msg_list / send_qzone_msg）"
+    },
+    {
+     "name": "target_uin",
+     "type": "number",
+     "required": false,
+     "description": "说说所属 QQ 号，省略则取机器人自己"
+    },
+    {
+     "name": "pos",
+     "type": "number",
+     "required": false,
+     "description": "一级评论起始偏移；默认 0"
+    },
+    {
+     "name": "num",
+     "type": "number",
+     "required": false,
+     "description": "请求的一级评论数量，实际数量受服务端限制；默认 20"
+    }
+   ]
+  },
+  {
+   "name": "get_qzone_msg_list",
+   "aliases": [],
+   "summary": "获取 QQ 空间说说列表（默认机器人自己的空间）",
+   "description": "返回：说说列表对象，含说说总数与本页说说数组。",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "target_uin",
+     "type": "number",
+     "required": false,
+     "description": "目标 QQ 号，省略则取机器人自己"
+    },
+    {
+     "name": "pos",
+     "type": "number",
+     "required": false,
+     "description": "起始偏移；默认 0"
+    },
+    {
+     "name": "num",
+     "type": "number",
+     "required": false,
+     "description": "本页数量；默认 20"
+    }
+   ]
+  },
+  {
+   "name": "get_recent_contact",
+   "aliases": [],
+   "summary": "获取最近会话（占位）",
+   "description": "返回：占位实现，恒返回空数组。",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "count",
+     "type": "number",
+     "required": false,
+     "description": "默认 10"
+    }
+   ]
+  },
+  {
+   "name": "get_record",
+   "aliases": [],
+   "summary": "获取语音信息；传 out_format 则服务端转码并附带 base64",
+   "description": "返回：语音信息（file/url 为向 QQ 获取的当前下载地址）；资源元数据缺失或远端获取失败时返回错误。out_format 指定时附带转码后的 base64。",
+   "category": "图片、语音和文件",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "out_format",
+     "type": "string",
+     "required": false,
+     "description": "可选值 mp3 / amr / wma / m4a / spx / ogg / wav / flac"
+    }
+   ]
+  },
+  {
+   "name": "get_rkey",
+   "aliases": [
+    "nc_get_rkey"
+   ],
+   "summary": "获取下载 rkey",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_rkey_server",
+   "aliases": [],
+   "summary": "获取 rkey 服务器信息",
+   "description": "返回：{ expired_time, name, private_rkey?, group_rkey? }：rkey 过期时间与（存在时的）私聊/群聊 rkey。",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_share_link",
+   "aliases": [],
+   "summary": "获取文件分享链接",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "get_status",
+   "aliases": [],
+   "summary": "get_status",
+   "description": "返回：运行状态。`online` 表示账号在线；`good` 表示已确认的收发链路健康状态；`time` 为当前账号服务实例运行秒数，与 #sl 同源。",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "get_stranger_info",
+   "aliases": [],
+   "summary": "获取陌生人信息",
+   "description": "返回：用户资料，含账号标识、等级别名和可用的注册时间、会员信息。注册时间或会员信息未返回时省略对应字段；登录天数暂无可靠来源，不返回占位值。",
+   "category": "好友和用户",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    }
+   ]
+  },
+  {
+   "name": "get_unidirectional_friend_list",
+   "aliases": [],
+   "summary": "获取单向好友列表",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "get_version_info",
+   "aliases": [],
+   "summary": "get_version_info",
+   "description": "返回：实现与协议版本信息。",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "group_poke",
+   "aliases": [],
+   "summary": "群拍一拍",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    }
+   ]
+  },
+  {
+   "name": "like_qzone",
+   "aliases": [],
+   "summary": "给一条说说点赞（QQ 空间）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid"
+    },
+    {
+     "name": "target_uin",
+     "type": "number",
+     "required": false,
+     "description": "说说所属 QQ 号，省略则为机器人自己"
+    },
+    {
+     "name": "abstime",
+     "type": "number",
+     "required": false,
+     "description": "说说发表时间（unix 秒），传真实值更可靠；默认 0"
+    }
+   ]
+  },
+  {
+   "name": "list_filesets",
+   "aliases": [],
+   "summary": "列出当前账号的所有闪传文件集",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "mark_group_msg_as_read",
+   "aliases": [],
+   "summary": "标记群消息已读",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "mark_msg_as_read",
+   "aliases": [],
+   "summary": "标记消息已读（群聊/私聊自动路由）",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "target_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "mark_private_msg_as_read",
+   "aliases": [],
+   "summary": "标记私聊消息已读",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "modify_custom_face",
+   "aliases": [],
+   "summary": "修改收藏表情备注",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "desc",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "move_custom_face_to_front",
+   "aliases": [],
+   "summary": "收藏表情移到最前",
+   "description": "",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "move_group_file",
+   "aliases": [],
+   "summary": "移动群文件",
+   "description": "",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "parent_directory",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "target_directory",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "nc_get_packet_status",
+   "aliases": [],
+   "summary": "获取 packet 状态（占位）",
+   "description": "返回：占位实现，恒返回 null。",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": []
+  },
+  {
+   "name": "nc_get_user_status",
+   "aliases": [],
+   "summary": "获取用户在线/扩展状态",
+   "description": "返回：{ status, ext_status }：用户在线状态码与扩展状态码。",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "ocr_image",
+   "aliases": [
+    ".ocr_image"
+   ],
+   "summary": "OCR 图片（服务端，需图片 URL 或已缓存的图片 file_id）",
+   "description": "返回：{ texts, language }：识别文本数组（含置信度与坐标）与识别语言。",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "image",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "rename_flash_file",
+   "aliases": [],
+   "summary": "重命名闪传文件",
+   "description": "",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "new_name",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "rename_group_file",
+   "aliases": [],
+   "summary": "重命名群文件",
+   "description": "",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "current_parent_directory",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"/\""
+    },
+    {
+     "name": "new_name",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "rename_group_file_folder",
+   "aliases": [],
+   "summary": "重命名群文件夹",
+   "description": "",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "new_folder_name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "request_decrypt_key",
+   "aliases": [],
+   "summary": "请求数据库解密密钥",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "db_path",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "search_sys_faces",
+   "aliases": [],
+   "summary": "搜索 QQ 系统表情",
+   "description": "返回：匹配编号、名称、别名或分组名的表情列表。",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "query",
+     "type": "string",
+     "required": true,
+     "description": "编号、名称、别名或分组名"
+    }
+   ]
+  },
+  {
+   "name": "send_ark_share",
+   "aliases": [],
+   "summary": "分享用户/群 Ark 卡片（NapCat 标准名）",
+   "description": "返回：{ arkMsg }：服务端生成的推荐联系人 Ark 卡片 JSON 字符串。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "phone_number",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_custom_face",
+   "aliases": [],
+   "summary": "发送账号收藏表情（emoji_id 或 MD5），保留表情显示样式",
+   "description": "返回：{ message_id: number }",
+   "category": "表情包和收藏",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": "当前账号收藏表情的完整 ID 或 32 位 MD5"
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": "目标群号；与 user_id 二选一"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": "目标 QQ 号；与 group_id 二选一"
+    },
+    {
+     "name": "reply_to",
+     "type": "number",
+     "required": false,
+     "description": "可选回复消息 ID"
+    }
+   ]
+  },
+  {
+   "name": "send_flash_msg",
+   "aliases": [],
+   "summary": "发送闪传消息（私聊或群聊，引用 fileset_id 让对端下载）",
+   "description": "返回：{ message_id }",
+   "category": "闪传",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "fileset_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_forward_msg",
+   "aliases": [],
+   "summary": "发送合并转发（按 message_type/群号自动路由）",
+   "description": "返回：{ message_id, res_id, forward_id }",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "messages",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "news",
+     "type": "any",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_group_ai_record",
+   "aliases": [],
+   "summary": "发送 AI 语音到群",
+   "description": "返回：{ message_id }：已发送 AI 语音的 OneBot 消息 ID。",
+   "category": "AI 语音",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "character",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "chat_type",
+     "type": "number",
+     "required": false,
+     "description": "默认 1"
+    }
+   ]
+  },
+  {
+   "name": "send_group_ark_share",
+   "aliases": [],
+   "summary": "分享群 Ark 卡片（NapCat 标准名）",
+   "description": "返回：服务端生成的群推荐 Ark 卡片 JSON 字符串。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_group_forward_msg",
+   "aliases": [],
+   "summary": "发送群合并转发",
+   "description": "返回：{ message_id, res_id, forward_id }",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "messages",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "news",
+     "type": "any",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_group_msg",
+   "aliases": [],
+   "summary": "发送群消息",
+   "description": "返回：{ message_id: number }",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "send_like",
+   "aliases": [],
+   "summary": "点赞",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "times",
+     "type": "number",
+     "required": false,
+     "description": "默认 1"
+    }
+   ]
+  },
+  {
+   "name": "send_msg",
+   "aliases": [],
+   "summary": "发送消息（按 message_type/群号 自动路由群聊或私聊）",
+   "description": "返回：{ message_id: number }",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "message_type",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "send_packet",
+   "aliases": [
+    ".send_packet"
+   ],
+   "summary": "发送原始 SSO 包（cmd + hex data）",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "cmd",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "data",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "rsp",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "send_poke",
+   "aliases": [],
+   "summary": "拍一拍（群聊/私聊自动路由）",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_private_forward_msg",
+   "aliases": [],
+   "summary": "发送私聊合并转发",
+   "description": "返回：{ message_id, res_id, forward_id }",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "messages",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "prompt",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "news",
+     "type": "any",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "send_private_msg",
+   "aliases": [],
+   "summary": "发送私聊消息",
+   "description": "返回：{ message_id: number }",
+   "category": "消息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "auto_escape",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "send_qzone_msg",
+   "aliases": [],
+   "summary": "发表说说（QQ 空间，支持纯文字或带图；传 images 自动上传；可设置查看权限）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "content",
+     "type": "string",
+     "required": true,
+     "description": "说说正文"
+    },
+    {
+     "name": "images",
+     "type": "array",
+     "required": false,
+     "description": "图片数组（可选），支持 file:// http:// base64://；自动上传"
+    },
+    {
+     "name": "ugc_right",
+     "type": "number",
+     "required": false,
+     "description": "查看权限：1=所有人可见，4=好友可见，16=部分好友可见，64=仅自己可见，128=部分好友不可见；默认 1"
+    },
+    {
+     "name": "target_uins",
+     "type": "array",
+     "required": false,
+     "description": "权限作用 QQ 号数组；ugc_right=16 时表示可见名单，128 时表示不可见名单"
+    }
+   ]
+  },
+  {
+   "name": "send_tuwen_ark",
+   "aliases": [],
+   "summary": "发送图文 Ark 卡片（私聊/群聊）",
+   "description": "返回：null",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "title",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "desc",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "summary",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"[分享]\""
+    },
+    {
+     "name": "preview_url",
+     "type": "string",
+     "required": false,
+     "description": "默认 \"https://tangram-1251316161.file.myqcloud.com/files/20210721/e50a8e37e08f29bf1ffc7466e1950690.png\""
+    },
+    {
+     "name": "jump_url",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_diy_online_status",
+   "aliases": [],
+   "summary": "设置自定义在线状态",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "face_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "face_type",
+     "type": "number",
+     "required": false,
+     "description": "默认 1"
+    },
+    {
+     "name": "wording",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_doubt_friends_add_request",
+   "aliases": [],
+   "summary": "处理可疑好友申请",
+   "description": "",
+   "category": "好友和进群申请",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "flag",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "approve",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_essence_msg",
+   "aliases": [],
+   "summary": "设置精华消息",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_friend_add_request",
+   "aliases": [],
+   "summary": "处理好友添加请求",
+   "description": "",
+   "category": "好友和进群申请",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "flag",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "approve",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_friend_remark",
+   "aliases": [],
+   "summary": "设置好友备注",
+   "description": "",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "remark",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_friends_category",
+   "aliases": [],
+   "summary": "移动好友到指定分组",
+   "description": "返回：成功时返回空数据。",
+   "category": "好友和用户",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "uin",
+     "type": "number",
+     "required": true,
+     "description": "要移动的好友 QQ 号"
+    },
+    {
+     "name": "categoryId",
+     "type": "number",
+     "required": false,
+     "description": "目标分组 ID"
+    },
+    {
+     "name": "categoryName",
+     "type": "string",
+     "required": false,
+     "description": "目标分组名称（必须唯一且完全匹配）"
+    }
+   ]
+  },
+  {
+   "name": "set_group_add_option",
+   "aliases": [],
+   "summary": "设置加群选项",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "add_type",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    },
+    {
+     "name": "group_question",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_answer",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_add_request",
+   "aliases": [],
+   "summary": "处理加群请求",
+   "description": "",
+   "category": "好友和进群申请",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "flag",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "sub_type",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "type",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "approve",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_admin",
+   "aliases": [],
+   "summary": "设置/取消管理员",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "enable",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_group_album_media_like",
+   "aliases": [],
+   "summary": "set_group_album_media_like",
+   "description": "",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "batch_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "lloc",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_anonymous",
+   "aliases": [],
+   "summary": "匿名开关（未实现，返回 ok）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "set_group_anonymous_ban",
+   "aliases": [],
+   "summary": "匿名禁言（未实现，返回 ok）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "set_group_ban",
+   "aliases": [],
+   "summary": "禁言群成员（duration=0 解除）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "duration",
+     "type": "number",
+     "required": false,
+     "description": "默认 1800"
+    }
+   ]
+  },
+  {
+   "name": "set_group_card",
+   "aliases": [],
+   "summary": "设置群名片（空字符串清除）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "card",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_kick",
+   "aliases": [],
+   "summary": "踢出群成员",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "reject_add_request",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "set_group_kick_members",
+   "aliases": [],
+   "summary": "批量踢出群成员",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "array",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "reject_add_request",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 false"
+    }
+   ]
+  },
+  {
+   "name": "set_group_leave",
+   "aliases": [],
+   "summary": "退群",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "set_group_member_invite_policy",
+   "aliases": [],
+   "summary": "设置群成员邀请策略",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "policy",
+     "type": "string",
+     "required": true,
+     "description": "可选值 disabled / require_approval / no_approval / no_approval_under_100"
+    }
+   ]
+  },
+  {
+   "name": "set_group_member_permissions",
+   "aliases": [],
+   "summary": "设置群成员权限（仅群主可改）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "allow_member_upload_album",
+     "type": "boolean",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "allow_member_temporary_session",
+     "type": "boolean",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "allow_member_create_group",
+     "type": "boolean",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_name",
+   "aliases": [],
+   "summary": "设置群名",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "group_name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_new_member_history_visibility",
+   "aliases": [],
+   "summary": "设置新成员是否可查看历史消息",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "visible",
+     "type": "boolean",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_portrait",
+   "aliases": [],
+   "summary": "设置群头像",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_reaction",
+   "aliases": [],
+   "summary": "群聊表情回应",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "code",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "is_set",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_group_remark",
+   "aliases": [],
+   "summary": "设置群备注",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "remark",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_robot_add_option",
+   "aliases": [],
+   "summary": "设置群机器人加群选项",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "robot_member_switch",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "robot_member_examine",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_search",
+   "aliases": [],
+   "summary": "设置群被搜索方式（群指纹 / 群号搜索开关）",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "no_finger_open",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "no_code_finger_open",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_sign",
+   "aliases": [
+    "send_group_sign"
+   ],
+   "summary": "群签到",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    }
+   ]
+  },
+  {
+   "name": "set_group_special_title",
+   "aliases": [],
+   "summary": "设置群头衔",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "QQ 号"
+    },
+    {
+     "name": "special_title",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_todo",
+   "aliases": [],
+   "summary": "设置群待办",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_group_whole_ban",
+   "aliases": [],
+   "summary": "全员禁言开关",
+   "description": "",
+   "category": "群管理和群信息",
+   "origin": "OneBot 11",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "enable",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_input_status",
+   "aliases": [],
+   "summary": "设置输入状态",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "event_type",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    }
+   ]
+  },
+  {
+   "name": "set_msg_emoji_like",
+   "aliases": [],
+   "summary": "设置消息表情回应",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "message_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "emoji_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "set",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_online_status",
+   "aliases": [],
+   "summary": "设置在线状态",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "status",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "ext_status",
+     "type": "number",
+     "required": false,
+     "description": "默认 0"
+    },
+    {
+     "name": "battery_status",
+     "type": "number",
+     "required": false,
+     "description": "默认 100"
+    }
+   ]
+  },
+  {
+   "name": "set_qq_avatar",
+   "aliases": [],
+   "summary": "设置 QQ 头像",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "set_qq_profile",
+   "aliases": [],
+   "summary": "设置 QQ 资料",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "nickname",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "personal_note",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "sex",
+     "type": "number",
+     "required": false,
+     "description": "0 未知，1 男，2 女"
+    }
+   ]
+  },
+  {
+   "name": "set_qzone_ban",
+   "aliases": [],
+   "summary": "拉黑或解除拉黑某人（修改机器人自身 QQ 空间黑名单；enable=true 拉黑，false 解除）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": "目标 QQ 号"
+    },
+    {
+     "name": "enable",
+     "type": "boolean",
+     "required": false,
+     "description": "true 拉黑，false 解除拉黑；默认 true"
+    }
+   ]
+  },
+  {
+   "name": "set_qzone_msg_right",
+   "aliases": [],
+   "summary": "修改一条已发说说的查看权限（QQ 空间，按 tid）",
+   "description": "返回：更新后的权限对象。",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid（来自 get_qzone_msg_list / send_qzone_msg）"
+    },
+    {
+     "name": "ugc_right",
+     "type": "number",
+     "required": true,
+     "description": "查看权限：1=所有人可见，4=好友可见，16=部分好友可见，64=仅自己可见，128=部分好友不可见"
+    },
+    {
+     "name": "target_uins",
+     "type": "array",
+     "required": false,
+     "description": "权限作用 QQ 号数组；ugc_right=16 时表示可见名单，128 时表示不可见名单"
+    }
+   ]
+  },
+  {
+   "name": "set_restart",
+   "aliases": [],
+   "summary": "重启（不支持）",
+   "description": "",
+   "category": "账号和系统",
+   "origin": "OneBot 11",
+   "params": []
+  },
+  {
+   "name": "set_self_longnick",
+   "aliases": [],
+   "summary": "设置个性签名（longNick/long_nick，严格 string）",
+   "description": "",
+   "category": "自己的资料和在线状态",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "longNick",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "long_nick",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "share_group_ex",
+   "aliases": [],
+   "summary": "分享群 Ark 卡片",
+   "description": "返回：服务端生成的群推荐 Ark 卡片 JSON 字符串。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "share_peer",
+   "aliases": [],
+   "summary": "分享用户/群 Ark 卡片",
+   "description": "返回：{ arkMsg }：服务端生成的推荐联系人 Ark 卡片 JSON 字符串。",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "phone_number",
+     "type": "string",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "test_download_stream",
+   "aliases": [],
+   "summary": "测试下载流(推送 10 个数据帧,验证流式传输,不触达 QQ)",
+   "description": "返回：流式帧:data_chunk*10 → data_complete(error=true 时以 error 帧结束)",
+   "category": "流式传输",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "error",
+     "type": "boolean",
+     "required": false,
+     "description": "是否触发测试错误；默认 false"
+    }
+   ]
+  },
+  {
+   "name": "trans_group_file",
+   "aliases": [],
+   "summary": "转存群文件",
+   "description": "返回：{ ok: true }",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "file_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "translate_en2zh",
+   "aliases": [],
+   "summary": "英译中",
+   "description": "返回：{ words }：与输入等长的中文译文字符串数组。",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "words",
+     "type": "array",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "unlike_qzone",
+   "aliases": [],
+   "summary": "取消对一条说说的点赞（QQ 空间；取消赞端点待真机核实）",
+   "description": "",
+   "category": "QQ 空间和其他",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "tid",
+     "type": "string",
+     "required": true,
+     "description": "说说 tid"
+    },
+    {
+     "name": "target_uin",
+     "type": "number",
+     "required": false,
+     "description": "说说所属 QQ 号，省略则为机器人自己"
+    },
+    {
+     "name": "abstime",
+     "type": "number",
+     "required": false,
+     "description": "说说发表时间（unix 秒），传真实值更可靠；默认 0"
+    }
+   ]
+  },
+  {
+   "name": "upload_file_stream",
+   "aliases": [],
+   "summary": "以流式分块方式上传文件到机器人本地(返回可用于发送的本地路径)",
+   "description": "返回：流式帧:分块确认 type=stream、完成 type=response(含 file_path/file_name/file_size/sha256)",
+   "category": "流式传输",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "stream_id",
+     "type": "string",
+     "required": true,
+     "description": "流 ID(客户端生成的 UUID,限 [A-Za-z0-9_-])"
+    },
+    {
+     "name": "chunk_data",
+     "type": "string",
+     "required": false,
+     "description": "分块数据(Base64)"
+    },
+    {
+     "name": "chunk_index",
+     "type": "number",
+     "required": false,
+     "description": "分块索引(从 0 开始)"
+    },
+    {
+     "name": "total_chunks",
+     "type": "number",
+     "required": false,
+     "description": "总分块数(新流必填)"
+    },
+    {
+     "name": "file_size",
+     "type": "number",
+     "required": false,
+     "description": "文件总大小(字节)"
+    },
+    {
+     "name": "expected_sha256",
+     "type": "string",
+     "required": false,
+     "description": "期望的整文件 SHA256(校验)"
+    },
+    {
+     "name": "is_complete",
+     "type": "boolean",
+     "required": false,
+     "description": "是否为最后一个分块/触发合并"
+    },
+    {
+     "name": "filename",
+     "type": "string",
+     "required": false,
+     "description": "文件名"
+    },
+    {
+     "name": "reset",
+     "type": "boolean",
+     "required": false,
+     "description": "重置并丢弃该流"
+    },
+    {
+     "name": "verify_only",
+     "type": "boolean",
+     "required": false,
+     "description": "仅查询当前流状态"
+    },
+    {
+     "name": "file_retention",
+     "type": "number",
+     "required": false,
+     "description": "合并文件保留毫秒(0=不回收)；默认 300000"
+    }
+   ]
+  },
+  {
+   "name": "upload_forward_msg",
+   "aliases": [
+    "upload_foward_msg"
+   ],
+   "summary": "上传转发消息",
+   "description": "",
+   "category": "消息",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "messages",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "message",
+     "type": "消息段数组或文本",
+     "required": false,
+     "description": "转发节点数组；节点 content 内的 reply.data.message 可提供自定义引用内容（字符串或消息段），qq/time/seq 可选；仅用于转发内引用预览。"
+    },
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": false,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "upload_group_file",
+   "aliases": [],
+   "summary": "上传群文件",
+   "description": "返回：{ file_id: string }",
+   "category": "群文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "folder",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "folder_id",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "upload_file",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "upload_image_to_qun_album",
+   "aliases": [],
+   "summary": "upload_image_to_qun_album",
+   "description": "",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "album_name",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": ""
+    }
+   ]
+  },
+  {
+   "name": "upload_private_file",
+   "aliases": [],
+   "summary": "上传私聊文件",
+   "description": "返回：{ file_id: string }",
+   "category": "图片、语音和文件",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "user_id",
+     "type": "number",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": ""
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "description": ""
+    },
+    {
+     "name": "upload_file",
+     "type": "boolean",
+     "required": false,
+     "description": "默认 true"
+    }
+   ]
+  },
+  {
+   "name": "upload_video_to_qun_album",
+   "aliases": [],
+   "summary": "上传视频到群相册",
+   "description": "返回：{ id: string }",
+   "category": "群相册",
+   "origin": "SnowLuma",
+   "params": [
+    {
+     "name": "group_id",
+     "type": "number",
+     "required": true,
+     "description": "群号"
+    },
+    {
+     "name": "album_id",
+     "type": "string",
+     "required": true,
+     "description": "相册 id"
+    },
+    {
+     "name": "album_name",
+     "type": "string",
+     "required": true,
+     "description": "相册名称"
+    },
+    {
+     "name": "file",
+     "type": "string",
+     "required": true,
+     "description": "视频文件"
+    }
+   ]
+  }
+ ]
+}

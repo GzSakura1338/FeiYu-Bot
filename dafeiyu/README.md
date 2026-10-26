@@ -1,11 +1,11 @@
 # FeiYu Bot
 
 自己实现的 QQ 机器人控制台（代码里的包名和目录名仍叫 dafeiyu）（Java 25 + Gradle），前端按 m3.material.io 的 Material Design 3 风格设计。
-负责连接 NapCat、记录消息，并用大模型在 QQ 里自动回复（Agent 部分对齐 opencode 的实现）。
+负责连接 [SnowLuma](https://github.com/SnowLuma/SnowLuma)（OneBot v11）、记录消息，并用大模型在 QQ 里自动回复（Agent 部分对齐 opencode 的实现）。2026-10-26 起 QQ 端从 NapCat 换成了 SnowLuma。
 
 ## 运行
 
-- 双击上一级目录的 `start-dafeiyu.bat`，或者在本目录执行 `.\gradlew.bat run`；Linux 和 macOS 用上一级目录的 `./start-dafeiyu.sh` 或 `./gradlew run`，在云服务器上部署（国内镜像、时区、NapCat Docker）看 [Linux部署.md](Linux部署.md)
+- 双击上一级目录的 `start-dafeiyu.bat`，或者在本目录执行 `.\gradlew.bat run`；Linux 和 macOS 用上一级目录的 `./start-dafeiyu.sh` 或 `./gradlew run`，在云服务器上部署（国内镜像、时区、SnowLuma Docker）看 [Linux部署.md](Linux部署.md)
 - 打开网页控制台：http://127.0.0.1:8090/
 - `config.properties`：控制台端口、前端目录、数据库位置，以及反向 WebSocket 的初始默认值；`time.zone=Asia/Shanghai` 这样写可以指定时区（留空跟系统，云服务器默认常是 UTC）
 - 其余配置都在网页上管理，存在 SQLite 数据库 `data/dafeiyu.db`（含 API Key，已加入 .gitignore）；表结构升级前会自动备份到 `data/backup/dafeiyu-v<旧版本>-<时间>.db`。备份目录写不进去（比如目录是 root 建的、服务用别的账号跑）时改存到系统临时目录的 `feiyu-backup/`，再不行就不备份直接升级（每一步升级都在事务里，失败会回滚），这些都会在日志和标准错误里写明原因，不会再因为备份失败启动不了
@@ -14,7 +14,7 @@
 
 **注释**：项目不写注释，改完运行 `python scripts/strip-comments.py`（`--check` 只检查）。
 
-**NapCat 升级后**：在本目录运行 `node scripts/napcat-api.mjs`，从 `../napcat/napcat.mjs` 重新生成 QQ 接口清单 `src/main/resources/napcat-api.json`，再重启。
+**SnowLuma 升级后**：在本目录运行 `node scripts/snowluma-api.mjs 新版本号`，从 SnowLuma 仓库对应版本的动作目录重新生成 QQ 接口清单 `src/main/resources/snowluma-api.json`，再重启。连不上 GitHub 时先下载 `packages/mcp/src/generated/catalog.json`，把文件路径当第二个参数传进去。
 
 ## Agent
 
@@ -63,7 +63,7 @@
 - 群聊会话里显示群友的 QQ 头像：历史记录按这个群的消息存档把昵称（含 `#尾号` 标签）对到 QQ 号，新消息直接带 QQ 号
 - QQ 群聊 / 私聊会话按 QQ 桌面版排版：别人在左、她在右，头像和气泡顶端对齐；群聊只在别人的气泡上方写名字（主人带「主人」标签），私聊不写名字；时间不跟在每条后面，隔 5 分钟以上才在中间插一行（今天只写时分，昨天、星期几、日期依次往前），鼠标停在头像上能看到精确时间；被回复的那句放进气泡顶部，文字带图片时图片也在气泡里，单发的图片和表情包不套气泡。颜色、圆角和进场动画用项目里的 MD3 色彩角色、形状和动效变量（她的气泡是 primary，别人的是 surface-container-highest）
 - 表情包（「表情包」子页）：
-  - 来源：这个 QQ 收藏的表情包（「同步收藏」调 NapCat `fetch_custom_face`，之后每 6 小时自动同步）和她在群里 / 私聊里见过的表情包（`sub_type=1` 的图片和商城表情，按 QQ 文件名里的 MD5 去重），图片存在 `data/stickers/`
+  - 来源：这个 QQ 收藏的表情包（「同步收藏」调 `fetch_custom_face`，之后每 6 小时自动同步）和她在群里 / 私聊里见过的表情包（`sub_type=1` 的图片和商城表情，按 QQ 文件名里的 MD5 去重），图片存在 `data/stickers/`
   - 认图：每张新表情包让模型看一眼写一句 8 字以内的说明（每小时最多 120 张）；有色情暴露、血腥暴力、政治人物或标语、违法内容的标成「不合适」，她永远不会用
   - 使用：每次回复时把最常用的 24 张有说明的表情包列给她；群里别人发的表情包显示成 `[表情包#12：猫猫震惊]`。她写 `[表情包:编号]` 就单独发一张；一条最多一张，最近两条回复用过就不再发
   - 页面上可以看所有表情包、手动发到任意 QQ 会话、改说明、隐藏、删除
@@ -86,8 +86,8 @@
   - 关闭时群里只回复 @ 机器人的消息
   - 打开后群里每条消息一收到就写进这个群的会话记录（「昵称：内容」，带被回复的那句），会话页实时显示；她正在回复时到的消息先暂存，回完再按顺序写进去，所以她的回复总排在她看过的消息后面；每轮只额外带一句这次是「被叫到 / 旁听 / 独处」的说明，这句不进记录；旁听后没说话会留一条「她看过了，没接话」
   - 小程序卡片、合并转发、语音、视频、文件、位置、链接分享、骰子、戳一戳等也会转成文字（如「[QQ小程序]……」「[语音]」），不会被丢掉
-  - 合并转发（`QqForwards`）：收到就在后台读一遍，读到的内容存进 `forwards` 表（库版本 15），以后重启、过期都还能看。NapCat 只在内存里记最近 5000 条消息的编号，旧转发用 `get_forward_msg` 会报「消息已过期或者为内层消息」，这时按消息记录找到它在哪个群 / 私聊，用 `get_group_msg_history` / `get_friend_msg_history` 以这条消息为起点取 1 条，NapCat 会重新登记并把转发内容一起解析出来。少数转发 NapCat 能找到消息、解析出来却是空的（NapCat 解析时会丢掉认不出发送者或来源的记录，估计是这个原因），这种读不到
-  - 语音（`QqVoice`）：收到语音时另开线程调 NapCat `fetch_ptt_text`（QQ 自带的语音转文字）。QQ 那边是异步转的，第一次常常还没好，隔 1.5 / 2.5 / 4 秒再取，一般 2 秒左右拿到，她看到的是「[语音：转出来的文字]」；转不出来就还是「[语音]」，不耽误收消息。网页上的语音用 `/api/media/record` 播放：QQ 语音是 SILK 编码，浏览器放不了，交给 NapCat `get_record` 转成 mp3，缓存在 `data/voice/`；以前只存了临时链接的旧语音，按链接里的 fileid 从消息记录里找回文件名也能放。`/api/media/record-text?message_id=` 可以单独取某条语音的文字
+  - 合并转发（`QqForwards`）：收到就在后台读一遍，读到的内容存进 `forwards` 表（库版本 15），以后重启、过期都还能看。旧转发用 `get_forward_msg` 读不到时，按消息记录找到它在哪个群 / 私聊，用 `get_group_msg_history` / `get_friend_msg_history` 以这条消息为起点取 1 条，让 QQ 端重新解析一遍。SnowLuma 的转发编号是一串字母数字（resId），NapCat 时期是纯数字，两种都认
+  - 语音（`QqVoice`）：收到语音时另开线程调 `fetch_ptt_text`（QQ 自带的语音转文字）。QQ 那边是异步转的，第一次常常还没好，隔 1.5 / 2.5 / 4 秒再取，一般 2 秒左右拿到，她看到的是「[语音：转出来的文字]」；转不出来就还是「[语音]」，不耽误收消息。网页上的语音用 `/api/media/record` 播放：QQ 语音是 SILK 编码，浏览器放不了，交给 SnowLuma `get_record` 转成 mp3，缓存在 `data/voice/`；以前只存了临时链接的旧语音，按链接里的 fileid 从消息记录里找回文件名也能放。`/api/media/record-text?message_id=` 可以单独取某条语音的文字
   - 卡片消息（`QqCards`）：QQ 的 json 卡片按类型解析。小程序分享（B 站、小红书……）取 App 名、标题、链接（优先 `qqdocurl`，b23.tv 去掉分享参数）和封面；文章 / 链接分享取来源、标题、摘要、链接、封面；音乐取平台、歌名、歌手、链接；推荐好友 / 群取昵称和号码；位置取地名和地址；群公告解出 base64 的正文；不认识的退回卡片自带的提示文字。她看到的是「[卡片 · 哔哩哔哩：标题 链接：… 封面是图片#12]」「[音乐 · QQ音乐：晴天 - 周杰伦 链接：…]」「[推荐群：名字（群号：…）]」这样，封面登记成图片编号，可以 view_image 看，链接可以 webfetch 打开。网页上显示成卡片：封面缩略图、标题、摘要、来源和域名，点击打开链接
   - 被叫到就回：@ 机器人、回复机器人的消息、或消息里喊了唤醒词（默认「小鲸鱼」「大肥鱼」，消息同时 @ 了别人时不算，避免和同名机器人撞车）
   - 没人叫时看心情：群里安静 4~12 秒（一直有人说话最多等 25 秒）后让她看一眼，消息带「【旁听】」标记和「你最近十分钟说了几句」，接不接由她自己的心情和兴趣决定，不想说就回 `[沉默]`（不发也不记入历史，看过的消息下次标成「以上是你刚才看过的」）；两次看群至少隔 30 秒，每次看群都要调用一次模型
@@ -104,9 +104,9 @@
 - 网络检索 `websearch`（`WebSearch`、`WebSearchTool`，不需要 API Key）：含中文的查询先走 cn.bing.com（抓结果页的标题、链接、摘要），英文先走 Exa（opencode 同款的 `mcp.exa.ai` 免费接口，带网页正文摘录），一边失败或没结果就换另一边；默认 8 条，最多 15 条。工具说明里带当天日期，提示查近况时带上年份，需要细节再用 webfetch 打开。后端直连，不走系统代理。内心也有一个 `search` 工具（每次 5 条），好奇或群里聊到不懂的东西时会自己去搜
 - 读网页 `webfetch`（`WebFetchTool`、`HtmlText`、`PublicWeb`）：用真浏览器标识；有 `<article>` / `<main>` 就只取正文，几乎全是短链接的列表当菜单去掉；一次给约 8000 字，`offset` 接着读，`find` 写关键词只返回相关段落；第一次打开时在末尾列出编号链接（正文里写成「文字[3]」）和页面上的图片，可以顺着点下去或交给 `view_image` 看；同一网址 15 分钟内不重新下载；网页 30 秒没传完就放弃（包括只发了响应头、正文一直不来的）。直连连不上时，如果系统设了本机代理（比如 127.0.0.1:7897，各系统怎么读见「多平台和命令沙盒」），就改走代理并记住这个网站；网站拒绝（403 / 412 / 429 等）或网页要靠脚本才有内容时，用 Exa 的 `web_fetch_exa` 兜底。知乎、百度百科、贴吧、B 站这类网站两边都读不了。内心也有 `webfetch`，提示词里鼓励她闲着时上网冲浪
 - 下载文件 `download`（`DownloadTool`，走 `PublicWeb` 同一套公网检查、跳转和本机代理）：把公网链接上的文件下到工作目录，默认放「下载/」，也可以写文件夹或完整路径。文件名先取服务器给的（Content-Disposition，含 `filename*` 编码），没有就用网址最后一段，再没有按类型补扩展名；同名文件自动加「 (1)」不覆盖，只有写了完整路径才覆盖。最大 200 MB、10 分钟，边下边写进临时文件，下完再挪进工作目录（和 write 一样检查不能出工作目录）。服务器给的是网页（text/html）时提醒她可能要登录或换直链。默认开着，QQ 里也能直接用（不算要交给后台的「动手」工具），下完可以 send_file 发出去
-- 看图放大 `view_image`（`ImageViewer`，模型支持看图才给）：QQ 收到的普通图片都登记进 `images` 表（库版本 12，按 QQ 文件名去重），聊天里显示成「[图片#12]」；图片链接过期后用 NapCat `get_image` 重新取（NapCat 开了 `enableLocalFile2Url` 时直接用它带回来的文件内容，NapCat 在容器里也取得回来）；图片最大 32 MB，太大时明确说「太大了」，取不回时说明是过期以及最后一次的原因，不再一律说过期。不写 area 看整张（小图放大到 768 像素以上，大图缩到 1568），默认不在图上画任何东西，返回里写明给她的是缩到 / 放大到多大（以前画 4×4 红线和 16 个黄色标签块，她会把标签当成图里的东西，比如把猫说成“黄底”“挂着小牌子”；返回里也只写原图尺寸，她会高估自己看到的清晰度。要格子参照可以传 `grid: true`）；area 按 4×4 均分写格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55），从原图裁出来，最多放大 4 倍。提示和工具说明都写明：没真正看到的图不能描述，看了但颜色、配饰、文字这类细节看不清就放大或直说看不清；一轮看满 6 次后不再说“先根据看到的说”，改成“没看到就别猜”。回复里提到画面、图里这类词，可这一轮既没附图也没调 view_image 时，日志记一条 `talked about a picture without looking at one this turn`，方便统计。也能看 `[表情包#5]`、网页图片网址和（能用 read 时，或者在内心里）工作目录里的图片；只填了数字、又没有这个图片编号时，退回去找同号的表情包。返回的图只放在这一轮的请求里，不写进聊天记录；每轮最多看 6 次。QQ 会话、网页会话、后台任务和内心都能用
+- 看图放大 `view_image`（`ImageViewer`，模型支持看图才给）：QQ 收到的普通图片都登记进 `images` 表（库版本 12，按 QQ 文件名去重），聊天里显示成「[图片#12]」；图片链接过期后用 `get_image` 重新取（返回里带了文件内容（base64）时直接用，QQ 端跑在容器里也取得回来）；图片最大 32 MB，太大时明确说「太大了」，取不回时说明是过期以及最后一次的原因，不再一律说过期。不写 area 看整张（小图放大到 768 像素以上，大图缩到 1568），默认不在图上画任何东西，返回里写明给她的是缩到 / 放大到多大（以前画 4×4 红线和 16 个黄色标签块，她会把标签当成图里的东西，比如把猫说成“黄底”“挂着小牌子”；返回里也只写原图尺寸，她会高估自己看到的清晰度。要格子参照可以传 `grid: true`）；area 按 4×4 均分写格子（B2、B2:C3）、方位（左上、下半、中间……）或百分比框（30,40,60,55），从原图裁出来，最多放大 4 倍。提示和工具说明都写明：没真正看到的图不能描述，看了但颜色、配饰、文字这类细节看不清就放大或直说看不清；一轮看满 6 次后不再说“先根据看到的说”，改成“没看到就别猜”。回复里提到画面、图里这类词，可这一轮既没附图也没调 view_image 时，日志记一条 `talked about a picture without looking at one this turn`，方便统计。也能看 `[表情包#5]`、网页图片网址和（能用 read 时，或者在内心里）工作目录里的图片；只填了数字、又没有这个图片编号时，退回去找同号的表情包。返回的图只放在这一轮的请求里，不写进聊天记录；每轮最多看 6 次。QQ 会话、网页会话、后台任务和内心都能用
 - 她自己发的图：用 send_file 或生图发到 QQ 的图片也登记进 `images` 表（按本地文件路径），聊天记录和工具结果里写成「[图片#N] 文件名」，以后能用 view_image 再看；发表情包记成「[表情包#N]」，被引用时带上表情包的说明。有人回复一张图（她自己发的或别人发的、图片或表情包）来找她时，那张图直接附在这一轮里给她看，不用她自己想起来去调 view_image。
-  发图（`QqOutbox`）先把本机文件路径交给 NapCat；NapCat 读不到（比如跑在没挂工作目录的容器里，报“识别URL失败”）就改成直接带图片数据（base64）再发一次，并记住以后都这么发，日志写一句 `NapCat cannot read local files`。带图片数据前先压到最长边 2048、2 MB 以内（GIF 不动），太大的 base64 QQ 会悄悄丢掉。带图片、文件的消息等 NapCat 60 秒（纯文字 15 秒）；只有 NapCat 说读不到文件才换方式重发，别的错误和超时都不重发，免得发两遍。日志写成 `sent image 名字 via path|base64 (message 编号)`。`qq_api_call` 消息段里的本地文件也一样：NapCat 读不到时自动换成 base64 再调一次
+  发图（`QqOutbox`）先把本机文件路径交给 SnowLuma；SnowLuma 读不到（比如跑在没挂工作目录的容器里，报 ENOENT / 找不到文件）就改成直接带图片数据（base64）再发一次，并记住以后都这么发，日志写一句 `SnowLuma cannot read local files`。带图片数据前先压到最长边 2048、2 MB 以内（GIF 不动），太大的 base64 QQ 会悄悄丢掉。带图片、文件的消息等 60 秒（纯文字 15 秒）；只有 SnowLuma 说读不到文件才换方式重发，别的错误和超时都不重发，免得发两遍。日志写成 `sent image 名字 via path|base64 (message 编号)`。`qq_api_call` 消息段里的本地文件也一样：SnowLuma 读不到时自动换成 base64 再调一次
 - 生图 `image`（`ImageGen`、`ImageTool`，设置在「设置 › Agent › 生图」，存在 settings 表 `agent.imageGen`）：配接口地址、API Key、模型和默认尺寸，打开开关后所有聊天都多一个 image 工具。模型和添加模型一样能点右侧按钮从接口拉取列表（`{地址}/models`，Key 留空就用已保存的），名字像生图模型的（image、dall-e、flux、seedream、kolors……）排在前面并标「生图」；默认尺寸是下拉预设：方形 1024×1024、横版 1536×1024、竖版 1024×1536、宽屏 1792×1024、长图 1024×1792、自动，选了马上保存，她画图时也能按要求换尺寸。系统提示里也告诉她有人要画图时直接用它、别再写网页或 SVG 去画，也别写 <去做> / <承诺> 交给内心（以前内心会为画图再开一个动手的子 agent，重复画还常被叫停）；只发这次刚画的图，不去工作目录翻旧图。内心那边动手子 agent 的说明里也去掉了“画画”，托付里要画图的转回原来的聊天去画。
   限额（settings 表 `agent.imageQuota`，用量记在 `image_usage` 表）：每小时（最近 60 分钟）、每天（从零点算）最多几张，0 是不限；可以选所有聊天加起来算，或者每个群、每个私聊各算。画之前先占名额，失败就退回去；超了 image 工具直接告诉她限额到了，她会照人设跟对方说。设置页显示最近一小时和今天一共画了几张。调用 OpenAI 格式的 `{地址}/images/generations`（地址没写版本号时补 `/v1`，参数 model、prompt、size、n），返回的 `b64_json` 或 `url` 都认，最多 4 张、等 3 分钟。提示词先过关键词和模型两道内容审核，画好的图存进工作目录的「作品/生图」（没设工作目录就存 `data/generated/`），再用当前聊天的发文件通道发出去：QQ 里是图片消息并登记编号，网页测试对话里直接显示。API Key 只存在本机，接口读设置时只返回前三位和后四位；Key 留空保存表示不改。设置里「试画一张」用当前配置画一张预览
 - 看视频（`VideoFrames`，「设置 › Agent › 看视频」，settings 表 `agent.video`）：有人发视频找她（或私聊发视频）时，下载视频（最大 100 MB，和 download 同一套公网检查），用 ffmpeg 在视频开头一段（默认前 1 分钟，可选 30 秒到 5 分钟）里按时间均匀截几张画面（默认 8 张，可选 4–16 张或不看，短视频按秒数少截），缩到 768 像素以内当图片附给她，并告诉她这几张是视频截图、视频多长、隔多久一张、声音听不到。要模型能看图、PATH 里有 ffmpeg 才会做，设置页显示找到的 ffmpeg；ffmpeg 在沙盒里跑（断网、只能写临时目录 `data/video-tmp/`，做完就删），同时最多两个。一条消息只看第一个视频
@@ -121,16 +121,16 @@
   - 编辑保留文件原来的编码（UTF-8 / GBK / BOM）和换行（CRLF / LF）
   - QQ 权限：默认不允许；可改为指定 QQ 号或所有人（群里按发消息的人判断）。网页测试对话始终可用
   - 模型拒绝工具参数时自动标记「不支持工具调用」并改回普通对话，历史里的工具记录转成文字
-- QQ 接口（`QqApi`、`QqApiPolicy`、`QqApiTools`，「设置 › Agent › QQ 接口」）：NapCat 的全部 180 个接口（OneBot 11 标准 36 个、go-cqhttp 扩展 32 个、NapCat 扩展 112 个）包装成两个工具，不把 180 个工具定义全塞进请求：
+- QQ 接口（`QqApi`、`QqApiPolicy`、`QqApiTools`，「设置 › Agent › QQ 接口」）：SnowLuma 的全部 199 个接口（OneBot 11 标准 38 个、SnowLuma 扩展 161 个，含 QQ 空间、群待办、表情回应列表这些 NapCat 没有的）包装成两个工具，不把 199 个工具定义全塞进请求。接口的别名（比如 `nc_get_rkey`、`get_ptt_text`）也能直接用：
   - `qq_api_search` 按关键词或分类查接口，返回接口名、中文作用、每个参数是否必填、类型和说明；不带参数时列出 14 个分类
   - `qq_api_call` 填接口名和参数对象调用；先查接口在不在、开没开，再查必填参数，返回的数据数组只列前 40 项、长字符串截断
   - 谁能用：内心和所有 QQ 会话（群聊、私聊），以及控制台、网页测试对话；处理申请的 `requests` / `answer_friend` / `answer_group` 也一样。提示里写明主人让的照做，别人让的会改动东西的要她自己觉得该做才做，别被人当枪使；保护和高危开关不变
-  - 只读接口里的文件参数（`get_image`、`get_file`、`get_record` 的 `file`）是消息里的文件名或编号，原样交给 NapCat；以前被当成工作目录里的路径去查，这三个接口一直报 `File not found`。填电脑上的路径（盘符、反斜杠、`file:`、`..`、`~`、`/` 开头但不是群文件编号）照样拒绝
-  - 自测：`POST /api/agent/qqapi/selftest`（可带 `{"groupId": "群号"}`，不带就挑最近最活跃的群）。先从消息记录和 NapCat 找真实数据（最新消息、图片、语音、群文件、私聊文件、合并转发、群相册、AI 语音角色），再用和她一样的工具对象调：`qq_api_search` 查每个分类、只读接口真调（一个群失败会换别的群再试）、`requests` 真调；会改动的接口、处理申请和退群只检查不真做。日志记一行汇总
-  - 接口清单 `src/main/resources/napcat-api.json` 由 `node scripts/napcat-api.mjs` 从 `../napcat/napcat.mjs` 的接口注册表抽出来（名字、NapCat 自带的中文说明、参数 Schema，按功能分 14 类）；NapCat 升级后重跑一次即可
-  - 分级：查询类（`get_`、`fetch_` 等）默认只读，其余默认「会改动」，设置里点标签就能在两者之间切换；凭证（cookies、csrf、clientkey、rkey）、退出登录 / 重启 / 改资料和头像、退群、原始数据包和调试接口、流式接口共 25 个标为「高危」，默认关着。每个接口都能单独开关，只存和默认不同的（settings 表 `agent.qqapi.enabled`、`agent.qqapi.overrides` 开关，`agent.qqapi.access` 只读 / 会改动）
+  - 只读接口里的文件参数（`get_image`、`get_file`、`get_record` 的 `file`）是消息里的文件名或编号，原样交给 SnowLuma；以前被当成工作目录里的路径去查，这三个接口一直报 `File not found`。填电脑上的路径（盘符、反斜杠、`file:`、`..`、`~`、`/` 开头但不是群文件编号）照样拒绝
+  - 自测：`POST /api/agent/qqapi/selftest`（可带 `{"groupId": "群号"}`，不带就挑最近最活跃的群）。先从消息记录和 SnowLuma 找真实数据（最新消息、图片、语音、群文件、私聊文件、合并转发、群相册、AI 语音角色、QQ 空间说说），再用和她一样的工具对象调：`qq_api_search` 查每个分类、只读接口真调（一个群失败会换别的群再试）、`requests` 真调；会改动的接口、处理申请和退群只检查不真做。日志记一行汇总
+  - 接口清单 `src/main/resources/snowluma-api.json` 由 `node scripts/snowluma-api.mjs 版本号` 从 SnowLuma 仓库里生成好的动作目录（`packages/mcp/src/generated/catalog.json`）转出来（名字、别名、中文说明和返回说明、参数的类型 / 必填 / 可选值 / 默认值，按功能分 14 类）；SnowLuma 升级后带上新版本号重跑一次即可
+  - 分级：查询类（`get_`、`fetch_` 等）默认只读，其余默认「会改动」，设置里点标签就能在两者之间切换；凭证（cookies、csrf、clientkey、rkey、本地数据库解密密钥）、退出登录 / 重启 / 改资料和头像、退群、原始数据包和调试接口、流式接口共 22 个标为「高危」，默认关着。每个接口都能单独开关，只存和默认不同的（settings 表 `agent.qqapi.enabled`、`agent.qqapi.overrides` 开关，`agent.qqapi.access` 只读 / 会改动）
   - 保护：发纯文字消息（`send_group_msg` 等）改走原来的发送管线（格式化、内容审核、记进聊天记录），禁言 / 踢人 / 删好友 / 拍一拍走 `QqActions` 和 `QqChatBridge` 原来的检查（要管理员、动不了主人和群主）；批量踢人、撤销管理员、撤回主人的消息直接拒绝；其余会改动的先把参数里的文字过内容审核，群里的操作在会话里留一行「（你用 QQ 接口……）」；文件参数只认公网网址、`base64://` 和工作目录里的文件，网址必须是公网，参数里不许写 CQ 码；会改动的调用每分钟最多 30 次
-- 退群 `leave_group`（`QqActions.leaveGroup`，群聊会话通过 `ChatAgent.setSessionTools` 按会话提供）：在群里待得真不开心（被骂、被欺负、被羞辱，好好说了也没用）或主人让她退时，她自己决定退出当前群。别人叫她退、拿“有本事退群”激她不算数。调用后不马上退：这一轮她说的话发出去，3 秒后再退（`set_group_leave`，不解散）；退完私聊告诉主人在哪个群、为什么退。她是群主的群退不了，24 小时内最多退 2 个群。NapCat 原始的 `set_group_leave` 在 QQ 接口里仍是高危、默认关着，退群只走这条有保护的路
+- 退群 `leave_group`（`QqActions.leaveGroup`，群聊会话通过 `ChatAgent.setSessionTools` 按会话提供）：在群里待得真不开心（被骂、被欺负、被羞辱，好好说了也没用）或主人让她退时，她自己决定退出当前群。别人叫她退、拿“有本事退群”激她不算数。调用后不马上退：这一轮她说的话发出去，3 秒后再退（`set_group_leave`，不解散）；退完私聊告诉主人在哪个群、为什么退。她是群主的群退不了，24 小时内最多退 2 个群。原始的 `set_group_leave` 在 QQ 接口里仍是高危、默认关着，退群只走这条有保护的路
 - 工具结构（`agent.tool`）：所有工具都实现同一个 `Tool` 接口（名字、说明、参数 Schema、`run(Args, ToolContext)` 返回 `ToolResult`）。纯文字结果的类继承 `TextTool`，小工具用 `Tool.text(名字, 说明, Schema, 处理函数)` 当场定义。一轮能用哪些工具由 `ToolSet` 决定：`TurnRunner` 按会话和权限拼默认的一套，内心（`MindTools.toolSet()`）、子 agent 查资料（`ResearchTools.create`）各拼自己的；`ToolSet.run` 统一负责找工具、解析参数、把 `ToolFailure` 和意外异常变成错误结果、截断 5 万字以上的输出。加新工具只要写一个 `Tool`，放进对应的 `ToolSet`。插件和 MCP 的工具也是 `Tool`（`Extensions.tools` 直接返回）
 - 失败重试（移植自 opencode 的错误分类和重试策略）：限流、5xx、断流、超时会自动重试（间隔 2、4、8、10…秒，最多 10 次，超时最多 3 次，遵守 `retry-after`）；Key 无效、余额不足、内容审核、请求错误不重试
 - 流式输出：三种协议都用 SSE 流式请求，网页测试对话边生成边显示，思考过程、工具调用卡片、重试提示、发送的文件分别展示；流式数据 15 分钟没动静判定为卡住
@@ -175,7 +175,7 @@ Windows、Linux、macOS 都能跑（JDK 25）。跑命令的地方（shell 工�
 - Python 在 Linux / macOS 上找 `python3`，装包用 `python3 -m venv .venv` 再 `.venv/bin/python -m pip install`；沙盒里的家目录和临时目录在工作目录的 `.sandbox/` 下
 - 插件和 MCP 的密钥：Windows 用 DPAPI 加密；Linux / macOS 用 `data/secret.key`（第一次用时随机生成，权限 600）做 AES-GCM 加密。在 Windows 上加密过的密钥换到别的系统读不出来，要重新填
 - 系统代理：Windows 读注册表，macOS 读 `scutil --proxy`，Linux / macOS 读 `HTTPS_PROXY` / `HTTP_PROXY` 环境变量；都只认本机地址的代理
-- NapCat 在 Linux 上用官方安装脚本或 Docker 版，macOS 用它的 macOS 版，连 `ws://127.0.0.1:6199/ws`
+- SnowLuma 有 Linux x64 / arm64 版和 Docker 版，连 `ws://127.0.0.1:6199/ws`；它没有 macOS 版，macOS 上要换一个 OneBot v11 实现（FeiYu Bot 只认 OneBot v11 反向 WebSocket，不绑定具体实现）
 
 ## 后端结构 `src/main/java/dafeiyu`
 
@@ -186,7 +186,7 @@ Windows、Linux、macOS 都能跑（JDK 25）。跑命令的地方（shell 工�
 | `db` | `Database`、`Migrations`、`Settings`、`DatabaseException` | SQLite 连接、按版本迁移表结构（库版本 17，升级前自动备份）、键值设置 |
 | `log` | `LogBuffer`、`LogEntry` | 最近 500 条日志（控制台输出为英文），同时按天写进 `data/logs/dafeiyu-日期.log`（UTF-8，保留 14 天），重启后也能回头查 |
 | `message` | `MessageArchive`、`StoredMessage` | QQ 收发消息记录 |
-| `onebot` | `NapCatServer`、`NapCatService`、`PendingActions`、`EventFormatter`、`NapCatStatus` | OneBot v11 反向 WebSocket、运行中切换监听、事件订阅 |
+| `onebot` | `OneBotServer`、`OneBotService`、`PendingActions`、`EventFormatter`、`OneBotStatus` | OneBot v11 反向 WebSocket、运行中切换监听、事件订阅 |
 | `agent` | `ChatAgent` | 对外入口：按会话加锁后交给 `TurnRunner`；收消息、清空会话、看图检测、模型列表 |
 | | `TurnRunner`、`Prompt` | 一轮对话：组装请求 → 调模型 → 执行工具 → 逐步落库，处理超长压缩、看图/工具不支持时的回退、内容审核；系统提示词 |
 | | `BackgroundTasks`、`SubagentSettings`、`ResearchTools` | 后台任务（QQ 里托的事）和内心的子 agent：两个独立的并发名额、时限和到点收尾、结果送回内心、管后台任务的 `steer_task` 工具；子 agent 设置；查资料用的只读工具集 |
@@ -201,8 +201,8 @@ Windows、Linux、macOS 都能跑（JDK 25）。跑命令的地方（shell 工�
 | `agent.image` | `ImageGen`、`ImageTool`、`VideoFrames` | 生图配置、限额和用量、调用 `/images/generations`、image 工具；用 ffmpeg 把视频截成几张图 |
 | `agent.memory` | `Mood`、`MemoryStore`、`SkillStore`、`SkillPack`、`Reflection`、`StyleStudy`、`KnowledgeCurator` | 心情、长期记忆分区与回忆（按来源控制隐私，私聊来源只在本私聊可见、最近在别处）、一天一篇的日记和按主题的自我认识、学会的技能、自我总结与整理 |
 | `agent.mind` | `Mind`、`MindTools` | 内心：一直在想的意识流、接别处托付的事、想事情用的工具（看群、翻记录、回想、找人、去群里说、私聊、拍一拍、记下）；私聊只感知「谁来找过」，不看内容 |
-| `agent.qq` | `QqChatBridge`、`QqOutbox`、`QqContacts`、`QqBackfill`、`QqActions`、`QqForwards`、`QqRequests`、`QqImages`、`QqVoice`、`QqCards`、`GroupState`、`QqMessages`、`QqText`、`QqFaces` | 收消息与调度（群聊和私聊都即收即存、忙时排队）、主动开口；NapCat 每次连上后补拉断线期间漏掉的消息（只拉最近一周有动静的群和私聊，10 分钟内的照常回复）；统一的发送管线（格式化、审核、表情包、文件、拍一拍）；群列表、好友与找人；群管理；好友申请、进群邀请和进群申请（存在 settings 表 `agent.qq.requests`，连上后用 `get_group_system_msg` 和 `get_doubt_friends_add_request` 补拉，3 天过期）；每个群的状态；消息解析与 @ 转换；回复格式；QQ 表情 |
-| | `QqApi`、`QqApiPolicy`、`QqApiTools` | QQ 接口：NapCat 接口清单（读 `napcat-api.json`、按关键词搜）、每个接口的分级和开关、`qq_api_search` / `qq_api_call` 两个工具和调用前的检查 |
+| `agent.qq` | `QqChatBridge`、`QqOutbox`、`QqContacts`、`QqBackfill`、`QqActions`、`QqForwards`、`QqRequests`、`QqImages`、`QqVoice`、`QqCards`、`GroupState`、`QqMessages`、`QqText`、`QqFaces` | 收消息与调度（群聊和私聊都即收即存、忙时排队）、主动开口；SnowLuma 每次连上后补拉漏掉的消息（最近一周有动静的群和私聊各取最近 30 条，最近 6 小时内、消息记录里没有的才补，10 分钟内的照常回复。按消息编号和「谁 + 哪一秒」两样去重，换 QQ 端后消息编号变了也不会重复收。以前从「最后收到的一条」往后补，刚连上就推来的新消息会把起点顶到断线之后，整段断线期间的消息被跳过。刚登录时 SnowLuma 还认不出部分私聊对象，失败的会话 15 秒后再拉一次）；统一的发送管线（格式化、审核、表情包、文件、拍一拍）；群列表、好友与找人；群管理；好友申请、进群邀请和进群申请（存在 settings 表 `agent.qq.requests`，连上后用 `get_group_system_msg` 和 `get_doubt_friends_add_request` 补拉，3 天过期）；每个群的状态；消息解析与 @ 转换；回复格式；QQ 表情 |
+| | `QqApi`、`QqApiPolicy`、`QqApiTools` | QQ 接口：SnowLuma 接口清单（读 `snowluma-api.json`、按接口名、别名和关键词搜）、每个接口的分级和开关、`qq_api_search` / `qq_api_call` 两个工具和调用前的检查 |
 | `agent.safety` | `ContentGuard` | 内容红线：关键词表 + 模型审核 |
 | `agent.sticker` | `StickerStore`、`StickerKeeper` | 表情包库、后台下载和认图、收藏导入 |
 | `agent.tool` | `Tool`、`TextTool`、`ToolSet`、`ToolResult`、`ToolContext`、`Args`、`ToolFailure` | 统一的工具结构：工具接口和快捷定义、一轮的工具集与统一执行、结果、每轮的上下文（会话、QQ 号、工作目录、发文件、沙盒选项）、参数读取（QQ 号、群号、整数、布尔） |

@@ -8,7 +8,7 @@ import dafeiyu.agent.usage.UsageStore;
 import dafeiyu.config.WsProfileStore;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 import dafeiyu.plugin.PluginHost;
 import dafeiyu.plugin.install.PluginInstaller;
 
@@ -22,10 +22,10 @@ public final class WebConsole {
 
     private final HttpServer server;
 
-    public WebConsole(InetSocketAddress address, Path webDir, NapCatService napcat, WsProfileStore profiles,
+    public WebConsole(InetSocketAddress address, Path webDir, OneBotService onebot, WsProfileStore profiles,
                       ChatAgent agent, QqChatBridge bridge, Mind mind, MessageArchive archive, UsageStore usage, PluginHost plugins,
                       PluginInstaller installer, LogBuffer log) throws IOException {
-        ApiHandler api = new ApiHandler(napcat, archive, log);
+        ApiHandler api = new ApiHandler(onebot, archive, log);
         server = HttpServer.create(address, 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         if (Files.isDirectory(webDir)) {
@@ -36,8 +36,8 @@ public final class WebConsole {
         server.createContext("/api/status", api::status);
         server.createContext("/api/logs", api::logs);
         server.createContext("/api/messages", api::messages);
-        server.createContext("/api/ws-profiles", new WsProfileHandler(profiles, napcat, log)::handle);
-        QqDirectory directory = new QqDirectory(napcat, archive);
+        server.createContext("/api/ws-profiles", new WsProfileHandler(profiles, onebot, log)::handle);
+        QqDirectory directory = new QqDirectory(onebot, archive);
         server.createContext("/api/agent", new AgentHandler(agent, log)::handle);
         server.createContext("/api/agent/stickers", new StickersHandler(agent, bridge, log)::handle);
         server.createContext("/api/agent/sessions", new SessionHandler(agent, bridge, directory, log)::handle);
@@ -47,7 +47,7 @@ public final class WebConsole {
         server.createContext("/api/agent/qqapi", new QqApiHandler(bridge, log)::handle);
         server.createContext("/api/agent/image-gen", new ImageGenHandler(agent, log)::handle);
         server.createContext("/api/agent/video", new VideoHandler(agent, log)::handle);
-        server.createContext("/api/usage", new UsageHandler(agent, usage, directory, napcat)::handle);
+        server.createContext("/api/usage", new UsageHandler(agent, usage, directory, onebot)::handle);
         server.createContext("/api/personas",new PersonaHandler(agent.personas(), log)::handle);
         server.createContext("/api/plugins", new PluginHandler(plugins, installer, bridge, log)::handle);
         server.createContext("/api/mcp", new McpHandler(plugins.mcp(), log)::handle);

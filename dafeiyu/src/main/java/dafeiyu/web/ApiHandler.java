@@ -5,19 +5,19 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 
 import java.io.IOException;
 
 final class ApiHandler {
 
     private final Gson gson = new Gson();
-    private final NapCatService napcat;
+    private final OneBotService onebot;
     private final MessageArchive archive;
     private final LogBuffer log;
 
-    ApiHandler(NapCatService napcat, MessageArchive archive, LogBuffer log) {
-        this.napcat = napcat;
+    ApiHandler(OneBotService onebot, MessageArchive archive, LogBuffer log) {
+        this.onebot = onebot;
         this.archive = archive;
         this.log = log;
     }
@@ -31,7 +31,7 @@ final class ApiHandler {
     }
 
     void status(HttpExchange ex) throws IOException {
-        HttpResponses.json(ex, gson.toJson(napcat.status()));
+        HttpResponses.json(ex, gson.toJson(onebot.status()));
     }
 
     void logs(HttpExchange ex) throws IOException {

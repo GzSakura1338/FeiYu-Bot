@@ -11,7 +11,7 @@ import dafeiyu.agent.tool.FileSink;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -65,7 +65,7 @@ final class QqOutbox {
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
     private final ChatAgent agent;
-    private final NapCatService napcat;
+    private final OneBotService onebot;
     private volatile java.util.function.BiFunction<Path, String, String> sentImages = (file, session) -> null;
     private final MessageArchive archive;
     private final LogBuffer log;
@@ -74,16 +74,16 @@ final class QqOutbox {
     private final Map<String, String> tempGroups = new ConcurrentHashMap<>();
     private volatile boolean pathsUnreadable;
 
-    QqOutbox(ChatAgent agent, NapCatService napcat, MessageArchive archive, LogBuffer log, Map<String, GroupState> groups) {
+    QqOutbox(ChatAgent agent, OneBotService onebot, MessageArchive archive, LogBuffer log, Map<String, GroupState> groups) {
         this.agent = agent;
-        this.napcat = napcat;
+        this.onebot = onebot;
         this.archive = archive;
         this.log = log;
         this.groups = groups;
     }
 
     String selfId() {
-        return String.valueOf(napcat.status().selfId());
+        return String.valueOf(onebot.status().selfId());
     }
 
     Target targetOf(String session) {
@@ -294,8 +294,8 @@ final class QqOutbox {
             }
             if (!byPath) {
                 if (size > MAX_IMAGE) {
-                    throw new ToolFailure("NapCat 读不到这台电脑上的文件（多半跑在没挂工作目录的容器里），超过 " + MAX_IMAGE / 1024 / 1024
-                            + " MB 的文件发不了；把工作目录按相同路径挂进 NapCat 就能发");
+                    throw new ToolFailure("SnowLuma 读不到这台电脑上的文件（多半跑在没挂工作目录的容器里），超过 " + MAX_IMAGE / 1024 / 1024
+                            + " MB 的文件发不了；把工作目录按相同路径挂进 SnowLuma 的容器就能发");
                 }
                 params.addProperty("file", reachable(file));
                 call(action, params, UPLOAD_TIMEOUT);
@@ -349,8 +349,8 @@ final class QqOutbox {
                 throw new ToolFailure("发图失败：" + pathError);
             }
             pathsUnreadable = true;
-            log.warn("qq: NapCat cannot read local files (" + pathError + "), sending images inline from now on. "
-                    + "If NapCat runs in a container, mount the working directory at the same path to send by path");
+            log.warn("qq: SnowLuma cannot read local files (" + pathError + "), sending images inline from now on. "
+                    + "If SnowLuma runs in a container, mount the working directory at the same path to send by path");
         }
         JsonArray inline = new JsonArray();
         inline.add(segment("image", "file", "base64://" + Base64.getEncoder().encodeToString(inlineImage(file, name))));
@@ -379,7 +379,7 @@ final class QqOutbox {
     void markPathsUnreadable(String error) {
         if (!pathsUnreadable && UNREADABLE_PATH.matcher(error).find()) {
             pathsUnreadable = true;
-            log.warn("qq: NapCat cannot read local files (" + error + "), sending files inline from now on");
+            log.warn("qq: SnowLuma cannot read local files (" + error + "), sending files inline from now on");
         }
     }
 
@@ -407,7 +407,7 @@ final class QqOutbox {
 
     private JsonObject request(String action, JsonObject params, Duration timeout) throws ToolFailure {
         try {
-            return napcat.callAction(action, params, timeout).get(timeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
+            return onebot.callAction(action, params, timeout).get(timeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ToolFailure("interrupted");
@@ -446,7 +446,7 @@ final class QqOutbox {
     }
 
     private void archive(Target target, String messageId, String text) {
-        String nickname = napcat.status().nickname();
+        String nickname = onebot.status().nickname();
         try {
             archive.recordOutgoing(target.messageType(), target.groupId(), target.userId(), target.selfId(),
                     nickname == null ? "大肥鱼" : nickname, messageId, text);

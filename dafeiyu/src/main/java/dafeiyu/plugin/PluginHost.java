@@ -781,7 +781,7 @@ public final class PluginHost implements HostApi.Services {
         return sum[0];
     }
 
-    public void onNapcatEvent(JsonObject event) {
+    public void onOneBotEvent(JsonObject event) {
         dispatcher.notice(event);
     }
 

@@ -7,7 +7,7 @@ import dafeiyu.config.WsProfile;
 import dafeiyu.config.WsProfileStore;
 import dafeiyu.db.DatabaseException;
 import dafeiyu.log.LogBuffer;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 
 import java.io.IOException;
 
@@ -17,12 +17,12 @@ final class WsProfileHandler {
 
     private final Gson gson = new Gson();
     private final WsProfileStore store;
-    private final NapCatService napcat;
+    private final OneBotService onebot;
     private final LogBuffer log;
 
-    WsProfileHandler(WsProfileStore store, NapCatService napcat, LogBuffer log) {
+    WsProfileHandler(WsProfileStore store, OneBotService onebot, LogBuffer log) {
         this.store = store;
-        this.napcat = napcat;
+        this.onebot = onebot;
         this.log = log;
     }
 
@@ -72,7 +72,7 @@ final class WsProfileHandler {
         WsProfile next = readProfile(ex).withId(id);
         boolean isActive = id.equals(store.active().id());
         if (isActive && !next.settings().equals(old.settings())) {
-            napcat.reconfigure(next.settings());
+            onebot.reconfigure(next.settings());
         }
         store.update(next);
         log.info("ws profile updated: " + next.name() + " " + next.settings().url());
@@ -92,7 +92,7 @@ final class WsProfileHandler {
     private void activate(HttpExchange ex, String id) throws IOException {
         WsProfile profile = require(id);
         if (!id.equals(store.active().id())) {
-            napcat.reconfigure(profile.settings());
+            onebot.reconfigure(profile.settings());
             store.setActive(id);
             log.info("ws profile activated: " + profile.name());
         }

@@ -31,7 +31,7 @@ import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.message.StoredMessage;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 import dafeiyu.util.Clock;
 
 import java.io.IOException;
@@ -121,7 +121,7 @@ public final class QqChatBridge {
     }
 
     private final ChatAgent agent;
-    private final NapCatService napcat;
+    private final OneBotService onebot;
     private final MessageArchive archive;
     private final LogBuffer log;
     private final Map<String, GroupState> groups = new ConcurrentHashMap<>();
@@ -158,9 +158,9 @@ public final class QqChatBridge {
         return t;
     });
 
-    public QqChatBridge(ChatAgent agent, NapCatService napcat, MessageArchive archive, Database db, LogBuffer log) {
+    public QqChatBridge(ChatAgent agent, OneBotService onebot, MessageArchive archive, Database db, LogBuffer log) {
         this.agent = agent;
-        this.napcat = napcat;
+        this.onebot = onebot;
         this.archive = archive;
         this.log = log;
         for (String qq : agent.personas().owners()) {
@@ -169,8 +169,8 @@ public final class QqChatBridge {
                 ownerNames.add(name.strip());
             }
         }
-        this.outbox = new QqOutbox(agent, napcat, archive, log, groups);
-        this.contacts = new QqContacts(agent, napcat, archive, outbox, log);
+        this.outbox = new QqOutbox(agent, onebot, archive, log, groups);
+        this.contacts = new QqContacts(agent, onebot, archive, outbox, log);
         this.backfill = new QqBackfill(agent, archive, outbox, log);
         this.images = new QqImages(db, outbox);
         outbox.numberSentImages(images::numberSent);
@@ -214,7 +214,7 @@ public final class QqChatBridge {
         if (!agent.store().qqReply()) {
             return "QQ 自动回复没开";
         }
-        if (!napcat.status().connected()) {
+        if (!onebot.status().connected()) {
             return "QQ 没连上";
         }
         if (session.startsWith("group:")) {
@@ -298,7 +298,7 @@ public final class QqChatBridge {
     }
 
     public String pluginSend(String session, String text, String imageUrl, String quote, String label) throws ToolFailure {
-        if (!napcat.status().connected()) {
+        if (!onebot.status().connected()) {
             throw new ToolFailure("QQ is not connected");
         }
         Target target = outbox.targetOf(session);
@@ -337,7 +337,7 @@ public final class QqChatBridge {
     }
 
     public boolean connected() {
-        return napcat.status().connected();
+        return onebot.status().connected();
     }
 
     private void observeHeard(String where, String who, String text, boolean toMe) {
@@ -1085,8 +1085,6 @@ public final class QqChatBridge {
         StoredMessage voice = archive.latestIncoming("record", "group");
         known.put("voice_message_id", voice == null ? null : voice.messageId());
         known.put("voice_file", voice == null ? null : cqParam(voice.content(), "record", "file"));
-        StoredMessage file = archive.latestIncoming("file", "group");
-        known.put("file_name", file == null ? null : cqParam(file.content(), "file", "file"));
         StoredMessage privateFile = archive.latestIncoming("file", "private");
         known.put("private_file_id", privateFile == null ? null : cqParam(privateFile.content(), "file", "file_id"));
         known.values().removeIf(Objects::isNull);
@@ -1262,7 +1260,7 @@ public final class QqChatBridge {
         if (!agent.store().qqReply()) {
             throw new ToolFailure("现在不能去：QQ 自动回复没开");
         }
-        if (!napcat.status().connected()) {
+        if (!onebot.status().connected()) {
             throw new ToolFailure("现在不能去：QQ 没连上");
         }
         if (!userId.matches("\\d{5,12}")) {
@@ -1286,7 +1284,7 @@ public final class QqChatBridge {
         if (!agent.store().qqReply()) {
             throw new ToolFailure("现在不能拍：QQ 自动回复没开");
         }
-        if (!napcat.status().connected()) {
+        if (!onebot.status().connected()) {
             throw new ToolFailure("现在不能拍：QQ 没连上");
         }
         if (userId == null || !userId.matches("\\d{5,12}") || userId.equals(outbox.selfId())) {
@@ -1382,7 +1380,7 @@ public final class QqChatBridge {
 
     public void startLife() {
         scheduler.scheduleWithFixedDelay(() -> {
-            if (napcat.status().connected() && System.currentTimeMillis() - favoritesSyncedAt > FAVORITES_EVERY_MS) {
+            if (onebot.status().connected() && System.currentTimeMillis() - favoritesSyncedAt > FAVORITES_EVERY_MS) {
                 try {
                     syncFavorites();
                 } catch (ToolFailure | RuntimeException e) {
@@ -1396,7 +1394,7 @@ public final class QqChatBridge {
         if (!agent.store().qqReply() || !agent.store().groupMode()) {
             return "QQ 自动回复或群聊模式没开";
         }
-        if (!napcat.status().connected()) {
+        if (!onebot.status().connected()) {
             return "QQ 没连上";
         }
         Map<String, String> names = contacts.groups();
@@ -1546,12 +1544,12 @@ public final class QqChatBridge {
     }
 
     private boolean looksLikeMe(String label) {
-        String nickname = napcat.status().nickname();
+        String nickname = onebot.status().nickname();
         return label.contains("#") && (calledByName(label) || nickname != null && !nickname.isBlank() && label.startsWith(nickname + "#"));
     }
 
     private boolean reservedName(String name) {
-        return name.contains("主人") || name.equals(napcat.status().nickname()) || calledByName(name) || ownerLike(name);
+        return name.contains("主人") || name.equals(onebot.status().nickname()) || calledByName(name) || ownerLike(name);
     }
 
     private boolean ownerLike(String name) {

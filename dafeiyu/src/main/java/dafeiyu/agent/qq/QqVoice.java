@@ -15,7 +15,7 @@ import static dafeiyu.util.Jsons.optString;
 
 public final class QqVoice {
 
-    private static final Duration TRANSCRIBE_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration TRANSCRIBE_TIMEOUT = Duration.ofSeconds(25);
     private static final Duration CONVERT_TIMEOUT = Duration.ofSeconds(30);
     private static final Pattern FILE = Pattern.compile("[A-Za-z0-9._-]{1,120}");
     private static final int MAX_TEXT = 500;

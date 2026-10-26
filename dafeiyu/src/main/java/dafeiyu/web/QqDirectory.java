@@ -4,7 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dafeiyu.agent.qq.QqMessages;
 import dafeiyu.message.MessageArchive;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -20,7 +20,7 @@ final class QqDirectory {
     private static final long REFRESH_MS = 60_000;
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
-    private final NapCatService napcat;
+    private final OneBotService onebot;
     private final MessageArchive archive;
     private volatile Map<String, String> groups = Map.of();
     private volatile Map<String, String> friends = Map.of();
@@ -29,8 +29,8 @@ final class QqDirectory {
     private final Map<String, String> strangers = new ConcurrentHashMap<>();
     private final Map<String, Long> misses = new ConcurrentHashMap<>();
 
-    QqDirectory(NapCatService napcat, MessageArchive archive) {
-        this.napcat = napcat;
+    QqDirectory(OneBotService onebot, MessageArchive archive) {
+        this.onebot = onebot;
         this.archive = archive;
     }
 
@@ -45,8 +45,8 @@ final class QqDirectory {
     }
 
     Map<String, String> self(String session) {
-        String qq = napcat.status().selfId() == null ? "" : napcat.status().selfId();
-        String nickname = napcat.status().nickname() == null ? "" : napcat.status().nickname();
+        String qq = onebot.status().selfId() == null ? "" : onebot.status().selfId();
+        String nickname = onebot.status().nickname() == null ? "" : onebot.status().nickname();
         String name = session.startsWith("group:") ? groupCard(session.substring(6), qq) : "";
         return Map.of("qq", qq, "name", name.isBlank() ? nickname : name);
     }
@@ -58,13 +58,13 @@ final class QqDirectory {
             return cached.name();
         }
         String name = cached == null ? "" : cached.name();
-        if (napcat.status().connected() && groupId.matches("\\d+") && selfId.matches("\\d+")) {
+        if (onebot.status().connected() && groupId.matches("\\d+") && selfId.matches("\\d+")) {
             try {
                 JsonObject params = new JsonObject();
                 params.addProperty("group_id", Long.parseLong(groupId));
                 params.addProperty("user_id", Long.parseLong(selfId));
                 params.addProperty("no_cache", true);
-                JsonObject data = optObject(napcat.callAction("get_group_member_info", params, TIMEOUT)
+                JsonObject data = optObject(onebot.callAction("get_group_member_info", params, TIMEOUT)
                         .get(TIMEOUT.toMillis() + 500, TimeUnit.MILLISECONDS), "data");
                 if (data != null) {
                     String card = optString(data, "card");
@@ -123,11 +123,11 @@ final class QqDirectory {
             return "";
         }
         String name = QqMessages.displayName(java.util.Objects.requireNonNullElse(archive.lastKnownName(qq), ""));
-        if (name.isBlank() && napcat.status().connected() && qq.matches("\\d{5,12}")) {
+        if (name.isBlank() && onebot.status().connected() && qq.matches("\\d{5,12}")) {
             try {
                 JsonObject params = new JsonObject();
                 params.addProperty("user_id", Long.parseLong(qq));
-                JsonObject data = optObject(napcat.callAction("get_stranger_info", params, Duration.ofSeconds(2))
+                JsonObject data = optObject(onebot.callAction("get_stranger_info", params, Duration.ofSeconds(2))
                         .get(2_500, TimeUnit.MILLISECONDS), "data");
                 name = data == null ? "" : optString(data, "nickname");
             } catch (Exception e) {
@@ -146,7 +146,7 @@ final class QqDirectory {
 
     private void refresh() {
         long now = System.currentTimeMillis();
-        if (now - loadedAt < REFRESH_MS || !napcat.status().connected()) {
+        if (now - loadedAt < REFRESH_MS || !onebot.status().connected()) {
             return;
         }
         loadedAt = now;
@@ -162,7 +162,7 @@ final class QqDirectory {
 
     private Map<String, String> load(String action, String idKey, String nameKey, String preferredKey) {
         try {
-            JsonObject response = napcat.callAction(action, new JsonObject(), TIMEOUT).get(TIMEOUT.toMillis() + 500, TimeUnit.MILLISECONDS);
+            JsonObject response = onebot.callAction(action, new JsonObject(), TIMEOUT).get(TIMEOUT.toMillis() + 500, TimeUnit.MILLISECONDS);
             JsonElement data = response.get("data");
             if (data == null || !data.isJsonArray()) {
                 return null;

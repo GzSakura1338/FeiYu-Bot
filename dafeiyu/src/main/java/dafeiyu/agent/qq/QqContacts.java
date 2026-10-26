@@ -5,7 +5,7 @@ import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 import dafeiyu.util.Clock;
 
 import java.time.Duration;
@@ -30,7 +30,7 @@ final class QqContacts {
     private final Map<String, Member> members = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final ChatAgent agent;
-    private final NapCatService napcat;
+    private final OneBotService onebot;
     private final MessageArchive archive;
     private final QqOutbox outbox;
     private final LogBuffer log;
@@ -39,9 +39,9 @@ final class QqContacts {
     private volatile Map<String, String> friends = Map.of();
     private volatile long friendsAt;
 
-    QqContacts(ChatAgent agent, NapCatService napcat, MessageArchive archive, QqOutbox outbox, LogBuffer log) {
+    QqContacts(ChatAgent agent, OneBotService onebot, MessageArchive archive, QqOutbox outbox, LogBuffer log) {
         this.agent = agent;
-        this.napcat = napcat;
+        this.onebot = onebot;
         this.archive = archive;
         this.outbox = outbox;
         this.log = log;
@@ -49,7 +49,7 @@ final class QqContacts {
 
     Map<String, String> groups() {
         long now = System.currentTimeMillis();
-        if (now - groupsAt > TTL_MS && napcat.status().connected()) {
+        if (now - groupsAt > TTL_MS && onebot.status().connected()) {
             groupsAt = now;
             Map<String, String> fresh = fetch("get_group_list", (o, names) -> names.put(optString(o, "group_id"), optString(o, "group_name")));
             if (fresh != null) {
@@ -66,7 +66,7 @@ final class QqContacts {
 
     Map<String, String> friends() {
         long now = System.currentTimeMillis();
-        if (now - friendsAt > TTL_MS && napcat.status().connected()) {
+        if (now - friendsAt > TTL_MS && onebot.status().connected()) {
             friendsAt = now;
             Map<String, String> fresh = fetch("get_friend_list", (o, names) -> {
                 String remark = optString(o, "remark");
@@ -90,7 +90,7 @@ final class QqContacts {
             return cached.name();
         }
         String name = archive.groupSenders(groupId).getOrDefault(userId, "");
-        if ((name.isBlank() || name.equals(userId)) && napcat.status().connected()) {
+        if ((name.isBlank() || name.equals(userId)) && onebot.status().connected()) {
             try {
                 JsonObject params = new JsonObject();
                 params.addProperty("group_id", Long.parseLong(groupId));

@@ -107,7 +107,7 @@ public final class MessageArchive {
     }
 
     public StoredMessage withForward(String forwardId) {
-        if (forwardId == null || !forwardId.matches("\\d{1,30}")) {
+        if (forwardId == null || !forwardId.matches("[A-Za-z0-9+/=_-]{1,200}")) {
             return null;
         }
         return db.one("SELECT * FROM messages WHERE content LIKE ? OR content LIKE ? ORDER BY id DESC LIMIT 1", MessageArchive::row,
@@ -133,6 +133,11 @@ public final class MessageArchive {
 
     public java.util.Set<String> messageIdsSince(long since) {
         return new java.util.HashSet<>(db.list("SELECT message_id FROM messages WHERE time >= ? AND message_id IS NOT NULL",
+                rs -> rs.getString(1), since));
+    }
+
+    public java.util.Set<String> incomingSince(long since) {
+        return new java.util.HashSet<>(db.list("SELECT user_id || '@' || time FROM messages WHERE time >= ? AND direction = 'in'",
                 rs -> rs.getString(1), since));
     }
 

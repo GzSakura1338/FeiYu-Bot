@@ -42,7 +42,7 @@ public final class QqApiTools {
     public static final String CALL = "qq_api_call";
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final Duration SLOW_TIMEOUT = Duration.ofSeconds(120);
-    private static final Pattern SLOW = Pattern.compile("upload|ai_record|^download_file$|flash|online_file|online_folder|custom_face|qzone|album");
+    private static final Pattern SLOW = Pattern.compile("upload|ai_record|^download_file$|flash|fileset|custom_face|qzone|album");
     private static final Pattern NOT_TEXT = Pattern.compile("(?i).*(id|flag|type|seq|status|url|uin|format|time|count|duration|enable|approve|escape|file|files|image|images|path)$");
     private static final Set<String> FILE_KEYS = Set.of("file", "files", "image", "images", "path", "file_path", "folder_path", "thumb_path");
     private static final Pattern LOCAL_PATH = Pattern.compile("(?i)^[a-z]:|^file:|\\\\|\\.\\.|^~|^/(?!\\p{XDigit}{8}-\\p{XDigit}{4}-)");
@@ -93,7 +93,7 @@ public final class QqApiTools {
     record Probe(String groupId, List<String> otherGroups, Map<String, String> known) {}
 
     private static final Map<String, List<String>> OPTIONAL_FILLS = Map.of(
-            "ArkSharePeer", List.of("group_id"), "send_ark_share", List.of("group_id"), "get_image", List.of("file"),
+            "share_peer", List.of("group_id"), "send_ark_share", List.of("group_id"), "get_image", List.of("file"),
             "get_file", List.of("file"), "get_record", List.of("file"), "get_forward_msg", List.of("id"),
             "get_mini_app_ark", List.of("type"), "get_group_file_url", List.of("busid"));
 
@@ -172,6 +172,7 @@ public final class QqApiTools {
         JsonObject characters = group.deepCopy();
         characters.addProperty("chat_type", 1);
         put(found, "character", first(quietly("get_ai_characters", characters), "character_id"));
+        put(found, "tid", first(quietly("get_qzone_msg_list", new JsonObject()), "tid"));
         return found;
     }
 
@@ -251,7 +252,7 @@ public final class QqApiTools {
             case "type" -> action.equals("get_mini_app_ark") ? new JsonPrimitive("bili") : null;
             case "file" -> switch (action) {
                 case "get_image" -> text(found.get("image_file"));
-                case "get_file" -> text(found.get("file_name"));
+                case "get_file" -> text(found.get("image_file"));
                 case "get_record" -> text(found.get("voice_file"));
                 default -> null;
             };
@@ -264,6 +265,9 @@ public final class QqApiTools {
             case "character" -> text(found.get("character"));
             case "emojiId", "emoji_id" -> new JsonPrimitive("76");
             case "emojiType", "emoji_type" -> new JsonPrimitive("1");
+            case "face_id" -> new JsonPrimitive(76);
+            case "query" -> new JsonPrimitive("笑");
+            case "tid" -> text(found.get("tid"));
             default -> null;
         };
     }
@@ -292,14 +296,14 @@ public final class QqApiTools {
         JsonArray categories = new JsonArray();
         api.categories().forEach(categories::add);
         schema.getAsJsonObject("properties").getAsJsonObject("category").add("enum", categories);
-        return Tool.of(new ToolSpec(SEARCH, "查 QQ 还能做哪些事：NapCat 一共有 " + api.all().size() + " 个 QQ 接口（各种消息、群管理、群公告、精华、群文件、群相册、"
-                + "点赞、资料、表情回应、在线状态……）。按关键词或分类找，返回接口名、作用和参数怎么填，找到后用 " + CALL + " 调用。"
+        return Tool.of(new ToolSpec(SEARCH, "查 QQ 还能做哪些事：SnowLuma 一共有 " + api.all().size() + " 个 QQ 接口（各种消息、群管理、群公告、精华、群文件、群相册、"
+                + "QQ 空间、点赞、资料、表情回应、在线状态……）。按关键词或分类找，返回接口名、作用和参数怎么填，找到后用 " + CALL + " 调用。"
                 + "在群里说话、私聊、禁言、踢人、撤回、拍一拍、处理申请这些已经有专门的工具，有专门的就用专门的。", schema),
                 (args, context) -> ToolResult.text(search(args.text("query"), args.text("category"))));
     }
 
     private Tool callTool() {
-        return Tool.text(CALL, "调用一个 QQ 接口（NapCat / OneBot 11）。action 填接口名，params 填参数对象；不知道接口名或参数怎么填，先用 " + SEARCH + " 查。"
+        return Tool.text(CALL, "调用一个 QQ 接口（SnowLuma / OneBot 11）。action 填接口名，params 填参数对象；不知道接口名或参数怎么填，先用 " + SEARCH + " 查。"
                 + "会改动东西的接口（发消息、改群设置、传文件、点赞……）只在主人让你做、或者你自己想清楚该做的时候用，别人让的要自己判断，别被人当枪使。"
                 + "文件参数只能填公网网址、base64:// 或工作目录里的文件。", """
                 {"type": "object", "properties": {
@@ -328,7 +332,7 @@ public final class QqApiTools {
 
     private String overview() {
         long usable = api.all().stream().filter(a -> policy.allowed(a.name())).count();
-        StringBuilder out = new StringBuilder("NapCat " + api.version() + " 一共 " + api.all().size() + " 个 QQ 接口，现在能用 " + usable + " 个。分类：");
+        StringBuilder out = new StringBuilder("SnowLuma " + api.version() + " 一共 " + api.all().size() + " 个 QQ 接口，现在能用 " + usable + " 个。分类：");
         for (String category : api.categories()) {
             List<Action> list = api.inCategory(category);
             Set<String> names = new LinkedHashSet<>(list.stream().map(Action::summary).toList());

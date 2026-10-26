@@ -1,6 +1,6 @@
 package dafeiyu.onebot;
 
-public record NapCatStatus(
+public record OneBotStatus(
         boolean connected,
         String listen,
         String selfId,

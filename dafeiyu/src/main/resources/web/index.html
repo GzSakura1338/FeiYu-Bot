@@ -60,7 +60,7 @@
   </div>
 
   <div class="rail-bottom">
-    <a class="circle-button state-layer" href="#overview" id="rail-status" data-tone="neutral" title="读取中…" aria-label="NapCat 连接状态">
+    <a class="circle-button state-layer" href="#overview" id="rail-status" data-tone="neutral" title="读取中…" aria-label="SnowLuma 连接状态">
       <svg data-icon="sync"></svg>
     </a>
     <button class="circle-button state-layer" id="theme-toggle" title="主题" aria-label="切换主题">
@@ -75,7 +75,7 @@
     <div class="hero">
       <div class="panel hero-main">
         <h1 class="display-hero">FeiYu Bot</h1>
-        <p class="body-hero">QQ 机器人控制台。通过 NapCat 接入 QQ，实时查看连接状态和群消息。</p>
+        <p class="body-hero">QQ 机器人控制台。通过 SnowLuma 接入 QQ，实时查看连接状态和群消息。</p>
         <a class="filled-button state-layer" href="#logs">查看事件日志<svg data-icon="arrow_forward"></svg></a>
       </div>
       <div class="panel status-panel" id="status-card" data-tone="neutral">
@@ -136,7 +136,7 @@
     <div class="panel page-hero">
       <div>
         <h1 class="display-page">事件日志</h1>
-        <p class="body-hero">NapCat 推送的事件和大肥鱼自身的运行日志，每秒刷新。</p>
+        <p class="body-hero">SnowLuma 推送的事件和大肥鱼自身的运行日志，每秒刷新。</p>
       </div>
       <div class="page-hero-actions">
         <span class="count title-medium" id="log-count"></span>
@@ -640,7 +640,7 @@
     <div class="panel page-hero">
       <div>
         <h1 class="display-page">设置</h1>
-        <p class="body-hero">NapCat 接入、Agent、界面外观、归档的后台任务和版本信息。</p>
+        <p class="body-hero">SnowLuma 接入、Agent、界面外观、归档的后台任务和版本信息。</p>
       </div>
     </div>
 
@@ -659,7 +659,7 @@
           <h2 class="headline-small">反向 WebSocket</h2>
           <button class="tonal-button label-large state-layer" id="ws-add"><svg data-icon="add" class="icon-18"></svg>添加</button>
         </div>
-        <p class="panel-desc body-medium">NapCat 作为客户端连接到这里。选中的配置会立即生效；NapCat 那边要填同样的地址和 token。</p>
+        <p class="panel-desc body-medium">SnowLuma 作为客户端连接到这里。选中的配置会立即生效；SnowLuma 那边要填同样的地址和 token。</p>
         <ul class="list ws-list" id="ws-list" role="radiogroup" aria-label="使用中的反向 WebSocket"></ul>
       </div>
     </div>
@@ -765,7 +765,7 @@
       </div>
       <div class="panel">
         <div class="panel-header"><h2 class="headline-small">QQ 接口</h2></div>
-        <p class="panel-desc body-medium">NapCat 的全部接口包装成两个工具：qq_api_search 查接口和参数，qq_api_call 调用。只有内心和主人的会话（含控制台、网页测试对话）能用。发消息、禁言、踢人、删好友、拍一拍走原来的发送和保护流程；其余会改东西的先过内容审核，文件参数只认公网网址、base64:// 和工作目录里的文件。凭证、退出登录、改资料、退群、调试和流式接口标为「高危」，默认关着。每个接口右边的「只读 / 会改动」点一下就能互相切换：标成会改动的，调用前先过内容审核、每分钟限 30 次，群里的操作会在会话里留一行记录。</p>
+        <p class="panel-desc body-medium">SnowLuma 的全部接口包装成两个工具：qq_api_search 查接口和参数，qq_api_call 调用。只有内心和主人的会话（含控制台、网页测试对话）能用。发消息、禁言、踢人、删好友、拍一拍走原来的发送和保护流程；其余会改东西的先过内容审核，文件参数只认公网网址、base64:// 和工作目录里的文件。凭证、退出登录、改资料、退群、调试和流式接口标为「高危」，默认关着。每个接口右边的「只读 / 会改动」点一下就能互相切换：标成会改动的，调用前先过内容审核、每分钟限 30 次，群里的操作会在会话里留一行记录。</p>
         <ul class="list">
           <li class="list-item settings-row">
             <span class="list-icon"><svg data-icon="extension"></svg></span>
@@ -943,13 +943,13 @@
             <span class="list-icon"><svg data-icon="info"></svg></span>
             <div class="list-text">
               <div class="list-headline body-large">FeiYu Bot</div>
-              <div class="list-supporting body-medium">QQ 机器人控制台，通过 NapCat（OneBot v11 反向 WebSocket）接入 QQ</div>
+              <div class="list-supporting body-medium">QQ 机器人控制台，通过 SnowLuma（OneBot v11 反向 WebSocket）接入 QQ</div>
             </div>
           </li>
           <li class="list-item">
             <span class="list-icon"><svg data-icon="lan"></svg></span>
             <div class="list-text">
-              <div class="list-headline body-large">NapCat 接入地址</div>
+              <div class="list-headline body-large">SnowLuma 接入地址</div>
               <div class="list-supporting body-medium" id="about-listen">—</div>
             </div>
           </li>
@@ -989,11 +989,11 @@
           <button type="button" class="icon-button state-layer" id="ws-token-gen" title="随机生成" aria-label="随机生成 token"><svg data-icon="autorenew"></svg></button>
           <button type="button" class="icon-button state-layer" id="ws-token-eye" title="显示 token" aria-label="显示 token"><svg data-icon="visibility"></svg></button>
         </div>
-        <span class="supporting body-small" data-hint="留空表示不校验；要和 NapCat 配置里的 token 一致"></span>
+        <span class="supporting body-small" data-hint="留空表示不校验；要和 SnowLuma 配置里的 token 一致"></span>
       </div>
       <div class="ws-preview">
         <div class="list-text">
-          <div class="list-supporting body-small">NapCat 里填写的地址</div>
+          <div class="list-supporting body-small">SnowLuma 里填写的地址</div>
           <div class="list-headline body-large ws-url" id="ws-url">—</div>
         </div>
         <button type="button" class="icon-button state-layer" id="ws-copy" title="复制地址" aria-label="复制地址"><svg data-icon="content_copy"></svg></button>

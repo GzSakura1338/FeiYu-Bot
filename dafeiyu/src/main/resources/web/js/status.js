@@ -8,8 +8,8 @@ import { showSnackbar } from './snackbar.js';
 const STATES = {
   loading:   { tone: 'neutral', icon: 'sync',      shape: null,          title: '读取中…' },
   down:      { tone: 'error',   icon: 'cloud_off', shape: 'flower',      title: 'FeiYu Bot 后端无响应' },
-  waiting:   { tone: 'warning', icon: 'link_off',  shape: 'clover4Leaf', title: '等待 NapCat 连接' },
-  connected: { tone: 'success', icon: 'link',      shape: 'cookie12Sided', title: 'NapCat 已连接' },
+  waiting:   { tone: 'warning', icon: 'link_off',  shape: 'clover4Leaf', title: '等待 SnowLuma 连接' },
+  connected: { tone: 'success', icon: 'link',      shape: 'cookie12Sided', title: 'SnowLuma 已连接' },
 };
 let stopMorph = null;
 
@@ -88,7 +88,7 @@ function render() {
   setText($('#status-sub'), {
     loading: '',
     down: '请确认 FeiYu Bot 正在运行（start-dafeiyu.bat），恢复后会自动刷新',
-    waiting: `NapCat 登录后会自动连接到 ${status?.listen ?? ''}`,
+    waiting: `SnowLuma 登录后会自动连接到 ${status?.listen ?? ''}`,
     connected: `${status?.nickname ?? '获取昵称中…'} · ${status?.selfId ?? ''}`,
   }[state]);
 
@@ -122,9 +122,9 @@ function render() {
 
 function notify(prev, next) {
   if (prev === 'loading') return;
-  if (next === 'connected') showSnackbar('NapCat 已连接', 'success');
+  if (next === 'connected') showSnackbar('SnowLuma 已连接', 'success');
   else if (next === 'down') showSnackbar('与 FeiYu Bot 后端的连接中断', 'error');
-  else if (prev === 'connected') showSnackbar('NapCat 已断开，等待重连', 'error');
+  else if (prev === 'connected') showSnackbar('SnowLuma 已断开，等待重连', 'error');
   else showSnackbar('已重新连上 FeiYu Bot 后端', 'success');
 }
 

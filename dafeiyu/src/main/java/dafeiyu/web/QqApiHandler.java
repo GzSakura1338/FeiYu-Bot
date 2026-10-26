@@ -69,10 +69,11 @@ final class QqApiHandler {
     }
 
     private String known(String name) {
-        if (tools.api().get(name) == null) {
+        QqApi.Action action = tools.api().get(name);
+        if (action == null) {
             throw new IllegalArgumentException("没有这个接口：" + name);
         }
-        return name;
+        return action.name();
     }
 
     private static Access access(String kind) {

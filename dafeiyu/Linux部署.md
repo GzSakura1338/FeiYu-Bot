@@ -1,6 +1,6 @@
 # 在 Linux 服务器上部署 FeiYu Bot
 
-按 2026-10-25 一位用户在 Ubuntu 24.04（4 核 8 GB，NapCat 用 Docker 版）上完整部署、跑了一天后反馈的问题整理。命令以 Debian / Ubuntu 为例，其他发行版换成对应的包管理器。
+按 2026-10-25 一位用户在 Ubuntu 24.04（4 核 8 GB，当时 QQ 端用的是 NapCat Docker 版）上完整部署、跑了一天后反馈的问题整理。2026-10-26 起 QQ 端换成了 SnowLuma，第 3 节按 SnowLuma 官方文档改写，还没在服务器上实测过。命令以 Debian / Ubuntu 为例，其他发行版换成对应的包管理器。
 
 ## 1. 部署前
 
@@ -19,23 +19,29 @@
 - **命令沙盒**：`sudo apt install bubblewrap passt`。bubblewrap 是沙盒本身，passt 里的 pasta 给联网的沙盒单独一张网卡（没装时沙盒只能断网跑）。有 systemd 用户会话时会自动用 `systemd-run` 限内存和进程数
 - **看视频**：`sudo apt install ffmpeg`，装好后在「设置 › Agent › 看视频」里能看到找到的路径
 
-## 3. NapCat（Docker 版）
+## 3. SnowLuma（Docker 版）
 
 ```bash
-docker run -d --name napcat --restart unless-stopped --network host \
-  -e ACCOUNT=<机器人的 QQ 号> \
-  -v /data/napcat/config:/app/napcat/config \
-  -v /data/napcat/qq:/app/.config/QQ \
+docker run -d --name snowluma --restart unless-stopped --network host \
+  --shm-size 1g --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
+  -e SNOWLUMA_WEBUI_HOST=127.0.0.1 \
+  -v /data/snowluma/data:/app/data \
+  -v /data/snowluma/qq-config:/app/.config \
+  -v /data/snowluma/qq-data:/app/.local/share \
   -v /data/feiyu/file:/data/feiyu/file:ro \
-  mlikiowa/napcat-docker:latest
+  motricseven7/snowluma:latest
 ```
 
-- **`-e ACCOUNT` 一定要写**：镜像的启动脚本只认这个环境变量，命令行里的 `-q <QQ号>` 会被忽略。不写的话每次 `docker restart napcat` 都要重新扫码
-- **把工作目录按相同路径挂进去**（上面最后一个 `-v`，只读就够）：FeiYu Bot 发图、发文件时把本机的绝对路径交给 NapCat，容器里没有这个路径，NapCat 会报“识别URL失败”。没挂也能用：第一次发失败后 FeiYu Bot 会自动改成把图片数据直接带过去（大图先压到 2048 像素、2 MB 以内），日志里有一句 `NapCat cannot read local files`，之后每张图都这么发。但超过 30 MB 的文件就发不了了，所以还是建议挂上
-- **`enableLocalFile2Url`**（NapCat 的 OneBot 设置）：它不是发本地图用的，作用是让 `get_image` / `get_file` 的结果里带上文件内容。NapCat 在容器里时可以打开：QQ 里的旧图片链接过期后，FeiYu Bot 能通过它把图重新取回来
-- 反向 WebSocket 填 `ws://127.0.0.1:6199/ws`，token 和 FeiYu Bot 控制台里反向 WebSocket 设置的 token 一样
+- **`--cap-add SYS_PTRACE` 和 `--security-opt seccomp=unconfined` 不能省**：SnowLuma 用 ptrace 把钩子注入容器里的 QQ
+- **`--network host`**：FeiYu Bot 的反向 WebSocket 只监听本机 127.0.0.1，容器要用主机网络才连得上。主机网络下 WebUI（5099）和远程桌面 noVNC（6081）直接开在服务器上，WebUI 已经用 `SNOWLUMA_WEBUI_HOST` 限成本机；用 SSH 隧道打开：`ssh -L 5099:127.0.0.1:5099 -L 6081:127.0.0.1:6081 服务器`，防火墙别放行这两个端口
+- **登录**：浏览器打开 `http://127.0.0.1:6081/`（noVNC，密码在 `docker logs snowluma` 里），容器里的 QQ 会自己启动，扫码登录后钩子自动接上。三个数据卷保存 SnowLuma 配置和 QQ 的登录状态，升级镜像时别删
+- **反向 WebSocket**：在 WebUI（`http://127.0.0.1:5099/`，初始密码在 `docker logs snowluma` 里）的连接配置里加一个 WebSocket 客户端，地址 `ws://127.0.0.1:6199/ws`，token 和 FeiYu Bot 控制台里反向 WebSocket 设置的 token 一样，消息格式选 array。也可以直接改数据卷里的 `config/onebot_<QQ号>.json` 再 `docker restart snowluma`。默认的 HTTP（3000）和正向 WebSocket（3001）FeiYu Bot 用不上，可以删掉；群里发 `#sl` 会触发 SnowLuma 自带的状态回复，在配置里把 `statusCommand.enabled` 设成 `false`
+- **把工作目录按相同路径挂进去**（上面最后一个 `-v`，只读就够）：FeiYu Bot 发图、发文件时把本机的绝对路径交给 SnowLuma，容器里没有这个路径就读不到。没挂也能用：第一次发失败后 FeiYu Bot 会自动改成把图片数据直接带过去（大图先压到 2048 像素、2 MB 以内），日志里有一句 `SnowLuma cannot read local files`，之后每张图都这么发。但超过 30 MB 的文件就发不了了，所以还是建议挂上
+- 不用 Docker 也可以：下载 Release 里的 `SnowLuma-版本-linux-x64.tar.gz`（arm64 有对应的包），解压后 `./launcher.sh`，QQ 要自己装 Linux 版并在图形界面里登录，同一个系统用户运行
 
 ## 4. 跑起来以后怎么查
+
+QQ 端是否连上：控制台概览页显示「SnowLuma 已连接」，或者 `curl -s 127.0.0.1:8090/api/status` 里 `"connected":true`。
 
 ```bash
 # 发图走的是哪条路：via path 是按路径发，via base64 是直接带图片数据

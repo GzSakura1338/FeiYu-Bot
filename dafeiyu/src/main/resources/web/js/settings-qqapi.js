@@ -107,7 +107,7 @@ function update() {
   $('#qqapi-enabled').setAttribute('aria-checked', String(enabled));
   const on = state.actions.filter(a => a.on).length;
   $('#qqapi-hint').textContent = enabled
-    ? `NapCat ${state.version} 一共 ${state.actions.length} 个接口，开着 ${on} 个`
+    ? `SnowLuma ${state.version} 一共 ${state.actions.length} 个接口，开着 ${on} 个`
     : '关着时她看不到这两个工具';
   $('#qqapi-groups').classList.toggle('off', !enabled);
   for (const action of state.actions) {

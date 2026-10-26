@@ -13,7 +13,7 @@ import dafeiyu.config.WsProfileStore;
 import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
-import dafeiyu.onebot.NapCatService;
+import dafeiyu.onebot.OneBotService;
 import com.google.gson.JsonArray;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.plugin.PluginHost;
@@ -87,7 +87,7 @@ public final class Main {
             log.info("imported ws-profiles.json into the database (renamed to ws-profiles.json.imported)");
         }
 
-        NapCatService napcat = new NapCatService(profiles.active().settings(), log);
+        OneBotService onebot = new OneBotService(profiles.active().settings(), log);
         MessageArchive archive = new MessageArchive(db);
         WorkspaceStore workspaces = new WorkspaceStore(db, List.of(baseDir, db.file().getParent()));
         UsageStore usage = new UsageStore(db);
@@ -96,7 +96,7 @@ public final class Main {
         agent.reflection().setLog(log);
         agent.reflection().start();
         agent.stickers().setLog(log);
-        QqChatBridge bridge = new QqChatBridge(agent, napcat, archive, db, log);
+        QqChatBridge bridge = new QqChatBridge(agent, onebot, archive, db, log);
         bridge.startLife();
         Path dataDir = db.file().toAbsolutePath().getParent();
         Secrets.init(dataDir);
@@ -131,29 +131,29 @@ public final class Main {
         workspaces.setExtraTools(plugins::toolNames);
         Mind mind = new Mind(agent, bridge, log);
         mind.start();
-        napcat.addEventListener(archive::onEvent);
-        napcat.addEventListener(bridge::onEvent);
-        napcat.addEventListener(plugins::onNapcatEvent);
-        napcat.addConnectListener(bridge::onConnected);
-        napcat.addConnectListener(plugins::onConnected);
+        onebot.addEventListener(archive::onEvent);
+        onebot.addEventListener(bridge::onEvent);
+        onebot.addEventListener(plugins::onOneBotEvent);
+        onebot.addConnectListener(bridge::onConnected);
+        onebot.addConnectListener(plugins::onConnected);
         plugins.start();
         mcp.start();
-        napcat.start();
+        onebot.start();
 
         PluginInstaller installer = new PluginInstaller(plugins, dataDir.resolve("plugin-staging"), log);
-        WebConsole web = new WebConsole(config.webAddress(), config.webDir(), napcat, profiles, agent, bridge, mind, archive, usage, plugins,
+        WebConsole web = new WebConsole(config.webAddress(), config.webDir(), onebot, profiles, agent, bridge, mind, archive, usage, plugins,
                 installer, log);
         web.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             web.stop();
             plugins.shutdown();
-            napcat.stop();
+            onebot.stop();
             db.close();
         }));
 
         log.info("dafeiyu started: console http://" + config.webHost() + ":" + config.webPort()
-                + "/, NapCat ws " + profiles.active().settings().url()
+                + "/, OneBot ws " + profiles.active().settings().url()
                 + (agent.store().qqReply() && agent.store().active() != null
                         ? ", QQ auto-reply ON (" + agent.store().active().model() + ")" : ""));
         Thread.currentThread().join();

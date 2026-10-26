@@ -28,6 +28,9 @@ final class QqBackfill {
     private static final long MAX_GAP_MS = 6 * 3_600_000L;
     private static final long PEERS_SINCE_MS = 7 * 86_400_000L;
     private static final long REPLY_WINDOW_MS = 10 * 60_000L;
+    private static final long RETRY_DELAY_MS = 15_000;
+
+    private record Chat(String action, String key, String id, String type) {}
 
     private final java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile long ranAt;
@@ -55,16 +58,29 @@ final class QqBackfill {
                 return;
             }
             ranAt = now;
-            long from = Math.max(last - 5_000, now - MAX_GAP_MS);
+            long from = now - MAX_GAP_MS;
             String selfId = outbox.selfId();
             Set<String> known = archive.messageIdsSince(from - 60_000);
+            known.addAll(archive.incomingSince(from - 60_000));
             List<JsonObject> missed = new ArrayList<>();
+            List<Chat> chats = new ArrayList<>();
+            archive.activeGroups(now - ACTIVE_SINCE_MS, MAX_CHATS).forEach(g -> chats.add(new Chat("get_group_msg_history", "group_id", g, "group")));
+            peers(now).forEach(u -> chats.add(new Chat("get_friend_msg_history", "user_id", u, "private")));
+            List<Chat> retry = chats.stream().filter(c -> collect(missed, known, c, from, selfId) != null).toList();
             List<String> failed = new ArrayList<>();
-            for (String groupId : archive.activeGroups(now - ACTIVE_SINCE_MS, MAX_CHATS)) {
-                collect(missed, known, failed, "get_group_msg_history", "group_id", groupId, "group", from, selfId);
-            }
-            for (String userId : peers(now)) {
-                collect(missed, known, failed, "get_friend_msg_history", "user_id", userId, "private", from, selfId);
+            if (!retry.isEmpty()) {
+                try {
+                    Thread.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                for (Chat c : retry) {
+                    String error = collect(missed, known, c, from, selfId);
+                    if (error != null) {
+                        failed.add(c.type() + " " + c.id() + ": " + error);
+                    }
+                }
             }
             if (!failed.isEmpty()) {
                 log.warn("agent: catching up skipped " + failed.size() + " chat(s): " + String.join("; ", failed.subList(0, Math.min(3, failed.size()))));
@@ -93,26 +109,26 @@ final class QqBackfill {
         return peers;
     }
 
-    private void collect(List<JsonObject> into, Set<String> known, List<String> failed, String action, String key, String id, String type,
-                         long from, String selfId) {
+    private String collect(List<JsonObject> into, Set<String> known, Chat chat, long from, String selfId) {
+        String id = chat.id();
+        String type = chat.type();
         JsonObject params = new JsonObject();
         try {
-            params.addProperty(key, Long.parseLong(id));
+            params.addProperty(chat.key(), Long.parseLong(id));
         } catch (NumberFormatException e) {
-            return;
+            return null;
         }
         params.addProperty("message_seq", 0);
         params.addProperty("count", PER_CHAT);
         params.addProperty("reverseOrder", false);
         JsonObject data;
         try {
-            data = optObject(outbox.call(action, params, Duration.ofSeconds(10)), "data");
+            data = optObject(outbox.call(chat.action(), params, Duration.ofSeconds(10)), "data");
         } catch (ToolFailure | RuntimeException e) {
-            failed.add(type + " " + id + ": " + e.getMessage());
-            return;
+            return String.valueOf(e.getMessage());
         }
         if (data == null || !data.has("messages") || !data.get("messages").isJsonArray()) {
-            return;
+            return null;
         }
         for (JsonElement element : data.getAsJsonArray("messages")) {
             if (!element.isJsonObject()) {
@@ -120,7 +136,8 @@ final class QqBackfill {
             }
             JsonObject event = element.getAsJsonObject();
             String sender = optString(event, "user_id");
-            if (millis(event) < from || sender.isEmpty() || sender.equals(selfId) || !known.add(optString(event, "message_id"))) {
+            if (millis(event) < from || sender.isEmpty() || sender.equals(selfId) || known.contains(sender + "@" + millis(event))
+                    || !known.add(optString(event, "message_id"))) {
                 continue;
             }
             event.addProperty("post_type", "message");
@@ -133,6 +150,7 @@ final class QqBackfill {
             }
             into.add(event);
         }
+        return null;
     }
 
     private static long millis(JsonObject event) {

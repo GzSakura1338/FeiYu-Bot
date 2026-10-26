@@ -22,7 +22,7 @@ import static dafeiyu.util.Jsons.optObject;
 import static dafeiyu.util.Jsons.optString;
 import static dafeiyu.util.Texts.abbreviate;
 
-final class NapCatServer extends WebSocketServer {
+final class OneBotServer extends WebSocketServer {
 
     static final Duration ACTION_TIMEOUT = Duration.ofSeconds(10);
 
@@ -43,7 +43,7 @@ final class NapCatServer extends WebSocketServer {
     private volatile Instant lastHeartbeat;
     private volatile long profileAt;
 
-    NapCatServer(WsSettings settings, LogBuffer log, Consumer<JsonObject> events, Runnable onReady) {
+    OneBotServer(WsSettings settings, LogBuffer log, Consumer<JsonObject> events, Runnable onReady) {
         super(settings.address());
         this.events = events;
         this.onReady = onReady;
@@ -95,7 +95,7 @@ final class NapCatServer extends WebSocketServer {
     public void onOpen(WebSocket ws, ClientHandshake handshake) {
         WebSocket old = conn;
         if (old != null && old.isOpen()) {
-            log.warn("new NapCat connection replaces the old one");
+            log.warn("new OneBot connection replaces the old one");
             old.close(CloseFrame.NORMAL, "replaced");
         }
         selfId = handshake.getFieldValue("X-Self-ID");
@@ -104,7 +104,7 @@ final class NapCatServer extends WebSocketServer {
         connectedAt = Instant.now();
         lastHeartbeat = null;
         conn = ws;
-        log.info("NapCat connected: QQ " + selfId + " from " + remote);
+        log.info("OneBot connected: QQ " + selfId + " from " + remote);
 
         profileAt = System.currentTimeMillis();
         callAction("get_login_info", new JsonObject()).thenAccept(resp -> {
@@ -144,7 +144,7 @@ final class NapCatServer extends WebSocketServer {
         }
         conn = null;
         pending.failAll("connection closed");
-        log.warn("NapCat disconnected (code " + code + (reason == null || reason.isEmpty() ? "" : ", " + reason) + ")");
+        log.warn("OneBot disconnected (code " + code + (reason == null || reason.isEmpty() ? "" : ", " + reason) + ")");
     }
 
     @Override
@@ -188,7 +188,7 @@ final class NapCatServer extends WebSocketServer {
     CompletableFuture<JsonObject> callAction(String action, JsonObject params, Duration timeout) {
         WebSocket ws = conn;
         if (ws == null || !ws.isOpen()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("NapCat is not connected"));
+            return CompletableFuture.failedFuture(new IllegalStateException("QQ is not connected"));
         }
         PendingActions.Pending call = pending.register();
         JsonObject req = new JsonObject();
@@ -198,18 +198,18 @@ final class NapCatServer extends WebSocketServer {
         try {
             ws.send(req.toString());
         } catch (RuntimeException e) {
-            call.future().completeExceptionally(new IllegalStateException("NapCat is not connected"));
+            call.future().completeExceptionally(new IllegalStateException("QQ is not connected"));
         }
         return call.future().orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
     }
 
-    NapCatStatus status() {
+    OneBotStatus status() {
         WebSocket ws = conn;
         if (ws == null || !ws.isOpen()) {
-            return new NapCatStatus(false, listenUrl(), null, null, null, null, null);
+            return new OneBotStatus(false, listenUrl(), null, null, null, null, null);
         }
         Instant heartbeat = lastHeartbeat;
-        return new NapCatStatus(true, listenUrl(), selfId, nickname, remote,
+        return new OneBotStatus(true, listenUrl(), selfId, nickname, remote,
                 connectedAt.toString(), heartbeat == null ? null : heartbeat.toString());
     }
 
