@@ -33,25 +33,39 @@ import java.util.stream.Stream;
 
 public final class VideoFrames {
 
-    public record Config(int frames, int seconds) {
+    /**
+     * @param secondsPerFrame 几秒截一张；0 表示不看视频
+     * @param maxSeconds      最多看多长；0 表示整段全看
+     * @param maxFrames       最多截几张（兜底，防止 1 秒 1 帧把长视频截成几百张）
+     * @param gifFrames       动图 GIF 抽几张；1 表示只看第一帧
+     */
+    public record Config(int secondsPerFrame, int maxSeconds, int maxFrames, int gifFrames) {
 
         public Config {
-            frames = frames <= 0 ? 0 : Math.min(frames, MAX_FRAMES);
-            seconds = seconds <= 0 ? DEFAULT_SECONDS : Math.clamp(seconds, MIN_SECONDS, MAX_SECONDS);
+            secondsPerFrame = secondsPerFrame < 0 ? 0
+                    : secondsPerFrame == 0 ? 0 : Math.clamp(secondsPerFrame, MIN_SPF, MAX_SPF);
+            maxSeconds = maxSeconds <= 0 ? 0 : Math.clamp(maxSeconds, MIN_SECONDS, MAX_SECONDS);
+            maxFrames = Math.clamp(maxFrames <= 0 ? DEFAULT_MAX_FRAMES : maxFrames, 1, MAX_FRAMES);
+            gifFrames = Math.clamp(gifFrames <= 0 ? DEFAULT_GIF_FRAMES : gifFrames, 1, MAX_GIF_FRAMES);
         }
 
         public boolean enabled() {
-            return frames > 0;
+            return secondsPerFrame > 0;
         }
     }
 
     public record Frames(List<ImagePart> parts, String note) {}
 
-    public static final int MAX_FRAMES = 16;
+    public static final int MIN_SPF = 1;
+    public static final int MAX_SPF = 60;
     public static final int MIN_SECONDS = 5;
-    public static final int MAX_SECONDS = 300;
-    private static final int DEFAULT_FRAMES = 8;
+    public static final int MAX_SECONDS = 3600;
+    public static final int MAX_FRAMES = 200;
+    public static final int MAX_GIF_FRAMES = 12;
+    private static final int DEFAULT_MAX_FRAMES = 24;
+    private static final int DEFAULT_SPF = 5;
     private static final int DEFAULT_SECONDS = 60;
+    private static final int DEFAULT_GIF_FRAMES = 6;
     private static final String KEY = "agent.video";
     private static final long MAX_BYTES = 100L * 1024 * 1024;
     private static final Duration DOWNLOAD = Duration.ofMinutes(2);
@@ -74,19 +88,42 @@ public final class VideoFrames {
         String raw = settings.get(KEY);
         if (raw != null && !raw.isBlank()) {
             try {
-                Config saved = GSON.fromJson(raw, Config.class);
-                if (saved != null) {
-                    return new Config(saved.frames(), saved.seconds());
+                com.google.gson.JsonObject o = GSON.fromJson(raw, com.google.gson.JsonObject.class);
+                if (o != null) {
+                    if (o.has("secondsPerFrame") || o.has("maxFrames")) {
+                        return new Config(integer(o, "secondsPerFrame", DEFAULT_SPF),
+                                integer(o, "maxSeconds", 0),
+                                integer(o, "maxFrames", DEFAULT_MAX_FRAMES),
+                                integer(o, "gifFrames", DEFAULT_GIF_FRAMES));
+                    }
+                    int frames = integer(o, "frames", 0);
+                    int seconds = integer(o, "seconds", DEFAULT_SECONDS);
+                    if (frames <= 0) {
+                        return new Config(0, seconds, DEFAULT_MAX_FRAMES, DEFAULT_GIF_FRAMES);
+                    }
+                    return new Config(Math.max(1, seconds / frames), seconds, frames, DEFAULT_GIF_FRAMES);
                 }
-            } catch (JsonParseException ignored) {
+            } catch (JsonParseException | IllegalStateException ignored) {
             }
         }
-        return new Config(DEFAULT_FRAMES, DEFAULT_SECONDS);
+        return new Config(DEFAULT_SPF, DEFAULT_SECONDS, DEFAULT_MAX_FRAMES, DEFAULT_GIF_FRAMES);
     }
 
-    public synchronized Config save(Integer frames, Integer seconds) {
+    private static int integer(com.google.gson.JsonObject o, String key, int fallback) {
+        try {
+            return o.has(key) && o.get(key).isJsonPrimitive() ? o.get(key).getAsInt() : fallback;
+        } catch (RuntimeException e) {
+            return fallback;
+        }
+    }
+
+    public synchronized Config save(Integer secondsPerFrame, Integer maxSeconds, Integer maxFrames, Integer gifFrames) {
         Config old = config();
-        Config next = new Config(frames == null ? old.frames() : frames, seconds == null ? old.seconds() : seconds);
+        Config next = new Config(
+                secondsPerFrame == null ? old.secondsPerFrame() : secondsPerFrame,
+                maxSeconds == null ? old.maxSeconds() : maxSeconds,
+                maxFrames == null ? old.maxFrames() : maxFrames,
+                gifFrames == null ? old.gifFrames() : gifFrames);
         settings.put(KEY, GSON.toJson(next));
         return next;
     }
@@ -103,6 +140,12 @@ public final class VideoFrames {
         located = false;
     }
 
+    /** 常见安装位置：很多人装了但没加进 PATH，先按 PATH 找，再兜这些地方。 */
+    private static final List<String> COMMON_DIRS = Platform.windows()
+            ? List.of("C:/ffmpeg/bin", "C:/Program Files/ffmpeg/bin",
+                      "C:/ProgramData/chocolatey/bin", "C:/Users/Public/ffmpeg/bin")
+            : List.of("/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/snap/bin", "/bin");
+
     private static String locate() {
         String name = Platform.windows() ? "ffmpeg.exe" : "ffmpeg";
         String path = System.getenv().getOrDefault("PATH", System.getenv().getOrDefault("Path", ""));
@@ -110,15 +153,53 @@ public final class VideoFrames {
             if (dir.isBlank()) {
                 continue;
             }
-            try {
-                Path p = Path.of(dir.strip(), name);
-                if (Files.isRegularFile(p) && (Platform.windows() || Files.isExecutable(p))) {
-                    return p.toString();
-                }
-            } catch (RuntimeException ignored) {
+            String found = tryPath(dir.strip(), name);
+            if (found != null) {
+                return found;
+            }
+        }
+        for (String dir : COMMON_DIRS) {
+            String found = tryPath(dir, name);
+            if (found != null) {
+                return found;
             }
         }
         return null;
+    }
+
+    private static String tryPath(String dir, String name) {
+        try {
+            Path p = Path.of(dir, name);
+            if (Files.isRegularFile(p) && (Platform.windows() || Files.isExecutable(p))) {
+                return p.toString();
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return null;
+    }
+
+    /** 生成一小段纯红测试视频（1 秒 320x240），用来探测模型能不能直接看视频。 */
+    public byte[] sampleVideo() throws ToolFailure {
+        String exe = ffmpeg();
+        if (exe == null) {
+            throw new ToolFailure("这台电脑上找不到 ffmpeg，没法探测视频能力");
+        }
+        Path dir = temp.resolve("probe-" + UUID.randomUUID());
+        try {
+            Files.createDirectories(dir);
+            Path out = dir.resolve("probe.mp4");
+            Sandbox.Result result = run(exe, dir, List.of(exe, "-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-f", "lavfi", "-i", "color=c=red:s=320x240:d=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", out.toString()));
+            if (!Files.isRegularFile(out)) {
+                throw new ToolFailure("生成探测视频失败" + (result.stderr().isBlank() ? "" : "：" + result.stderr().strip()));
+            }
+            return Files.readAllBytes(out);
+        } catch (IOException e) {
+            throw new ToolFailure("生成探测视频失败：" + e.getMessage());
+        } finally {
+            delete(dir);
+        }
     }
 
     public Frames extract(String url) throws ToolFailure {
@@ -144,9 +225,17 @@ public final class VideoFrames {
             Path video = dir.resolve("video");
             PublicWeb.save(url, video, MAX_BYTES, DOWNLOAD);
             double duration = probe(exe, dir, video);
-            double span = duration > 0 ? Math.min(duration, config.seconds()) : config.seconds();
-            int count = duration > 0 && duration < config.frames() ? Math.max(1, (int) Math.ceil(duration)) : config.frames();
-            double fps = count / Math.max(span, 0.5);
+            // 看多长：maxSeconds=0 表示整段
+            double span;
+            if (config.maxSeconds() == 0) {
+                span = duration > 0 ? duration : 60;
+            } else {
+                span = duration > 0 ? Math.min(duration, config.maxSeconds()) : config.maxSeconds();
+            }
+            // 关键：视频太长时不截断，而是把间隔拉大，保证整段都被均匀看到
+            double effSpf = Math.max(config.secondsPerFrame(), span / config.maxFrames());
+            int count = Math.max(1, (int) Math.min(Math.ceil(span / effSpf), config.maxFrames()));
+            double fps = 1.0 / effSpf;
             Sandbox.Result result = run(exe, dir, List.of(exe, "-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "2",
                     "-t", number(span), "-i", video.toString(),
                     "-vf", "fps=" + number(fps) + ",scale=w=768:h=768:force_original_aspect_ratio=decrease",
@@ -161,8 +250,11 @@ public final class VideoFrames {
                 throw new ToolFailure("ffmpeg 没截出画面" + (result.stderr().isBlank() ? "" : "：" + result.stderr().strip()));
             }
             String length = duration > 0 ? "视频长约 " + Math.round(duration) + " 秒，" : "";
-            String part = duration > span ? "只看了前 " + Math.round(span) + " 秒，" : "";
-            return new Frames(parts, "（附上的 " + parts.size() + " 张图是那段视频按时间顺序截的画面，" + length + part
+            String part = config.maxSeconds() > 0 && duration > config.maxSeconds()
+                    ? "只看了前 " + Math.round(span) + " 秒，" : "";
+            String density = effSpf > config.secondsPerFrame() + 0.01
+                    ? "视频较长，间隔自动拉大到每 " + number(effSpf) + " 秒一张铺满整段，" : "";
+            return new Frames(parts, "（附上的 " + parts.size() + " 张图是那段视频按时间顺序截的画面，" + length + part + density
                     + "大约每隔 " + number(Math.max(span / parts.size(), 0.1)) + " 秒一张；视频里的声音听不到）");
         } catch (IOException e) {
             throw new ToolFailure("看视频失败：" + e.getMessage());

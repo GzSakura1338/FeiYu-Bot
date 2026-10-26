@@ -112,6 +112,10 @@ public final class MessageArchive {
                 List<String> keys = new java.util.ArrayList<>(data.keySet());
                 keys.sort(java.util.Comparator.comparingInt(k -> List.of("id", "qq", "file").contains(k) ? List.of("id", "qq", "file").indexOf(k) : 3));
                 for (String key : keys) {
+                    // key 也要校验：不校验就能把 `]` `,` `=` 拼进 CQ 码，破坏整条消息结构。
+                    if (!key.matches("[A-Za-z0-9_.-]{1,32}")) {
+                        continue;
+                    }
                     com.google.gson.JsonElement value = data.get(key);
                     if (value == null || value.isJsonNull()) {
                         continue;

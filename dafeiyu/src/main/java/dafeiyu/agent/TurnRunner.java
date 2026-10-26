@@ -65,6 +65,10 @@ public final class TurnRunner {
     private static final int STICKER_NUDGE = 4;
     private static final int MAX_ERRANDS = 2;
     private static final int MAX_VIEWS = 6;
+    /** 「拿到图但这一轮没别的工具调用」最多再多走几轮，防止无限循环。 */
+    private static final int MAX_LOOK_AGAIN = 3;
+    /** 本轮是否刚有新图塞进 live（只在那一刻为真，避免每轮都重试）。 */
+    private boolean lookedThisStep;
     private static final String VIEWED = "（这是你刚才用 view_image 要看的图）";
     public static final String SILENCE = "[沉默]";
     private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
@@ -183,6 +187,10 @@ public final class TurnRunner {
         if (qqSession() || byOwner() || "web".equals(turn.source())) {
             set.addAll(agent.ownerTools());
         }
+        // 清理历史记录只给主人和控制台：群里任何人都不该能触发删数据
+        if (byOwner() || "web".equals(turn.source()) || "console".equals(turn.source())) {
+            set.add(ChatTools.housekeeping(agent));
+        }
         if (agent.imageGen().config().ready()) {
             set.add(ImageTool.tool(agent));
         }
@@ -217,6 +225,16 @@ public final class TurnRunner {
             }
             boolean lastStep = step >= maxSteps;
             ChatRequest request = request(lastStep);
+            // 观测：这次请求里到底有几张图。imgMsgs=0 就说明图根本没进请求（工具那头丢了）。
+            {
+                long imgMsgs = request.messages().stream().filter(m -> m.images() != null && !m.images().isEmpty()).count();
+                long imgChars = request.messages().stream()
+                        .filter(m -> m.images() != null)
+                        .flatMap(m -> m.images().stream())
+                        .mapToLong(i -> i.base64() == null ? 0 : i.base64().length()).sum();
+                System.err.println("[req] " + turn.session() + " step=" + step + " msgs=" + request.messages().size()
+                        + " imgMsgs=" + imgMsgs + " imgChars=" + imgChars);
+            }
             ChatResult result;
             try {
                 result = new ModelRetry(listener, cancelled).run(() -> protocol.stream(profile, request, listener));
@@ -240,6 +258,11 @@ public final class TurnRunner {
                 }
                 throw e;
             }
+            System.err.println("[resp] " + turn.session() + " step=" + step
+                    + " prompt=" + result.promptTokens() + " completion=" + result.completionTokens()
+                    + " finish=" + result.finishReason()
+                    + " content=" + (result.content() == null ? "" : result.content().replace('\n', ' ').strip()
+                            .substring(0, Math.min(40, result.content().replace('\n', ' ').strip().length()))));
             completion += Math.max(0, result.completionTokens());
             List<ToolCall> calls = lastStep ? List.of() : result.toolCalls();
             if (calls.isEmpty() && result.content().isEmpty()) {
@@ -301,6 +324,17 @@ public final class TurnRunner {
                 shown.clear();
             }
             if (calls.isEmpty()) {
+                // 她这一轮拿了图（view_image 返回了画面）但没再调工具：
+                // 如果现在直接 return，live 里刚塞进去的图永远发不出去 ——
+                // 表现就是"工具只回了一行尺寸、画面没进来"（2026-10-27 实测确认）。
+                boolean justLooked = lookedThisStep;
+                if (justLooked && step < MAX_LOOK_AGAIN) {
+                    lookedThisStep = false;
+                    System.err.println("[img] " + turn.session()
+                            + " 拿到图但本轮无工具调用，再走一轮让她真看到（step=" + step + "）");
+                    step++;
+                    continue;
+                }
                 long latencyMs = (System.nanoTime() - started) / 1_000_000;
                 return new ChatResult(content, result.reasoning(), List.of(), result.model(), latencyMs,
                         result.promptTokens(), completion > 0 ? completion : result.completionTokens(), result.cachedTokens(),
@@ -628,6 +662,11 @@ public final class TurnRunner {
             if (views < MAX_VIEWS) {
                 views++;
                 shown.addAll(outcome.images());
+                lookedThisStep = true;
+                long chars = outcome.images().stream()
+                        .mapToLong(i -> i.base64() == null ? 0 : i.base64().length()).sum();
+                System.err.println("[img] " + call.name() + " -> shown " + outcome.images().size()
+                        + " image(s), " + chars + " base64 chars, views=" + views + "/" + MAX_VIEWS);
             } else {
                 output += "（这一轮已经看了 " + MAX_VIEWS + " 次图，这张没给你看。你没看到它，别猜里面是什么；要说就直说这次没看这张）";
             }
@@ -757,11 +796,25 @@ public final class TurnRunner {
                 Prompt.head(system, systemRole), current, estimate, listener, new ModelRetry(listener, cancelled));
         reflection.markReflected(turn.session());
         if (userSaved) {
-            ChatMessage instructions = turn.heard() && !live.isEmpty() ? live.getFirst() : null;
+            // 必须无条件保留当前这一轮的用户消息：原来只在 turn.heard() 时才留，
+            // 结果 web/命令回合压缩后 live 里只剩图片、没有"这张图什么颜色"这个问题，
+            // 她只好随便说个颜色（2026-10-27 实测：纯红图答"白"）。
+            ChatMessage instructions = !live.isEmpty() ? live.getFirst() : null;
+            // 压缩是为了省 token，但"她刚看过的那张图"不能清：
+            // 清掉之后下一轮请求 imgMsgs=0，她会以为图没加载出来（长会话里反复发生，2026-10-27 实测确认）。
+            // 只保留最近两张带图的，避免压缩完又把上下文顶回去。
+            java.util.List<ChatMessage> viewed = new java.util.ArrayList<>();
+            for (int i = live.size() - 1; i >= 0 && viewed.size() < 2; i--) {
+                ChatMessage m = live.get(i);
+                if (m.images() != null && !m.images().isEmpty()) {
+                    viewed.add(0, m);
+                }
+            }
             live.clear();
             if (instructions != null) {
                 live.add(instructions);
             }
+            live.addAll(viewed);
         }
         measured = -1;
     }

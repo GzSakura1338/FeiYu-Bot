@@ -26,8 +26,15 @@ public final class VisionProbe {
     static boolean probe(ModelProtocol protocol, ModelProfile profile) throws AgentException {
         ChatMessage question = ChatMessage.user("What is the main color of this image? Reply with one word.", List.of(SAMPLE));
         try {
-            String answer = protocol.stream(profile, ChatRequest.of(List.of(question), null, 0), StreamListener.NONE)
+            // maxOutput 不能给 0：推理模型会把预算全花在 thinking 上、正文返回空串，
+            // 于是下面的 contains 判 false，vision 被永久缓存成 false，之后所有图都被剥离。
+            // 给足预算 + 空回复视为"探测没成"而不是"不支持"（抛出去让上层不缓存）。
+            String answer = protocol.stream(profile, ChatRequest.of(List.of(question), null, 1024), StreamListener.NONE)
                     .content().toLowerCase();
+            if (answer.isBlank()) {
+                throw new AgentException(Kind.LOCAL,
+                        "vision probe got an empty reply (reasoning model may have spent the whole budget on thinking)");
+            }
             return answer.contains("red") || answer.contains("红");
         } catch (AgentException e) {
             if (isImageError(e)) {

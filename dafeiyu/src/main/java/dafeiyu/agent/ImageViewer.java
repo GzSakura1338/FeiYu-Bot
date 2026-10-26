@@ -1,6 +1,7 @@
 package dafeiyu.agent;
 
 import com.google.gson.JsonObject;
+import dafeiyu.agent.image.GifFrames;
 import dafeiyu.agent.model.ImageLoader;
 import dafeiyu.agent.sticker.StickerStore;
 import dafeiyu.agent.tool.Args;
@@ -113,12 +114,39 @@ public final class ImageViewer implements Tool {
             }
             String[] name = new String[1];
             byte[] bytes = load(agent, ref, workspace, name);
+            // 跨会话提示：编号是全局的，她可能在别的群看过这张图，别把画面串到这儿来
+            Matcher own = NUMBER.matcher(ref);
+            if (own.matches()) {
+                try {
+                    String owner = agent.imageSession(Long.parseLong(own.group(1)));
+                    String here = context.session();
+                    if (!owner.isEmpty() && here != null && !here.isEmpty() && !owner.equals(here)) {
+                        name[0] = name[0] + "（这张图属于 " + owner + "，不是当前会话的；可以看，但别当成这里发生的事）";
+                    }
+                } catch (RuntimeException ignored) {
+                }
+            }
+            // 动图（GIF）抽帧：原来 ImageIO.read 只读第一帧，动态表情包等于一张静止图
+            try {
+                int want = agent.videoFrames().config().gifFrames();
+                if (want > 1 && GifFrames.animated(bytes)) {
+                    GifFrames.Frames frames = GifFrames.extract(bytes, want);
+                    return ToolResult.withImages(name[0] + frames.note()
+                                    + "图本体跟在后面这条消息里；如果你只看到这段文字、没看到画面，"
+                                    + "就是这次没传进去 —— 别描述内容，直接说你这次没看到。",
+                            frames.parts());
+                }
+            } catch (dafeiyu.agent.AgentException ignored) {
+                // 抽帧失败就当普通图处理，别让整个工具失败
+            }
             BufferedImage image = decode(bytes);
             if (image == null) {
                 if (!area.isEmpty()) {
                     throw new ToolFailure(name[0] + " 是这台电脑解不开的格式，没法放大，只能不写 area 看整张");
                 }
-                return ToolResult.withImages(name[0] + "（这种格式没法画格子和放大，下面是整张图）", List.of(ImageLoader.fromBytes(bytes)));
+                return ToolResult.withImages(name[0] + "（这种格式没法画格子和放大，下面是整张图）"
+                        + "图本体跟在后面这条消息里；如果你只看到这段文字、没看到画面，就是这次没传进去 —— 别描述内容，直接说你这次没看到。",
+                        List.of(ImageLoader.fromBytes(bytes)));
             }
             int w = image.getWidth();
             int h = image.getHeight();
@@ -131,7 +159,8 @@ public final class ImageViewer implements Tool {
                 return ToolResult.withImages(name[0] + "（原图 " + w + "×" + h + "）" + sizeNote(w, h, view.getWidth(), view.getHeight()) + (grid
                         ? "图上画了 4×4 的格子当参照：红线和黄色标签 A1–D4 是画上去的，不是图里的东西。" : "")
                         + "要放大哪块就用 area（整张按 4×4 均分：列 A–D 从左到右，行 1–4 从上到下，比如 B2 或 B2:C3）。"
-                        + "颜色、配饰、文字、某样东西在不在这类细节，整张看不清就放大再确认，或者直说看不清，别猜。",
+                        + "颜色、配饰、文字、某样东西在不在这类细节，整张看不清就放大再确认，或者直说看不清，别猜。"
+                        + "图本体跟在后面这条消息里；如果你只看到这段文字、没看到画面，就是这次没传进去 —— 别描述内容，直接说你这次没看到。",
                         List.of(encode(view)));
             }
             double[] r = region(area);
@@ -146,7 +175,9 @@ public final class ImageViewer implements Tool {
             double zoom = Math.min(MAX_ZOOM, (double) MAX_SIDE / Math.max(crop.getWidth(), crop.getHeight()));
             BufferedImage view = scale(crop, zoom);
             return ToolResult.withImages("放大了" + name[0] + " 的「" + area + "」（原图 " + w + "×" + h + "，这块 " + crop.getWidth() + "×" + crop.getHeight()
-                    + (zoom > 1.05 ? "，放大了 " + String.format(Locale.ROOT, "%.1f", zoom) + " 倍" : "") + "）。", List.of(encode(view)));
+                    + (zoom > 1.05 ? "，放大了 " + String.format(Locale.ROOT, "%.1f", zoom) + " 倍" : "") + "）。"
+                    + "图本体跟在后面这条消息里；如果你只看到这段文字、没看到画面，就是这次没传进去 —— 别描述内容，直接说你这次没看到。",
+                    List.of(encode(view)));
         } catch (AgentException e) {
             throw new ToolFailure("这张图打不开：" + e.getMessage());
         }

@@ -57,6 +57,16 @@ final class QqImages {
         return number(path.toString(), path.toUri().toString(), session);
     }
 
+    /** 这张图属于哪个会话（用于提示"你看的是别处的图"）。查不到返回空串。 */
+    String sessionOf(long id) {
+        try {
+            String s = db.one("SELECT session FROM images WHERE id = ?", rs -> rs.getString(1), id);
+            return s == null ? "" : s;
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
     byte[] load(long id) throws ToolFailure {
         Row row = db.one("SELECT file, url FROM images WHERE id = ?", rs -> new Row(rs.getString(1), rs.getString(2)), id);
         if (row == null) {

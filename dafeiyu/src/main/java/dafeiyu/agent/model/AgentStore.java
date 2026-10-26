@@ -18,6 +18,7 @@ import java.util.UUID;
 public final class AgentStore {
 
     private static final String ACTIVE_KEY = "agent.active";
+    private static final String HOUSEKEEPING_KEY = "agent.housekeeping";
     private static final String QQ_REPLY_KEY = "agent.qqReply";
     private static final String GROUP_MODE_KEY = "agent.groupMode";
     private static final String WAKE_WORDS_KEY = "agent.wakeWords";
@@ -102,6 +103,14 @@ public final class AgentStore {
 
     public void setVision(String id, Boolean supported) {
         setCapability("vision", id, supported);
+    }
+
+    public Boolean video(String id) {
+        return capability("video", id);
+    }
+
+    public void setVideo(String id, Boolean supported) {
+        setCapability("video", id, supported);
     }
 
     public Boolean systemRole(String id) {
@@ -286,6 +295,41 @@ public final class AgentStore {
         return out;
     }
 
+    /**
+     * 记录清理的设置。
+     *
+     * @param schedule manual / daily / weekly / monthly —— 定期检查的频率，manual 表示只有主人叫她才清
+     * @param lastRun  上次清理的时间戳，用来判断到期没有
+     */
+    public record Housekeeping(boolean enabled, int messagesDays, int usageDays, String schedule, long lastRun) {
+
+        public static final Housekeeping OFF = new Housekeeping(false, 90, 365, "manual", 0L);
+
+        public Housekeeping {
+            messagesDays = Math.max(7, Math.min(3650, messagesDays));
+            usageDays = Math.max(7, Math.min(3650, usageDays));
+            schedule = schedule == null || schedule.isBlank()
+                    ? "manual" : switch (schedule) {
+                        case "daily", "weekly", "monthly" -> schedule;
+                        default -> "manual";
+                    };
+        }
+
+        /** 到期了没有。manual 永不自动；关着也不自动。 */
+        public boolean due(long now) {
+            if (!enabled || schedule.equals("manual")) {
+                return false;
+            }
+            long gap = switch (schedule) {
+                case "daily" -> 86_400_000L;
+                case "weekly" -> 7 * 86_400_000L;
+                case "monthly" -> 30 * 86_400_000L;
+                default -> Long.MAX_VALUE;
+            };
+            return now - lastRun >= gap;
+        }
+    }
+
     public record Pacing(int intervalMs, int maxPieces) {
 
         public String problem() {
@@ -293,6 +337,32 @@ public final class AgentStore {
             if (maxPieces < 1 || maxPieces > 8) return "最多分几条要在 1～8 之间";
             return null;
         }
+    }
+
+    public Housekeeping housekeeping() {
+        String raw = settings.get(HOUSEKEEPING_KEY);
+        if (raw != null && !raw.isBlank()) {
+            try {
+                Housekeeping saved = GSON.fromJson(raw, Housekeeping.class);
+                if (saved != null) {
+                    return saved;
+                }
+            } catch (JsonParseException ignored) {
+            }
+        }
+        return Housekeeping.OFF;
+    }
+
+    public synchronized Housekeeping setHousekeeping(Housekeeping cfg) {
+        settings.put(HOUSEKEEPING_KEY, GSON.toJson(cfg));
+        return cfg;
+    }
+
+    /** 记一次清理时间（防同一天反复提醒）。 */
+    public synchronized void markHousekeepingRun() {
+        Housekeeping cur = housekeeping();
+        settings.put(HOUSEKEEPING_KEY, GSON.toJson(
+                new Housekeeping(cur.enabled(), cur.messagesDays(), cur.usageDays(), cur.schedule(), System.currentTimeMillis())));
     }
 
     public Pacing pacing() {

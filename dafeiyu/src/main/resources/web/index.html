@@ -858,40 +858,121 @@
           <figcaption class="body-small"></figcaption>
         </figure>
       </div>
-      <div class="panel">
+            <div class="panel">
         <div class="panel-header"><h2 class="headline-small">看视频</h2></div>
-        <p class="panel-desc body-medium">有人发视频找她时，用 ffmpeg 从视频里按时间均匀截几张画面当图片给她看（声音听不到）。要模型能看图，电脑上装了 ffmpeg 才行；截图在沙盒里做，做完就删。</p>
+        <p class="panel-desc body-medium">有人发视频或动图找她时，用 ffmpeg 按时间均匀截画面给她看（声音听不到）。想看清细节就把间隔调小，想省钱就调大；视频太长时会自动把间隔拉大，保证整段都被看到。截图在沙盒里做，做完就删。</p>
         <ul class="list">
           <li class="list-item settings-row">
             <span class="list-icon"><svg data-icon="image_search"></svg></span>
             <div class="list-text">
-              <div class="list-headline body-large">截几张</div>
+              <div class="list-headline body-large">多久截一张</div>
               <div class="list-supporting body-medium" id="video-hint">正在检查 ffmpeg…</div>
             </div>
-            <div class="segmented label-large" role="radiogroup" aria-label="视频截几张" id="video-frames">
-              <button class="state-layer" role="radio" data-frames="0"><svg data-icon="check" class="icon-18 chip-check"></svg>不看</button>
-              <button class="state-layer" role="radio" data-frames="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4 张</button>
-              <button class="state-layer" role="radio" data-frames="8"><svg data-icon="check" class="icon-18 chip-check"></svg>8 张</button>
-              <button class="state-layer" role="radio" data-frames="12"><svg data-icon="check" class="icon-18 chip-check"></svg>12 张</button>
-              <button class="state-layer" role="radio" data-frames="16"><svg data-icon="check" class="icon-18 chip-check"></svg>16 张</button>
+            <div class="segmented label-large" role="radiogroup" aria-label="视频多久截一张" id="video-spf">
+              <button class="state-layer" role="radio" data-spf="0"><svg data-icon="check" class="icon-18 chip-check"></svg>不看</button>
+              <button class="state-layer" role="radio" data-spf="1"><svg data-icon="check" class="icon-18 chip-check"></svg>1 秒</button>
+              <button class="state-layer" role="radio" data-spf="2"><svg data-icon="check" class="icon-18 chip-check"></svg>2 秒</button>
+              <button class="state-layer" role="radio" data-spf="5"><svg data-icon="check" class="icon-18 chip-check"></svg>5 秒</button>
+              <button class="state-layer" role="radio" data-spf="10"><svg data-icon="check" class="icon-18 chip-check"></svg>10 秒</button>
+              <button class="state-layer" role="radio" data-spf="30"><svg data-icon="check" class="icon-18 chip-check"></svg>30 秒</button>
             </div>
           </li>
           <li class="list-item settings-row">
             <span class="list-icon"><svg data-icon="timer"></svg></span>
             <div class="list-text">
               <div class="list-headline body-large">看多长</div>
-              <div class="list-supporting body-medium">只截视频开头这么长的一段，长视频也不会截太久</div>
+              <div class="list-supporting body-medium">整段会均匀铺满；选前面的档位就只看开头那么久</div>
             </div>
-            <div class="segmented label-large" role="radiogroup" aria-label="视频看多长" id="video-seconds">
-              <button class="state-layer" role="radio" data-seconds="30"><svg data-icon="check" class="icon-18 chip-check"></svg>前 30 秒</button>
-              <button class="state-layer" role="radio" data-seconds="60"><svg data-icon="check" class="icon-18 chip-check"></svg>前 1 分钟</button>
-              <button class="state-layer" role="radio" data-seconds="120"><svg data-icon="check" class="icon-18 chip-check"></svg>前 2 分钟</button>
-              <button class="state-layer" role="radio" data-seconds="300"><svg data-icon="check" class="icon-18 chip-check"></svg>前 5 分钟</button>
+            <div class="segmented label-large" role="radiogroup" aria-label="视频看多长" id="video-maxsec">
+              <button class="state-layer" role="radio" data-maxsec="0"><svg data-icon="check" class="icon-18 chip-check"></svg>整段</button>
+              <button class="state-layer" role="radio" data-maxsec="30"><svg data-icon="check" class="icon-18 chip-check"></svg>30 秒</button>
+              <button class="state-layer" role="radio" data-maxsec="60"><svg data-icon="check" class="icon-18 chip-check"></svg>1 分钟</button>
+              <button class="state-layer" role="radio" data-maxsec="300"><svg data-icon="check" class="icon-18 chip-check"></svg>5 分钟</button>
+              <button class="state-layer" role="radio" data-maxsec="600"><svg data-icon="check" class="icon-18 chip-check"></svg>10 分钟</button>
             </div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="photo_library"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">最多截几张</div>
+              <div class="list-supporting body-medium">兜底上限，防止 1 秒 1 帧把长视频截成几百张（每张都要花 token）</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="最多截几张" id="video-maxframes">
+              <button class="state-layer" role="radio" data-maxframes="12"><svg data-icon="check" class="icon-18 chip-check"></svg>12 张</button>
+              <button class="state-layer" role="radio" data-maxframes="24"><svg data-icon="check" class="icon-18 chip-check"></svg>24 张</button>
+              <button class="state-layer" role="radio" data-maxframes="48"><svg data-icon="check" class="icon-18 chip-check"></svg>48 张</button>
+              <button class="state-layer" role="radio" data-maxframes="96"><svg data-icon="check" class="icon-18 chip-check"></svg>96 张</button>
+            </div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="gif_box"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">动图抽几张</div>
+              <div class="list-supporting body-medium">动态表情包按帧均匀抽几张给她看；1 张就等于只看第一帧</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="动图抽几张" id="video-gifframes">
+              <button class="state-layer" role="radio" data-gifframes="1"><svg data-icon="check" class="icon-18 chip-check"></svg>1 张</button>
+              <button class="state-layer" role="radio" data-gifframes="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4 张</button>
+              <button class="state-layer" role="radio" data-gifframes="6"><svg data-icon="check" class="icon-18 chip-check"></svg>6 张</button>
+              <button class="state-layer" role="radio" data-gifframes="8"><svg data-icon="check" class="icon-18 chip-check"></svg>8 张</button>
+              <button class="state-layer" role="radio" data-gifframes="12"><svg data-icon="check" class="icon-18 chip-check"></svg>12 张</button>
+            </div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="videocam"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">检测视频能力</div>
+              <div class="list-supporting body-medium" id="video-native-hint">点一下试试现在的模型能不能直接看视频（不用抽帧）</div>
+            </div>
+            <button class="text-button label-large" id="video-probe">检测</button>
           </li>
         </ul>
       </div>
     </div>
+
+      <div class="panel" id="housekeeping-panel">
+        <div class="panel-header"><h2 class="headline-small">记录清理</h2></div>
+        <p class="panel-desc body-medium">群里说过的话、每次调用的用量都会一直攒着。打开这里，她就能按你定的天数清掉旧的：先演练一遍告诉你"会删多少条"，你点头才真删。最近 7 天的永远不删，不管这里写多少。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="delete_sweep"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">启用</div>
+              <div class="list-supporting body-medium" id="housekeeping-hint">关着时她不能清理任何记录</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="housekeeping-enabled" aria-checked="false" aria-label="启用记录清理"><span class="switch-handle"></span></button>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="forum"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">消息保留</div>
+              <div class="list-supporting body-medium">超过这么多天的聊天归档会被清掉，最少 7 天</div>
+            </div>
+            <div class="stepper" data-field="messagesDays" data-min="7" data-max="3650" data-step="1" data-unit="天"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="bar_chart"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">用量记录保留</div>
+              <div class="list-supporting body-medium">Token 用量那本的保留天数，同样最少 7 天</div>
+            </div>
+            <div class="stepper" data-field="usageDays" data-min="7" data-max="3650" data-step="1" data-unit="天"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="schedule"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">多久看一次</div>
+              <div class="list-supporting body-medium">到点她会自己先演练一遍再问你；选「手动」就只有你叫她她才看</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="记录清理的检查频率" id="housekeeping-schedule">
+              <button class="state-layer" role="radio" data-schedule="manual"><svg data-icon="check" class="icon-18 chip-check"></svg>手动</button>
+              <button class="state-layer" role="radio" data-schedule="daily"><svg data-icon="check" class="icon-18 chip-check"></svg>每天</button>
+              <button class="state-layer" role="radio" data-schedule="weekly"><svg data-icon="check" class="icon-18 chip-check"></svg>每周</button>
+              <button class="state-layer" role="radio" data-schedule="monthly"><svg data-icon="check" class="icon-18 chip-check"></svg>每月</button>
+            </div>
+          </li>
+        </ul>
+      </div>
 
     <div class="settings-view" data-view="appearance" hidden>
       <div class="panel">

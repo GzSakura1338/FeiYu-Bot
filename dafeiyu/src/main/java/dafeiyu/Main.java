@@ -153,6 +153,18 @@ public final class Main {
             db.close();
         }));
 
+        String wsHost = profiles.active().settings().host();
+        boolean loopback = wsHost.equals("127.0.0.1") || wsHost.equals("localhost") || wsHost.equals("::1");
+        if (profiles.active().settings().token().isEmpty()) {
+            log.warn("OneBot 没设 token"
+                    + (loopback ? "（只绑 " + wsHost + "，只有本机能连，暂时安全）"
+                                : "，而监听地址是 " + wsHost
+                                  + " —— 任何能访问这个端口的人都能伪造 QQ 事件、调全部 QQ 动作，务必设一个 token"));
+        }
+        if (!loopback && !config.webHost().equals("127.0.0.1") && !config.webHost().equals("localhost")) {
+            log.warn("控制台监听在 " + config.webHost() + "，它没有任何登录校验"
+                    + "（能连上就能读配置、以她的身份发言、装插件）；建议只绑 127.0.0.1 并用 SSH 隧道访问");
+        }
         log.info("dafeiyu started: console http://" + config.webHost() + ":" + config.webPort()
                 + "/, OneBot ws " + profiles.active().settings().url()
                 + (agent.store().qqReply() && agent.store().active() != null

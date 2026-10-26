@@ -182,7 +182,18 @@ public final class QqChatBridge {
         this.voice = new QqVoice(outbox, db.file().toAbsolutePath().getParent().resolve("voice"));
         this.actions = new QqActions(agent, archive, outbox, contacts, log);
         this.forwards = new QqForwards(db, archive, outbox, images, log);
-        agent.setImageSource(images::load);
+        // 除了取字节，还要能回答"这张图属于哪个会话"（跨会话串图的提示靠它）
+        agent.setImageSource(new ChatAgent.ImageSource() {
+            @Override
+            public byte[] load(long id) throws ToolFailure {
+                return images.load(id);
+            }
+
+            @Override
+            public String sessionOf(long id) {
+                return images.sessionOf(id);
+            }
+        });
         this.requests = new QqRequests(agent, db, outbox, contacts, actions, log);
         requests.setOnNew(r -> {
             Observer o = observer;

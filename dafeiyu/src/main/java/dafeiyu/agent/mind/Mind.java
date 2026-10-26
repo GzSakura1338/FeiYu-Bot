@@ -226,6 +226,9 @@ public final class Mind implements QqChatBridge.Observer {
                 if (held || (!agent.store().freeWill() && !asked)) {
                     pause = PAUSED_MS;
                     blocked = true;
+                    // 这里必须清 wake：下一段 while (!wake) 若带着 true 进来会整段跳过等待，
+                    // 外层 while (true) 就变成满核空转（掉线瞬间 wake 恰好是 true 时能复现）。
+                    wake = false;
                 } else {
                     wake = false;
                     pause = step();
@@ -264,6 +267,16 @@ public final class Mind implements QqChatBridge.Observer {
         try {
             Persona persona = agent.personas().active();
             String perceived = drain();
+            // 定期检查记录清理：到点了就往这一轮的感知里塞一句，让她自己先演练再决定，
+            // 不是替她删。markHousekeepingRun() 先记上，避免同一轮反复提醒。
+            AgentStore.Housekeeping housekeeping = agent.store().housekeeping();
+            if (housekeeping.due(System.currentTimeMillis())) {
+                agent.store().markHousekeepingRun();
+                String note = "【该看看存储了】按现在的设置（消息留 " + housekeeping.messagesDays() + " 天、用量留 "
+                        + housekeeping.usageDays() + " 天），可以用 housekeeping 工具先演练一遍看看会删多少；"
+                        + "觉得合适再真删，不想动就放着。";
+                perceived = perceived.isEmpty() ? note : perceived + " " + note;
+            }
             quiet = perceived.isEmpty() ? quiet + 1 : 0;
             String cue = wander(persona.id(), perceived.isEmpty());
             String now = "【" + LocalTime.now().format(CLOCK) + "】";

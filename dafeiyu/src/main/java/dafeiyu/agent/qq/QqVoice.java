@@ -2,6 +2,7 @@ package dafeiyu.agent.qq;
 
 import com.google.gson.JsonObject;
 import dafeiyu.agent.tool.ToolFailure;
+import dafeiyu.agent.tool.Workspace;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -78,7 +79,11 @@ public final class QqVoice {
         try {
             Files.createDirectories(cache);
             Files.write(cached, audio);
-        } catch (IOException ignored) {
+            // 和 Workspace 落盘同样的道理：容器里的 QQ 以 uid=1000 跑，
+            // createTempFile/Files.write 给的是 600，它读不到就发不出去。
+            Workspace.makeWorldReadable(cached);
+        } catch (IOException e) {
+            System.err.println("WARN voice: 语音缓存写不进去（这次发送不受影响）：" + e.getMessage());
         }
         return audio;
     }
