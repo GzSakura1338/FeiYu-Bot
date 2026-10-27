@@ -1,0 +1,20 @@
+{
+  "id": "sl-guard",
+  "name": "#sl 防召唤",
+  "version": "1.0.0",
+  "author": "FeiYu Bot",
+  "description": "群里有人发 #sl 时，这条指令和别的 SnowLuma 机器人回的「SnowLuma 状态」都藏起来，不叫醒她、不进会话",
+  "host": ">=0.3.0",
+  "run": { "command": "python", "args": ["main.py"] },
+  "permissions": [],
+  "events": ["message.group", "message.private"],
+  "intercept": true,
+  "priority": 10,
+  "settings": {
+    "type": "object",
+    "properties": {
+      "triggers": { "type": "array", "title": "状态指令", "items": { "type": "string" }, "default": ["#sl"] },
+      "hideReplies": { "type": "boolean", "title": "也藏起别的机器人回的状态", "default": true }
+    }
+  }
+}
