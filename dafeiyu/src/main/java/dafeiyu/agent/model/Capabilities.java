@@ -4,13 +4,17 @@ import dafeiyu.agent.AgentException;
 import dafeiyu.agent.AgentException.Kind;
 import dafeiyu.agent.protocol.ModelProtocol;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 public final class Capabilities {
 
     private static final Pattern TOOL_ERROR = Pattern.compile("tool|function", Pattern.CASE_INSENSITIVE);
+    private static final long PROBE_RETRY_MS = 5 * 60_000L;
 
     private final AgentStore store;
+    private final Map<String, Long> probeFailedAt = new ConcurrentHashMap<>();
 
     public Capabilities(AgentStore store) {
         this.store = store;
@@ -18,17 +22,22 @@ public final class Capabilities {
 
     public boolean vision(ModelProfile profile, ModelProtocol protocol) {
         Boolean known = store.vision(profile.id());
-        if (known != null && known) {
+        if (known != null) {
+            return known;
+        }
+        Long failed = probeFailedAt.get(profile.id());
+        if (failed != null && System.currentTimeMillis() - failed < PROBE_RETRY_MS) {
             return true;
         }
         try {
             boolean supported = VisionProbe.probe(protocol, profile);
             store.setVision(profile.id(), supported);
+            probeFailedAt.remove(profile.id());
             return supported;
         } catch (AgentException e) {
-            // 探测本身失败（429 限流 / 网络 / 超时）不等于「模型不支持看图」。
-            // 以前这里直接 return false，导致视频抽帧被静默跳过（连日志都没有）。
-            System.err.println("WARN vision probe failed (assume supported): " + e.getMessage());
+            probeFailedAt.put(profile.id(), System.currentTimeMillis());
+            System.err.println("WARN vision probe failed, assuming the model can see images and retrying the probe in "
+                    + PROBE_RETRY_MS / 60_000 + " min: " + e.getMessage());
             return true;
         }
     }

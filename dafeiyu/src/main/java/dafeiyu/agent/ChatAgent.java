@@ -197,7 +197,6 @@ public final class ChatAgent {
 
         String read(String id) throws dafeiyu.agent.tool.ToolFailure;
 
-        /** 带图片的读法；默认退化成纯文字，QqForwards 覆盖成真图。 */
         default dafeiyu.agent.tool.ToolResult readWithImages(String id, int maxImages)
                 throws dafeiyu.agent.tool.ToolFailure {
             return dafeiyu.agent.tool.ToolResult.text(read(id));
@@ -217,7 +216,7 @@ public final class ChatAgent {
     }
 
     dafeiyu.agent.tool.ToolResult readForwardWithImages(String id) throws dafeiyu.agent.tool.ToolFailure {
-        return forwards.readWithImages(id, 6);
+        return vision() ? forwards.readWithImages(id, 6) : dafeiyu.agent.tool.ToolResult.text(forwards.read(id));
     }
 
     private volatile java.util.function.Consumer<String> subagentResults = text -> intercom().report(BackgroundTasks.MIND, text);

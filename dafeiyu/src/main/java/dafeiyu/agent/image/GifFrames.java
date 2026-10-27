@@ -48,11 +48,6 @@ public final class GifFrames {
         }
     }
 
-    /**
-     * 抽帧。GIF 每帧只存「变化区域」（差分编码），必须按 disposalMethod 叠加到
-     * 逻辑屏幕尺寸的画布上，否则 reader.read(i) 拿到的是残缺局部帧，
-     * 后面的帧会整片糊成雪花（2026-10-27 实测：236x320 局部帧 vs 240x320 完整帧）。
-     */
     public static Frames extract(byte[] bytes, int want) throws AgentException {
         int take = Math.max(1, want);
         try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {

@@ -56,6 +56,8 @@ public final class ContentGuard {
     static final List<String> DEFLECTIONS = List.of("这个话题我不聊哦，换一个嘛", "这个不聊啦，说点别的吧", "唔…这个我不接，换个话题好不好");
     private static final Pattern NOISE = Pattern.compile("[\\p{Z}\\p{P}\\p{S}\\p{Cf}\\s]+");
     private static final long REVIEW_TIMEOUT_MS = 20_000;
+    private static final long RETRY_DELAY_MS = 2_000;
+    private static final Pattern RATE_LIMITED = Pattern.compile("(?i)\\b(429|6004)\\b|rate.?limit|too many requests|频率|过于频繁");
     private static final int MIN_REVIEW_CHARS = 5;
     private static final String REVIEW_PROMPT = String.join("\n", List.of(
             "你是 QQ 聊天机器人的内容审核员。判断下面这条机器人准备发出的消息发出去是否违规：",
@@ -119,9 +121,7 @@ public final class ContentGuard {
         return terms.stream().anyMatch(t -> t.soft() && normalized.contains(t.text()));
     }
 
-    private static final long RETRY_DELAY_MS = 2000;
-
-public Verdict review(ModelProfile profile, String context, String reply) {
+    public Verdict review(ModelProfile profile, String context, String reply) {
         Verdict local = scan(reply);
         if (local != null || profile == null || DEFLECTIONS.contains(reply)
                 || (normalize(reply).length() < MIN_REVIEW_CHARS && !suspicious(reply))) {
@@ -132,36 +132,38 @@ public Verdict review(ModelProfile profile, String context, String reply) {
         String prompt = REVIEW_PROMPT.formatted(recent, abbreviate(reply, 1500));
         ChatRequest request = new ChatRequest(List.of(ChatMessage.user(prompt)), List.of(), false, "guard", profile.maxTokens());
 
+        String failure;
         try {
             return attempt(profile, request);
-        } catch (RuntimeException first) {
-            Throwable cause = first.getCause() == null ? first : first.getCause();
-            if (isRateLimited(cause)) {
-                // 429 多半是「紧跟对话的第二个请求」撞上瞬时频率限制，等一下再打一次通常就过
-                System.err.println("WARN content guard: rate limited, retry once in " + RETRY_DELAY_MS + "ms: " + cause);
+        } catch (ReviewFailed first) {
+            failure = first.getMessage();
+            if (first.rateLimited) {
                 try {
                     Thread.sleep(RETRY_DELAY_MS);
-                } catch (InterruptedException ie) {
+                    return attempt(profile, request);
+                } catch (ReviewFailed second) {
+                    failure = "rate limited, retried once: " + second.getMessage();
+                } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return scan(reply);
-                }
-                try {
-                    Verdict again = attempt(profile, request);
-                    System.err.println("INFO content guard: retry succeeded");
-                    return again;
-                } catch (RuntimeException second) {
-                    Throwable cause2 = second.getCause() == null ? second : second.getCause();
-                    System.err.println("WARN content guard: retry failed, fallback to local rules: " + cause2);
-                    return scan(reply);
+                    failure = "interrupted";
                 }
             }
-            System.err.println("WARN content guard: model review failed, fallback to local rules: " + cause);
-            return scan(reply);
+        }
+        System.err.println("WARN content guard: model review failed (" + failure + "), reply went out with only the keyword check");
+        return null;
+    }
+
+    private static final class ReviewFailed extends Exception {
+
+        final boolean rateLimited;
+
+        ReviewFailed(String message, boolean rateLimited) {
+            super(message);
+            this.rateLimited = rateLimited;
         }
     }
 
-    /** 单次审核尝试；失败统一抛 RuntimeException，由 review() 决定重试或降级。 */
-    private Verdict attempt(ModelProfile profile, ChatRequest request) {
+    private Verdict attempt(ModelProfile profile, ChatRequest request) throws ReviewFailed {
         Future<ChatResult> pending = executor.submit(() -> {
             ModelProtocol protocol = Protocols.get(profile.protocol());
             return protocol.stream(profile, request, StreamListener.NONE);
@@ -172,28 +174,17 @@ public Verdict review(ModelProfile profile, String context, String reply) {
             if (e.getCause() instanceof AgentException failure && failure.kind() == Kind.CONTENT_POLICY) {
                 return new Verdict(Category.RISKY, "", true);
             }
-            throw new RuntimeException(e.getCause() == null ? e : e.getCause());
+            boolean rateLimited = e.getCause() instanceof AgentException failure && failure.kind() == Kind.RATE_LIMIT
+                    || e.getCause() != null && e.getCause().getMessage() != null && RATE_LIMITED.matcher(e.getCause().getMessage()).find();
+            throw new ReviewFailed(String.valueOf(e.getCause()), rateLimited);
         } catch (TimeoutException e) {
             pending.cancel(true);
-            throw new RuntimeException(e);
+            throw new ReviewFailed("timed out", false);
         } catch (InterruptedException e) {
             pending.cancel(true);
             Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
+            throw new ReviewFailed("interrupted", false);
         }
-    }
-
-    /** 429 / 频率限制 / 用量超限 —— 这类值得等一下再试，别的失败直接降级。 */
-    private static boolean isRateLimited(Throwable t) {
-        if (t == null) {
-            return false;
-        }
-        String msg = t.getMessage();
-        if (msg == null) {
-            return false;
-        }
-        return msg.contains("429") || msg.contains("6004") || msg.contains("频率")
-                || msg.contains("rate limit") || msg.contains("Rate limit") || msg.contains("too many");
     }
 
     public static String deflection() {

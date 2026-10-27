@@ -556,8 +556,6 @@ public final class QqApiTools {
         if (session.startsWith("web:") || session.equals("console")) {
             return;
         }
-        // 没有明确触发者的回合（她自己决定做事、内心回合等）qqUser 是 "0"，
-        // 这种情况在私聊里能确定就是对方本人 —— 从会话名反推，别再一律拒绝。
         if (who.isEmpty() || "0".equals(who)) {
             if (session.startsWith("private:")) {
                 String peer = session.substring("private:".length()).strip();

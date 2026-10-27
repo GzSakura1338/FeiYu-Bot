@@ -90,50 +90,26 @@ public final class QqForwards {
         return remember(key, lines(nodes));
     }
 
-    /**
-     * 读合并转发，并且把里面的图片真的下载下来一起交给模型。
-     * 以前只返回 describe() 的文字（Line.images 完全没用），模型只能看到 [图片#N] 编号，
-     * 于是她只能说"图只有编号、画面没进来"（2026-10-27 实测）。
-     */
     public ToolResult readWithImages(String id, int maxImages) throws ToolFailure {
-        List<Line> lines = read(id);
-        StringBuilder out = new StringBuilder("这段合并转发的聊天记录一共 " + lines.size() + " 条：\n");
-        List<String> urls = new ArrayList<>();
-        for (Line l : lines) {
-            String row = (l.time() > 0 ? "[" + Clock.ago(l.time()) + "] " : "") + l.name() + "："
-                    + l.text().replace("\n", " / ") + "\n";
-            if (out.length() + row.length() > MAX_TEXT) {
-                out.append("……后面还有，太长了没列完\n");
-                break;
-            }
-            out.append(row);
-            if (l.images() != null && !l.images().isEmpty()) {
-                urls.addAll(l.images());
-            }
-        }
-        out.append("（里面再套的合并转发，用它的编号再读一次）");
-
+        StringBuilder out = new StringBuilder(describe(id));
+        List<String> urls = read(id).stream().flatMap(l -> l.images() == null ? java.util.stream.Stream.empty() : l.images().stream())
+                .filter(url -> !url.startsWith(QqMessages.VIDEO_REF)).distinct().toList();
         List<ImagePart> parts = new ArrayList<>();
-        int missed = 0;
-        int limit = Math.max(1, maxImages);
-        for (String url : urls) {
-            if (parts.size() >= limit) {
-                missed++;
-                continue;
-            }
+        int failed = 0;
+        for (String url : urls.subList(0, Math.min(Math.max(1, maxImages), urls.size()))) {
             try {
                 parts.add(ImageLoader.download(url));
             } catch (AgentException | RuntimeException e) {
-                missed++;
+                failed++;
             }
         }
         if (!urls.isEmpty()) {
-            out.append("\n（这段里一共 ").append(urls.size()).append(" 张图，这次真的附上了 ")
-               .append(parts.size()).append(" 张，跟着这条消息一起给你，能直接看到画面");
-            if (missed > 0) {
-                out.append("；另外 ").append(missed).append(" 张没附上（超出上限或已过期）");
-            }
-            out.append("）");
+            int skipped = urls.size() - parts.size() - failed;
+            out.append("\n（里面一共 ").append(urls.size()).append(" 张图")
+                    .append(parts.isEmpty() ? "，一张都没附上" : "，附上了 " + parts.size() + " 张，画面在后面那条消息里")
+                    .append(failed > 0 ? "；" + failed + " 张下载不下来（多半过期了）" : "")
+                    .append(skipped > 0 ? "；还有 " + skipped + " 张超出上限没附" : "")
+                    .append(parts.size() < urls.size() ? "。没附上的别猜画面，想看就用 view_image 填它的图片编号）" : "）");
         }
         return ToolResult.withImages(out.toString(), parts);
     }

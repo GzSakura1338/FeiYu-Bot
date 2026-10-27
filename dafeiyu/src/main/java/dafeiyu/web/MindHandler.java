@@ -61,8 +61,7 @@ final class MindHandler {
                     agent.store().setMindPace(body.pace());
                 }
                 log.info("mind: pace " + agent.store().mindPace() + (agent.store().mindPace().equals("custom") ? " (" + agent.store().mindPaceSeconds() + " s)" : ""));
-                // 只保存节奏，不叫醒她：否则每点一次档位就多一次内心思考。
-                // 想立刻让她想一次，用 /think（控制台右上角「马上想下一个念头」）。
+                mind.repace();
                 HttpResponses.json(ex, state());
             } else if (rest.equals("/night") && method.equals("PUT")) {
                 NightRequest body = Requests.readJson(ex, NightRequest.class);
@@ -74,7 +73,7 @@ final class MindHandler {
                 AgentStore.MindNight night = agent.store().setMindNight(new AgentStore.MindNight(body.enabled() == null ? old.enabled() : body.enabled(),
                         body.start() == null ? old.start() : body.start(), body.end() == null ? old.end() : body.end(), seconds));
                 log.info("mind: night " + (night.enabled() ? night.start() + "-" + night.end() + (night.seconds() == 0 ? " rest" : " every " + night.seconds() + " s") : "off"));
-                // 同上：改深夜设置只保存，不触发思考。
+                mind.repace();
                 HttpResponses.json(ex, state());
             } else if (rest.equals("/think") && method.equals("POST")) {
                 if (!mind.wakeUp()) {

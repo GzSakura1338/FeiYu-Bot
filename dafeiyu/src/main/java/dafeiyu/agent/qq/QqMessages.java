@@ -26,6 +26,7 @@ public final class QqMessages {
 
     private static final Pattern CQ_CODE = Pattern.compile("\\[CQ:([a-z_]+)((?:,[^\\]]*)?)]");
     static final String VIDEO_REF = "video:";
+    private static final Pattern VIDEO_FILE = Pattern.compile("(?i)\\.(mp4|mov|m4v|avi|mkv|webm|flv|wmv|3gp)$");
     private static final int MAX_NAME = 24;
     private static final String MENTION_STOP = " \t\n，,。.！!？?：:；;、";
     private static final Pattern LABEL_TAIL = Pattern.compile("(?<=[\\p{IsHan}\\p{L}\\p{N}）)])#\\d{4}(?!\\d)");
@@ -118,8 +119,7 @@ public final class QqMessages {
             case "video" -> "[视频]";
             case "file" -> {
                 String name = field.apply("name").isBlank() ? field.apply("file") : field.apply("name");
-                yield looksLikeVideoFile("file", name, field.apply("file")) ? "[视频]"
-                        : "[文件" + (name.isBlank() ? "" : "：" + name) + "]";
+                yield (videoFile("file", name, field.apply("file")) ? "[视频" : "[文件") + (name.isBlank() ? "" : "：" + name) + "]";
             }
             case "location" -> "[位置" + (field.apply("title").isBlank() ? "" : "：" + field.apply("title")) + "]";
             case "share" -> "[链接" + (field.apply("title").isBlank() ? "" : "：" + field.apply("title")) + "]";
@@ -258,19 +258,12 @@ public final class QqMessages {
         return qq;
     }
 
-    /** 手机/电脑端的视频都可能落在 [CQ:file,...mp4] 或 JSON 的 file/name 字段里 —— 多个候选名都要看。 */
-    private static boolean looksLikeVideoFile(String type, String... probes) {
-        if (!"file".equals(type) && !"video".equals(type)) {
+    private static boolean videoFile(String type, String... names) {
+        if (!type.equals("file")) {
             return false;
         }
-        for (String probe : probes) {
-            if (probe == null || probe.isBlank()) {
-                continue;
-            }
-            String f = probe.toLowerCase();
-            if (f.endsWith(".mp4") || f.endsWith(".mov") || f.endsWith(".m4v")
-                    || f.endsWith(".avi") || f.endsWith(".mkv") || f.endsWith(".webm")
-                    || f.endsWith(".flv") || f.endsWith(".wmv") || f.endsWith(".3gp")) {
+        for (String name : names) {
+            if (name != null && VIDEO_FILE.matcher(name.strip()).find()) {
                 return true;
             }
         }
@@ -278,20 +271,8 @@ public final class QqMessages {
     }
 
     private static void addVideo(List<String> images, String type, String url, String file, String name) {
-        boolean isFileSeg = "file".equals(type) || "video".equals(type);
-        if (isFileSeg) {
-            System.err.println("DEBUG addVideo: type=" + type
-                    + " file=[" + file + "] name=[" + name + "]"
-                    + " url=" + (url.isEmpty() ? "EMPTY" : url.substring(0, Math.min(60, url.length()))));
-        }
-        if (!looksLikeVideoFile(type, file, name, url)) {
-            return;
-        }
-        if (url.startsWith("http://") || url.startsWith("https://")) {
+        if ((type.equals("video") || videoFile(type, file, name)) && (url.startsWith("http://") || url.startsWith("https://"))) {
             images.add(VIDEO_REF + url);
-        } else {
-            System.err.println("WARN addVideo: " + type + " is video but url is not http: ["
-                    + url + "] file=[" + file + "] name=[" + name + "]");
         }
     }
 

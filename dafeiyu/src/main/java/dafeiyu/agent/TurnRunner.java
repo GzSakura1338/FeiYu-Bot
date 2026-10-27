@@ -65,7 +65,7 @@ public final class TurnRunner {
     private static final int STICKER_NUDGE = 4;
     private static final int MAX_ERRANDS = 2;
     private static final int MAX_VIEWS = 6;
-    private static final String VIEWED = "（这是你刚才用 view_image 要看的图）";
+    private static final String VIEWED = "（这是你刚才用工具要看的图）";
     public static final String SILENCE = "[沉默]";
     private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
     public static final String AMBIENT = "【旁听】";

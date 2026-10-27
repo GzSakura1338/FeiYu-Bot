@@ -53,6 +53,7 @@ public final class ImageViewer implements Tool {
               "grid": {"type": "boolean", "description": "看整张图时要不要画上 4×4 格子当参照，默认不画：画上去的红线和黄色标签会挡住画面，容易被当成图里的东西"}
             }, "required": ["image"]}""");
 
+    private static final String SHOWN = "画面在后面紧跟的那条消息里，照着画面回答。";
     private static final int MAX_BYTES = 15 * 1024 * 1024;
     private static final int MAX_SIDE = 1568;
     private static final int MIN_SIDE = 768;
@@ -130,7 +131,7 @@ public final class ImageViewer implements Tool {
                 if (want > 1 && GifFrames.animated(bytes)) {
                     GifFrames.Frames frames = GifFrames.extract(bytes, want);
                     return ToolResult.withImages(name[0] + frames.note()
-                                    + "图已附在本条消息里，可以直接看。",
+                                    + SHOWN,
                             frames.parts());
                 }
             } catch (dafeiyu.agent.AgentException ignored) {
@@ -141,7 +142,7 @@ public final class ImageViewer implements Tool {
                     throw new ToolFailure(name[0] + " 是这台电脑解不开的格式，没法放大，只能不写 area 看整张");
                 }
                 return ToolResult.withImages(name[0] + "（这种格式没法画格子和放大，下面是整张图）"
-                        + "图已附在本条消息里，可以直接看。",
+                        + SHOWN,
                         List.of(ImageLoader.fromBytes(bytes)));
             }
             int w = image.getWidth();
@@ -156,7 +157,7 @@ public final class ImageViewer implements Tool {
                         ? "图上画了 4×4 的格子当参照：红线和黄色标签 A1–D4 是画上去的，不是图里的东西。" : "")
                         + "要放大哪块就用 area（整张按 4×4 均分：列 A–D 从左到右，行 1–4 从上到下，比如 B2 或 B2:C3）。"
                         + "颜色、配饰、文字、某样东西在不在这类细节，整张看不清就放大再确认，或者直说看不清，别猜。"
-                        + "图已附在本条消息里，可以直接看。",
+                        + SHOWN,
                         List.of(encode(view)));
             }
             double[] r = region(area);
@@ -172,7 +173,7 @@ public final class ImageViewer implements Tool {
             BufferedImage view = scale(crop, zoom);
             return ToolResult.withImages("放大了" + name[0] + " 的「" + area + "」（原图 " + w + "×" + h + "，这块 " + crop.getWidth() + "×" + crop.getHeight()
                     + (zoom > 1.05 ? "，放大了 " + String.format(Locale.ROOT, "%.1f", zoom) + " 倍" : "") + "）。"
-                    + "图已附在本条消息里，可以直接看。",
+                    + SHOWN,
                     List.of(encode(view)));
         } catch (AgentException e) {
             throw new ToolFailure("这张图打不开：" + e.getMessage());

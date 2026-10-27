@@ -172,6 +172,12 @@ public final class Mind implements QqChatBridge.Observer {
         stir(called ? now + CALLED_MS : Math.max(now + NOTICED_MS, lastAt + baseMs() / 2));
     }
 
+    public void repace() {
+        if (!resting()) {
+            stir(lastAt + baseMs());
+        }
+    }
+
     private void stir(long at) {
         synchronized (bell) {
             stirAt = Math.min(stirAt, at);
