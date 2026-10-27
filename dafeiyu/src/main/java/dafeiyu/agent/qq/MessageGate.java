@@ -12,9 +12,9 @@ public interface MessageGate {
         }
     }
 
-    record Verdict(boolean drop, String text, String by) {
+    record Verdict(boolean drop, String text, String by, boolean hide) {
 
-        public static final Verdict PASS = new Verdict(false, null, "");
+        public static final Verdict PASS = new Verdict(false, null, "", false);
     }
 
     MessageGate NONE = new MessageGate() {

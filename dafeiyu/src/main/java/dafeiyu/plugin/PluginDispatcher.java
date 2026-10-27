@@ -172,14 +172,18 @@ final class PluginDispatcher implements MessageGate, Extensions {
                         .get(INTERCEPT_TIMEOUT_MS + 200, TimeUnit.MILLISECONDS));
                 slot.fast();
                 String action = Jsons.optString(o, "action");
+                if (action.equals("hide")) {
+                    host.pluginLog(slot, "info", "藏起了一条消息，她看不到、也不会回");
+                    return new Verdict(true, null, slot.name(), true);
+                }
                 if (action.equals("drop")) {
                     host.pluginLog(slot, "info", "吞掉了一条消息，她不会回这条");
-                    return new Verdict(true, null, slot.name());
+                    return new Verdict(true, null, slot.name(), false);
                 }
                 String rewritten = Jsons.optString(o, "text");
                 if (action.equals("rewrite") && !rewritten.isBlank()) {
                     text = rewritten;
-                    verdict = new Verdict(false, text, slot.name());
+                    verdict = new Verdict(false, text, slot.name(), false);
                 }
             } catch (TimeoutException e) {
                 timedOut(slot, "拦截处理");
@@ -248,7 +252,7 @@ final class PluginDispatcher implements MessageGate, Extensions {
                 return null;
             }
             host.pluginLog(slot, "info", "处理了命令 " + prefix + word);
-            return new Verdict(true, null, slot.name());
+            return new Verdict(true, null, slot.name(), false);
         } catch (TimeoutException e) {
             cancel(ctx);
             host.pluginLog(slot, "warn", "命令 " + prefix + word + " 超过 " + COMMAND_TIMEOUT_MS / 1000 + " 秒没处理完，交给她回复");
@@ -378,7 +382,7 @@ final class PluginDispatcher implements MessageGate, Extensions {
                 continue;
             }
             String action = Jsons.optString(o, "action");
-            if (action.equals("drop")) {
+            if (action.equals("drop") || action.equals("hide")) {
                 host.pluginLog(slot, "info", "拦下了她要发的一句话");
                 host.appLog().info("plugins: " + slot.id + " blocked an outgoing message in " + session);
                 note(session, "（你刚才要发的一句话被插件「" + slot.name() + "」拦下了，没有发出去）");

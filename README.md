@@ -54,7 +54,7 @@ Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机�
 ## 注意
 
 - 同一个 QQ 号同一时间只能有一个电脑端在线，机器人最好用小号；机器人的号在 SnowLuma 接管的那个 QQ 里登录，别在自己的 QQ 里再登
-- `#sl` 状态指令已禁用：SnowLuma 的 `statusCommand.enabled` 设成了 `false`（别在它的网页后台重新打开），群里有人发 `#sl` 她的号不会回状态；FeiYu Bot 也不让 `#sl` 和别的机器人回的「SnowLuma 状态」进会话，她不会被叫出来接话。细节见 [dafeiyu/README.md](dafeiyu/README.md) 的群聊部分
+- `#sl` 状态指令已禁用：SnowLuma 的 `statusCommand.enabled` 设成了 `false`（别在它的网页后台重新打开），群里有人发 `#sl` 她的号不会回状态；不让 `#sl` 和别的机器人回的「SnowLuma 状态」进会话、把她叫出来接话，靠的是插件「#sl 防召唤」：它在本仓库的 `plugin` 分支（`sl-guard/`），在控制台「插件 › 已安装 › 安装插件」里填 `https://github.com/GzSakura1338/FeiYu-Bot/archive/refs/heads/plugin.zip` 装上并打开。细节见 [dafeiyu/README.md](dafeiyu/README.md) 的群聊部分和插件里的 README
 - SnowLuma 需要和 QQ 用同一个 Windows 账号运行；QQ 升级后钩子可能对不上，SnowLuma 也要跟着升级（版本兼容表在它仓库的 `compat/qq.json`）
 - 控制台（8090）、反向 WebSocket（6199）和 SnowLuma 网页后台（5099）都只监听 127.0.0.1
 - `dafeiyu/data/` 里有 API Key 和全部聊天记录，不进仓库，也别发给别人

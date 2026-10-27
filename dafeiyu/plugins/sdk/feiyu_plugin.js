@@ -344,6 +344,7 @@ class Plugin {
 function verdict(result) {
   if (result === undefined || result === null || result === true || result === 'pass') return { action: 'pass' };
   if (result === false || result === 'drop') return { action: 'drop' };
+  if (result === 'hide') return { action: 'hide' };
   if (Array.isArray(result) && result[0] === 'rewrite') return { action: 'rewrite', text: result[1] };
   if (typeof result === 'string') return { action: 'rewrite', text: result };
   return { action: 'pass' };

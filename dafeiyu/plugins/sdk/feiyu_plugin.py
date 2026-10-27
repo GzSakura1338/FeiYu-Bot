@@ -350,6 +350,8 @@ def _verdict(result):
         return {"action": "pass"}
     if result is False or result == "drop":
         return {"action": "drop"}
+    if result == "hide":
+        return {"action": "hide"}
     if isinstance(result, tuple) and len(result) == 2 and result[0] == "rewrite":
         return {"action": "rewrite", "text": result[1]}
     if isinstance(result, str):

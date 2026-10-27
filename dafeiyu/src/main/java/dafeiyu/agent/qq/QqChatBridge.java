@@ -80,7 +80,6 @@ public final class QqChatBridge {
     private static final java.util.regex.Pattern QUOTED_PICTURE = java.util.regex.Pattern.compile("\\[(图片|表情包)#(\\d+)");
     private static final java.util.regex.Pattern STICKER_MENTION = java.util.regex.Pattern.compile("\\[表情包#(\\d+)]");
     private static final String FRIEND_ASK = "请求添加你为好友";
-    private static final java.util.regex.Pattern ROLL_CALL = java.util.regex.Pattern.compile("(?i)#sl|SnowLuma\\s*状态\\s+版本\\s*[:：][\\s\\S]*");
     private static final String PICTURE_REF = "picture:";
     private static final String STICKER_REF = "sticker:";
     private static final long AMBIENT_QUIET_MIN_MS = 2_000;
@@ -616,7 +615,7 @@ public final class QqChatBridge {
                 log.warn("plugins: message dispatch failed: " + e);
             }
         }
-        if (!replying || ROLL_CALL.matcher(incoming.text().strip()).matches()) {
+        if (!replying || verdict.hide()) {
             return;
         }
         if (verdict.drop()) {

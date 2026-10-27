@@ -48,7 +48,7 @@ import java.util.stream.Stream;
 
 public final class PluginHost implements HostApi.Services {
 
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
     static final int LOG_LINES_PER_SECOND = 50;
     static final long INIT_TIMEOUT_MS = 15_000;
     static final int CRASH_LIMIT = 5;
