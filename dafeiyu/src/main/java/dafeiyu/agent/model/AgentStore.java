@@ -295,12 +295,6 @@ public final class AgentStore {
         return out;
     }
 
-    /**
-     * 记录清理的设置。
-     *
-     * @param schedule manual / daily / weekly / monthly —— 定期检查的频率，manual 表示只有主人叫她才清
-     * @param lastRun  上次清理的时间戳，用来判断到期没有
-     */
     public record Housekeeping(boolean enabled, int messagesDays, int usageDays, String schedule, long lastRun) {
 
         public static final Housekeeping OFF = new Housekeeping(false, 90, 365, "manual", 0L);
@@ -315,7 +309,6 @@ public final class AgentStore {
                     };
         }
 
-        /** 到期了没有。manual 永不自动；关着也不自动。 */
         public boolean due(long now) {
             if (!enabled || schedule.equals("manual")) {
                 return false;
@@ -358,7 +351,6 @@ public final class AgentStore {
         return cfg;
     }
 
-    /** 记一次清理时间（防同一天反复提醒）。 */
     public synchronized void markHousekeepingRun() {
         Housekeeping cur = housekeeping();
         settings.put(HOUSEKEEPING_KEY, GSON.toJson(

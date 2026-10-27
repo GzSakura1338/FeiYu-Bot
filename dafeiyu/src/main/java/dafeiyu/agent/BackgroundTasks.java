@@ -376,9 +376,6 @@ public final class BackgroundTasks {
             return;
         }
         Control control = new Control(limitMs(task));
-        // 这段在 try/finally 之外：只要其中一个抛 RuntimeException，
-        // 下面 finally 的 pool.release() 就永远不会执行 ⇒ running 只增不减，
-        // 到 limit 之后所有后台任务与子 agent 永久排队。所以这里自己兜一层。
         try {
             controls.put(task.id(), control);
             if (PAUSED.equals(task.status())) {

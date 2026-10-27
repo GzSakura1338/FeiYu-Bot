@@ -139,8 +139,6 @@ public final class ContentGuard {
             if (e.getCause() instanceof AgentException failure && failure.kind() == Kind.CONTENT_POLICY) {
                 return new Verdict(Category.RISKY, "", true);
             }
-            // 这条路径是 fail-open（放行）。不改成一概拦下，是因为中转站抖一下
-            // 就让她彻底哑掉代价更大；但至少要留痕，让主人看得见审核正在失效。
             System.err.println("WARN content guard: model review failed, reply went out unreviewed: " + e.getCause());
             return null;
         } catch (TimeoutException e) {

@@ -184,8 +184,6 @@ async function toggleCurate() {
   renderCurate();
 }
 
-
-// ── 记录清理 ────────────────────────────────────────────────────
 let hk = null;
 const hkSteppers = new Map();
 

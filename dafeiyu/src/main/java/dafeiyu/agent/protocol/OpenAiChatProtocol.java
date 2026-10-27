@@ -208,7 +208,6 @@ final class OpenAiChatProtocol implements ModelProtocol {
             JsonObject url = new JsonObject();
             url.addProperty("url", image.dataUrl());
             JsonObject part = new JsonObject();
-            // video/ 前缀走 video_url（模型支持视频时才有意义，不支持时上层探测后不会塞进来）
             if (image.mime() != null && image.mime().startsWith("video/")) {
                 part.addProperty("type", "video_url");
                 part.add("video_url", url);

@@ -20,10 +20,6 @@ public final class ChatTools {
 
     private ChatTools() {}
 
-    /**
-     * 记录清理工具。默认只演练，真删要显式 dryRun=false；
-     * 保留天数由主人的设置决定，最近 7 天的永远删不掉（Housekeeping 里有硬下限）。
-     */
     public static Tool housekeeping(ChatAgent agent) {
         return Tool.text(HOUSEKEEPING,
                 "看看/清理历史记录（消息归档和用量日志）。默认只演练：告诉你按现在的设置会删多少条，不动任何数据。"

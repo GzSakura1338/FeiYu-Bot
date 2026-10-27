@@ -30,9 +30,6 @@ public final class Capabilities {
         }
     }
 
-    /**
-     * 模型能不能直接看视频（原生 video 输入，不抽帧）。探测没做成时不缓存，下次再试。
-     */
     public boolean nativeVideo(ModelProfile profile, ModelProtocol protocol,
                                dafeiyu.agent.image.VideoFrames videos) {
         Boolean known = store.video(profile.id());

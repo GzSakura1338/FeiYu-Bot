@@ -203,7 +203,6 @@ public final class ImageLoader {
         return encode(image, "png");
     }
 
-    /** 把已经解码好的帧转成 ImagePart（动图抽帧用）。 */
     public static ImagePart fromImage(BufferedImage image) {
         return reencode(image);
     }

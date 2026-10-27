@@ -114,7 +114,6 @@ public final class ImageViewer implements Tool {
             }
             String[] name = new String[1];
             byte[] bytes = load(agent, ref, workspace, name);
-            // 跨会话提示：编号是全局的，她可能在别的群看过这张图，别把画面串到这儿来
             Matcher own = NUMBER.matcher(ref);
             if (own.matches()) {
                 try {
@@ -126,7 +125,6 @@ public final class ImageViewer implements Tool {
                 } catch (RuntimeException ignored) {
                 }
             }
-            // 动图（GIF）抽帧：原来 ImageIO.read 只读第一帧，动态表情包等于一张静止图
             try {
                 int want = agent.videoFrames().config().gifFrames();
                 if (want > 1 && GifFrames.animated(bytes)) {
@@ -137,7 +135,6 @@ public final class ImageViewer implements Tool {
                             frames.parts());
                 }
             } catch (dafeiyu.agent.AgentException ignored) {
-                // 抽帧失败就当普通图处理，别让整个工具失败
             }
             BufferedImage image = decode(bytes);
             if (image == null) {

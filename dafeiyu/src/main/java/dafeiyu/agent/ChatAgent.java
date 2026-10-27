@@ -122,7 +122,6 @@ public final class ChatAgent {
         }
     }
 
-    /** 探测模型能不能直接看视频（会缓存结论；探测没做成时返回 false 但不缓存）。 */
     public boolean nativeVideo() {
         ModelProfile profile = store.active();
         if (profile == null) {
@@ -135,7 +134,6 @@ public final class ChatAgent {
         }
     }
 
-    /** 读缓存的视频能力结论；从没探过返回 null。 */
     public Boolean videoNative() {
         ModelProfile profile = store.active();
         return profile == null ? null : store.video(profile.id());
@@ -229,7 +227,6 @@ public final class ChatAgent {
 
         byte[] load(long id) throws dafeiyu.agent.tool.ToolFailure;
 
-        /** 这张图属于哪个会话；默认不知道。 */
         default String sessionOf(long id) {
             return "";
         }
@@ -247,7 +244,6 @@ public final class ChatAgent {
         return images.load(id);
     }
 
-    /** 这张图原本属于哪个会话（空串表示不知道）。 */
     String imageSession(long id) {
         try {
             return images.sessionOf(id);

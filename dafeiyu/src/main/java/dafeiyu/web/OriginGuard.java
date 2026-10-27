@@ -10,20 +10,6 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 
-/**
- * 控制台的统一守门人。
- *
- * <p>这个控制台没有任何登录态，安全性原本完全靠"只绑 127.0.0.1"。但只绑回环挡不住
- * <b>DNS rebinding</b>：攻击者把自己控制的域名 A 记录 rebind 到 127.0.0.1，浏览器仍认为
- * 是同源，于是能读配置、以机器人的身份发言、安装插件（插件是真子进程 = 任意代码执行）。
- *
- * <p>挡法就是校验 <b>Host 头</b>：rebinding 时浏览器的 Host 是攻击者的域名，不在白名单里，
- * 直接 403。再补一层 Origin 校验，把跨站表单与跨站脚本也拦掉（正常直连 curl 不带 Origin，
- * 不受影响）。
- *
- * <p>白名单 = 回环地址（SSH 隧道与本机浏览器都走这个）+ 真的绑定的那个地址（用户明确要
- * 对外监听时才用得上）。绑 0.0.0.0 时不会把 0.0.0.0 加进去，因为浏览器不会发这个 Host。
- */
 final class OriginGuard implements HttpHandler {
 
     private final HttpHandler inner;

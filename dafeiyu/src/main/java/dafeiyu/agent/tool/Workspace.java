@@ -215,12 +215,6 @@ public final class Workspace {
         }
     }
 
-    /**
-     * 让同一台机器上别的账户也能读：协议端（SnowLuma 容器里的 QQ）以 uid=1000 跑，
-     * 而 write()/place() 都是先 createTempFile（默认 600）再 move，600 会被原样搬过去，
-     * 结果容器读不到 -> 发图报 EACCES / permission denied。
-     * 这里显式放宽成 644（只读，不给写）。
-     */
     public static void makeWorldReadable(Path file) {
         try {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));

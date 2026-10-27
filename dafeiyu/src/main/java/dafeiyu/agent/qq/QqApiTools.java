@@ -54,11 +54,6 @@ public final class QqApiTools {
     private static final int MAX_ITEMS = 40;
     private static final int MAX_STRING = 400;
     private static final int WRITES_PER_MINUTE = 30;
-    /**
-     * 自测只对"名字本身就像只读"的接口发真请求。这份白名单写死在代码里，
-     * 不看设置页那个可编辑的「只读/会改动」标签 —— 标签被改过一次，
-     * 自测就把 set_group_leave 当真接口跑了，她直接退了群（2026-10-26）。
-     */
     private static final Pattern HARD_READ =
             Pattern.compile("^(get_|fetch_|can_|check_|nc_get_|_get_)[a-z0-9_]*$");
 
@@ -121,8 +116,6 @@ public final class QqApiTools {
                 out.add(new Check(CALL, a.name(), Check.OFF, why(a)));
                 continue;
             }
-            // 两道闸：设置里的 access 标签说明"主人认为它是只读"，
-            // HARD_READ 说明"代码确认它名字就是只读"。两者都过才真调。
             if (policy.access(a.name()) == Access.WRITE || !HARD_READ.matcher(a.name()).matches()) {
                 out.add(new Check(CALL, a.name(), Check.DRY, "会改动东西，自测不真调；接口在清单里、开关开着"));
                 continue;
@@ -557,11 +550,6 @@ public final class QqApiTools {
         }
     }
 
-    /**
-     * 会改动东西的接口要求发起者是主人（控制台/网页操作除外）。
-     * 没有这道校验时，群里任何人说一句就能借她之手踢人、禁言、改群名 ——
-     * ToolContext 里的 userId 一直传到了这里，之前没人读它。
-     */
     private void requireOwner(Action action, ToolContext context) throws ToolFailure {
         String who = context.userId() == null ? "" : context.userId().strip();
         if (who.isEmpty()) {

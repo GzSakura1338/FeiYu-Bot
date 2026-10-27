@@ -281,8 +281,6 @@ public final class Migrations {
             version = rs.next() ? rs.getInt(1) : 0;
         }
         if (version > STEPS.size()) {
-            // 库比这份程序新：不做任何事地继续跑会用旧 SQL 读新表结构，静默写坏数据。
-            // 宁可起不来，也不要悄悄写坏。
             throw new SQLException("数据库是 v" + version + "，这份程序只认到 v" + STEPS.size()
                     + "；请升级程序，不要用旧版本打开新库");
         }

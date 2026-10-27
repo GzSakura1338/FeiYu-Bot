@@ -29,7 +29,6 @@ public final class WebConsole {
         ApiHandler api = new ApiHandler(onebot, archive, log);
         server = HttpServer.create(address, 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
-        // 所有对外入口统一过 OriginGuard：校验 Host（挡 DNS rebinding）与 Origin（挡跨站）
         java.util.function.UnaryOperator<HttpHandler> guarded =
                 h -> new OriginGuard(h, address.getHostString(), address.getPort());
         if (Files.isDirectory(webDir)) {
