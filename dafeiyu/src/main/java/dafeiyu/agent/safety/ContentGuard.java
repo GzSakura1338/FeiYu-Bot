@@ -119,7 +119,9 @@ public final class ContentGuard {
         return terms.stream().anyMatch(t -> t.soft() && normalized.contains(t.text()));
     }
 
-    public Verdict review(ModelProfile profile, String context, String reply) {
+    private static final long RETRY_DELAY_MS = 2000;
+
+public Verdict review(ModelProfile profile, String context, String reply) {
         Verdict local = scan(reply);
         if (local != null || profile == null || DEFLECTIONS.contains(reply)
                 || (normalize(reply).length() < MIN_REVIEW_CHARS && !suspicious(reply))) {
@@ -129,6 +131,37 @@ public final class ContentGuard {
         recent = recent.length() > 400 ? "…" + recent.substring(recent.length() - 400) : recent;
         String prompt = REVIEW_PROMPT.formatted(recent, abbreviate(reply, 1500));
         ChatRequest request = new ChatRequest(List.of(ChatMessage.user(prompt)), List.of(), false, "guard", profile.maxTokens());
+
+        try {
+            return attempt(profile, request);
+        } catch (RuntimeException first) {
+            Throwable cause = first.getCause() == null ? first : first.getCause();
+            if (isRateLimited(cause)) {
+                // 429 多半是「紧跟对话的第二个请求」撞上瞬时频率限制，等一下再打一次通常就过
+                System.err.println("WARN content guard: rate limited, retry once in " + RETRY_DELAY_MS + "ms: " + cause);
+                try {
+                    Thread.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return scan(reply);
+                }
+                try {
+                    Verdict again = attempt(profile, request);
+                    System.err.println("INFO content guard: retry succeeded");
+                    return again;
+                } catch (RuntimeException second) {
+                    Throwable cause2 = second.getCause() == null ? second : second.getCause();
+                    System.err.println("WARN content guard: retry failed, fallback to local rules: " + cause2);
+                    return scan(reply);
+                }
+            }
+            System.err.println("WARN content guard: model review failed, fallback to local rules: " + cause);
+            return scan(reply);
+        }
+    }
+
+    /** 单次审核尝试；失败统一抛 RuntimeException，由 review() 决定重试或降级。 */
+    private Verdict attempt(ModelProfile profile, ChatRequest request) {
         Future<ChatResult> pending = executor.submit(() -> {
             ModelProtocol protocol = Protocols.get(profile.protocol());
             return protocol.stream(profile, request, StreamListener.NONE);
@@ -139,18 +172,28 @@ public final class ContentGuard {
             if (e.getCause() instanceof AgentException failure && failure.kind() == Kind.CONTENT_POLICY) {
                 return new Verdict(Category.RISKY, "", true);
             }
-            System.err.println("WARN content guard: model review failed, reply went out unreviewed: " + e.getCause());
-            return null;
+            throw new RuntimeException(e.getCause() == null ? e : e.getCause());
         } catch (TimeoutException e) {
             pending.cancel(true);
-            System.err.println("WARN content guard: model review timed out, reply went out unreviewed");
-            return null;
+            throw new RuntimeException(e);
         } catch (InterruptedException e) {
             pending.cancel(true);
             Thread.currentThread().interrupt();
-            System.err.println("WARN content guard: model review interrupted, reply went out unreviewed");
-            return null;
+            throw new RuntimeException(e);
         }
+    }
+
+    /** 429 / 频率限制 / 用量超限 —— 这类值得等一下再试，别的失败直接降级。 */
+    private static boolean isRateLimited(Throwable t) {
+        if (t == null) {
+            return false;
+        }
+        String msg = t.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        return msg.contains("429") || msg.contains("6004") || msg.contains("频率")
+                || msg.contains("rate limit") || msg.contains("Rate limit") || msg.contains("too many");
     }
 
     public static String deflection() {

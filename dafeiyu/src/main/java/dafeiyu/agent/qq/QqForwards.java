@@ -5,7 +5,11 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import dafeiyu.agent.AgentException;
+import dafeiyu.agent.ImagePart;
+import dafeiyu.agent.model.ImageLoader;
 import dafeiyu.agent.tool.ToolFailure;
+import dafeiyu.agent.tool.ToolResult;
 import dafeiyu.db.Database;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
@@ -30,7 +34,7 @@ public final class QqForwards {
     public record Line(String name, String userId, long time, String text, List<String> images, String attachments) {}
 
     private static final int MAX_LINES = 200;
-    private static final int MAX_TEXT = 8000;
+    private static final int MAX_TEXT = 20000;
     private static final int MAX_CACHE = 500;
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
     private static final Gson GSON = new Gson();
@@ -84,6 +88,54 @@ public final class QqForwards {
             throw new ToolFailure("读不到这段合并转发（QQ 没把里面的内容给过来）");
         }
         return remember(key, lines(nodes));
+    }
+
+    /**
+     * 读合并转发，并且把里面的图片真的下载下来一起交给模型。
+     * 以前只返回 describe() 的文字（Line.images 完全没用），模型只能看到 [图片#N] 编号，
+     * 于是她只能说"图只有编号、画面没进来"（2026-10-27 实测）。
+     */
+    public ToolResult readWithImages(String id, int maxImages) throws ToolFailure {
+        List<Line> lines = read(id);
+        StringBuilder out = new StringBuilder("这段合并转发的聊天记录一共 " + lines.size() + " 条：\n");
+        List<String> urls = new ArrayList<>();
+        for (Line l : lines) {
+            String row = (l.time() > 0 ? "[" + Clock.ago(l.time()) + "] " : "") + l.name() + "："
+                    + l.text().replace("\n", " / ") + "\n";
+            if (out.length() + row.length() > MAX_TEXT) {
+                out.append("……后面还有，太长了没列完\n");
+                break;
+            }
+            out.append(row);
+            if (l.images() != null && !l.images().isEmpty()) {
+                urls.addAll(l.images());
+            }
+        }
+        out.append("（里面再套的合并转发，用它的编号再读一次）");
+
+        List<ImagePart> parts = new ArrayList<>();
+        int missed = 0;
+        int limit = Math.max(1, maxImages);
+        for (String url : urls) {
+            if (parts.size() >= limit) {
+                missed++;
+                continue;
+            }
+            try {
+                parts.add(ImageLoader.download(url));
+            } catch (AgentException | RuntimeException e) {
+                missed++;
+            }
+        }
+        if (!urls.isEmpty()) {
+            out.append("\n（这段里一共 ").append(urls.size()).append(" 张图，这次真的附上了 ")
+               .append(parts.size()).append(" 张，跟着这条消息一起给你，能直接看到画面");
+            if (missed > 0) {
+                out.append("；另外 ").append(missed).append(" 张没附上（超出上限或已过期）");
+            }
+            out.append("）");
+        }
+        return ToolResult.withImages(out.toString(), parts);
     }
 
     public String describe(String id) throws ToolFailure {

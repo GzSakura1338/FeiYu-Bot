@@ -72,7 +72,7 @@ public final class QqMessages {
                         String label = other(optString(seg, "type"), name -> optString(data, name));
                         text.append(label);
                         attachOther(attachments, optString(seg, "type"), name -> optString(data, name), label);
-                        addVideo(images, optString(seg, "type"), optString(data, "url"));
+                        addVideo(images, optString(seg, "type"), optString(data, "url"), optString(data, "file"), optString(data, "name"));
                     }
                 }
             }
@@ -98,7 +98,7 @@ public final class QqMessages {
                         String label = other(m.group(1), name -> params.getOrDefault(name, ""));
                         text.append(label);
                         attachOther(attachments, m.group(1), name -> params.getOrDefault(name, ""), label);
-                        addVideo(images, m.group(1), params.getOrDefault("url", ""));
+                        addVideo(images, m.group(1), params.getOrDefault("url", ""), params.getOrDefault("file", ""), params.getOrDefault("name", ""));
                     }
                 }
                 last = m.end();
@@ -118,7 +118,8 @@ public final class QqMessages {
             case "video" -> "[视频]";
             case "file" -> {
                 String name = field.apply("name").isBlank() ? field.apply("file") : field.apply("name");
-                yield "[文件" + (name.isBlank() ? "" : "：" + name) + "]";
+                yield looksLikeVideoFile("file", name, field.apply("file")) ? "[视频]"
+                        : "[文件" + (name.isBlank() ? "" : "：" + name) + "]";
             }
             case "location" -> "[位置" + (field.apply("title").isBlank() ? "" : "：" + field.apply("title")) + "]";
             case "share" -> "[链接" + (field.apply("title").isBlank() ? "" : "：" + field.apply("title")) + "]";
@@ -257,9 +258,40 @@ public final class QqMessages {
         return qq;
     }
 
-    private static void addVideo(List<String> images, String type, String url) {
-        if (type.equals("video") && (url.startsWith("http://") || url.startsWith("https://"))) {
+    /** 手机/电脑端的视频都可能落在 [CQ:file,...mp4] 或 JSON 的 file/name 字段里 —— 多个候选名都要看。 */
+    private static boolean looksLikeVideoFile(String type, String... probes) {
+        if (!"file".equals(type) && !"video".equals(type)) {
+            return false;
+        }
+        for (String probe : probes) {
+            if (probe == null || probe.isBlank()) {
+                continue;
+            }
+            String f = probe.toLowerCase();
+            if (f.endsWith(".mp4") || f.endsWith(".mov") || f.endsWith(".m4v")
+                    || f.endsWith(".avi") || f.endsWith(".mkv") || f.endsWith(".webm")
+                    || f.endsWith(".flv") || f.endsWith(".wmv") || f.endsWith(".3gp")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void addVideo(List<String> images, String type, String url, String file, String name) {
+        boolean isFileSeg = "file".equals(type) || "video".equals(type);
+        if (isFileSeg) {
+            System.err.println("DEBUG addVideo: type=" + type
+                    + " file=[" + file + "] name=[" + name + "]"
+                    + " url=" + (url.isEmpty() ? "EMPTY" : url.substring(0, Math.min(60, url.length()))));
+        }
+        if (!looksLikeVideoFile(type, file, name, url)) {
+            return;
+        }
+        if (url.startsWith("http://") || url.startsWith("https://")) {
             images.add(VIDEO_REF + url);
+        } else {
+            System.err.println("WARN addVideo: " + type + " is video but url is not http: ["
+                    + url + "] file=[" + file + "] name=[" + name + "]");
         }
     }
 
