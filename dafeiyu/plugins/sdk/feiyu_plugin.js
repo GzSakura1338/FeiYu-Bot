@@ -152,6 +152,10 @@ class Plugin {
     return this.call('qq/send', params);
   }
 
+  qq(action, params) {
+    return this.call("qq/call", { action, params: params || {} });
+  }
+
   history({ groupId, userId, count = 20 } = {}) {
     const params = { count };
     if (groupId) params.groupId = String(groupId);

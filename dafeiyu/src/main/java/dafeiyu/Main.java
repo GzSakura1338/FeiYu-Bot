@@ -121,6 +121,11 @@ public final class Main {
             public boolean connected() {
                 return bridge.connected();
             }
+
+            @Override
+            public com.google.gson.JsonObject raw(String action, com.google.gson.JsonObject params) throws ToolFailure {
+                return bridge.qqApi().raw(action, params);
+            }
         };
         PluginHost plugins = new PluginHost(agent, qqPort, archive, pluginStore, baseDir.resolve("plugins"), dataDir.resolve("plugins"),
                 List.of(), log);

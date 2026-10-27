@@ -14,4 +14,7 @@ public interface QqPort {
     JsonArray members(String groupId) throws ToolFailure;
 
     boolean connected();
+
+    /** 直接调协议端的原始 QQ 接口（qq/call 用）；锁死的接口由实现方拒绝。 */
+    com.google.gson.JsonObject raw(String action, com.google.gson.JsonObject params) throws ToolFailure;
 }

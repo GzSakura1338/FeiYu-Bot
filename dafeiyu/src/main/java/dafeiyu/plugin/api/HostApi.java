@@ -79,6 +79,7 @@ public final class HostApi {
             case "qq/history" -> history(caller, params);
             case "qq/groups" -> groups(caller);
             case "qq/members" -> members(caller, params);
+            case "qq/call" -> qqCall(caller, params);
             case "memory/recall" -> recall(caller, params);
             case "memory/add" -> remember(caller, params);
             case "llm/chat" -> llm(caller, params);
@@ -110,6 +111,25 @@ public final class HostApi {
             throw new RpcError(RpcError.FAILED, "this message can no longer be replied to (unknown, expired, used up or already handled)");
         }
         return deliver(caller, target.session(), params, target.session().startsWith("group:") ? target.messageId() : null);
+    }
+
+    private JsonElement qqCall(Caller caller, JsonObject params) throws RpcError {
+        need(caller, "qq/call", Permission.QQ_API);
+        String action = optString(params, "action").strip();
+        if (action.isEmpty()) {
+            throw new RpcError(RpcError.BAD_PARAMS, "action is required");
+        }
+        JsonObject args = params.has("params") && params.get("params").isJsonObject()
+                ? params.getAsJsonObject("params") : new JsonObject();
+        try {
+            JsonObject response = qq.raw(action, args);
+            JsonObject out = new JsonObject();
+            out.addProperty("ok", true);
+            out.add("data", response == null ? JsonNull.INSTANCE : response);
+            return out;
+        } catch (ToolFailure e) {
+            throw new RpcError(RpcError.FAILED, e.getMessage());
+        }
     }
 
     private JsonElement send(Caller caller, JsonObject params) throws RpcError {
