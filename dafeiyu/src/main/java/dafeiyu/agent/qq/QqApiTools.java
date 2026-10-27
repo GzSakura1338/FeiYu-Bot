@@ -348,6 +348,9 @@ public final class QqApiTools {
             out.append("。").append(a.description());
         }
         out.append(policy.access(a.name()) == Access.READ ? "［只读］" : "［会改动东西］");
+        if (!QqApiPolicy.sideEffect(a.name()).isEmpty()) {
+            out.append("［注意：").append(QqApiPolicy.sideEffect(a.name())).append("］");
+        }
         if (!policy.allowed(a.name())) {
             out.append("［现在用不了：").append(why(a)).append("］");
         }

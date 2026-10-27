@@ -29,6 +29,9 @@ public final class QqApiPolicy {
     private static final Pattern READ = Pattern.compile("^(get_|fetch_|can_|check_|nc_get_|_get_)");
     private static final Set<String> ALSO_READ = Set.of("translate_en2zh", "ocr_image", "share_peer", "share_group_ex", "send_ark_share",
             "send_group_ark_share", "get_mini_app_ark", "search_sys_faces");
+    private static final Set<String> ALSO_WRITE = Set.of("get_ai_record", "get_fileset_info", "get_flash_file_list", "get_flash_file_url", "get_share_link");
+    private static final Map<String, String> SIDE_EFFECTS = Map.of(
+            "get_ai_record", "实测调用后 QQ 会直接把这条 AI 语音发到群里，和 send_group_ai_record 一样，不是只生成不发");
     private static final String CREDENTIAL = "能拿到 QQ 的登录凭证或密钥，泄露出去别人就能登这个号";
     private static final String ACCOUNT = "会让机器人下线、重启，或者改掉账号本身的资料";
     private static final String INTERNAL = "SnowLuma 内部或调试用的接口";
@@ -51,7 +54,11 @@ public final class QqApiPolicy {
     }
 
     public static Access defaultAccess(String name) {
-        return READ.matcher(name).find() || ALSO_READ.contains(name) ? Access.READ : Access.WRITE;
+        return !ALSO_WRITE.contains(name) && (READ.matcher(name).find() || ALSO_READ.contains(name)) ? Access.READ : Access.WRITE;
+    }
+
+    public static String sideEffect(String name) {
+        return SIDE_EFFECTS.getOrDefault(name, "");
     }
 
     public static boolean locked(String name) {
