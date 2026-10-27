@@ -44,12 +44,13 @@ public final class ChatTools {
     }
 
     public static Tool readForward(ChatAgent agent) {
-        return Tool.text(READ_FORWARD, "读别人分享的合并转发聊天记录：聊天里或 read_group 里的“[合并转发的聊天记录：编号]”就是，把冒号后面的编号原样填进来，"
-                        + "会返回里面每条消息是谁说的、说了什么。别人发来让你看的、问你“你看看这个”的，先读了再回。", """
+        return Tool.of(READ_FORWARD, "读别人分享的合并转发聊天记录：聊天里或 read_group 里的“[合并转发的聊天记录：编号]”就是，把冒号后面的编号原样填进来，"
+                        + "会返回里面每条消息是谁说的、说了什么，里面的图片也会一起附给你（能直接看到画面，不用再猜）。"
+                        + "别人发来让你看的、问你“你看看这个”的，先读了再回。", """
                         {"type": "object", "properties": {
                           "id": {"type": "string", "description": "合并转发的编号"}
                         }, "required": ["id"]}""",
-                (args, context) -> agent.readForward(args.text("id").replace("合并转发的聊天记录：", "").replace("[", "").replace("]", "").strip()));
+                (args, context) -> agent.readForwardWithImages(args.text("id").replace("合并转发的聊天记录：", "").replace("[", "").replace("]", "").strip()));
     }
 
     public static Tool skill(ChatAgent agent, String personaId) {

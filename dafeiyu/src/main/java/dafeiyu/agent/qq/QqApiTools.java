@@ -396,7 +396,7 @@ public final class QqApiTools {
             requireOwner(action, context);
             throttle();
         }
-        String routed = route(action, params);
+        String routed = route(action, params, context);
         if (routed != null) {
             log.info("agent [" + context.session() + "] qq api " + action.name() + " (routed) " + abbreviate(params.toString(), 200));
             return routed;
@@ -552,11 +552,21 @@ public final class QqApiTools {
 
     private void requireOwner(Action action, ToolContext context) throws ToolFailure {
         String who = context.userId() == null ? "" : context.userId().strip();
-        if (who.isEmpty()) {
-            String session = context.session() == null ? "" : context.session();
-            if (session.startsWith("web:") || session.equals("console")) {
-                return;
+        String session = context.session() == null ? "" : context.session();
+        if (session.startsWith("web:") || session.equals("console")) {
+            return;
+        }
+        // 没有明确触发者的回合（她自己决定做事、内心回合等）qqUser 是 "0"，
+        // 这种情况在私聊里能确定就是对方本人 —— 从会话名反推，别再一律拒绝。
+        if (who.isEmpty() || "0".equals(who)) {
+            if (session.startsWith("private:")) {
+                String peer = session.substring("private:".length()).strip();
+                if (!peer.isEmpty() && !"0".equals(peer)) {
+                    who = peer;
+                }
             }
+        }
+        if (who.isEmpty() || "0".equals(who)) {
             throw new ToolFailure(action.name() + "（" + action.summary() + "）会改动东西，"
                     + "但这个回合拿不到发起者的 QQ 号，为安全起见不执行");
         }
@@ -577,7 +587,7 @@ public final class QqApiTools {
         writes.addLast(now);
     }
 
-    private String route(Action action, JsonObject params) throws ToolFailure {
+    private String route(Action action, JsonObject params, ToolContext context) throws ToolFailure {
         String name = action.name();
         if (name.equals("set_group_ban")) {
             long seconds = number(params, "duration", 30 * 60);
@@ -598,12 +608,12 @@ public final class QqApiTools {
             return "拍了拍 " + who;
         }
         if (SEND.contains(name)) {
-            return send(name, params);
+            return send(name, params, context);
         }
         return null;
     }
 
-    private String send(String name, JsonObject params) throws ToolFailure {
+    private String send(String name, JsonObject params, ToolContext context) throws ToolFailure {
         String text = plainText(params.get("message"));
         if (text == null) {
             return null;
@@ -612,7 +622,7 @@ public final class QqApiTools {
                 && (Jsons.optString(params, "message_type").equals("group") || Jsons.optString(params, "message_type").isEmpty() && params.has("group_id"));
         if (group) {
             String groupId = id(params, "group_id");
-            return "在「" + bridge.groupName(groupId) + "」发了：" + bridge.speak(groupId, text);
+            return "在「" + bridge.groupName(groupId) + "」发了：" + bridge.speak(groupId, text, context == null ? "" : context.session());
         }
         String userId = id(params, "user_id");
         if (contacts.canMessage(userId)) {

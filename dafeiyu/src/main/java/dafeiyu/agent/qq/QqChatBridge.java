@@ -695,6 +695,7 @@ public final class QqChatBridge {
     private void onGroupMessage(JsonObject event, GroupState state, Incoming incoming, String text, boolean owner, String selfId, String userId,
                                 boolean react) {
         String groupId = state.groupId;
+        rememberMedia("group:" + groupId, incoming.imageUrls());
         String messageId = optString(event, "message_id");
         String sender = senderName(event);
         if (sender.isBlank() || sender.equals(userId)) {
@@ -735,8 +736,32 @@ public final class QqChatBridge {
         }
     }
 
+    /** 最近收到过、但当前消息没带上的图/视频 URL（用户发图时手机上没法同时 @ 人，必须靠这里补上）。 */
+    private final java.util.Map<String, java.util.List<String>> recentMedia = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int MAX_RECENT_MEDIA = 6;
+
+    private void rememberMedia(String session, List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return;
+        }
+        recentMedia.compute(session, (k, v) -> {
+            java.util.List<String> out = v == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(v);
+            out.addAll(urls);
+            while (out.size() > MAX_RECENT_MEDIA) {
+                out.remove(0);
+            }
+            return out;
+        });
+    }
+
+    private List<String> takeRecentMedia(String session) {
+        java.util.List<String> got = recentMedia.remove(session);
+        return got == null ? List.of() : got;
+    }
+
     private void onPrivate(Target target, String line, List<String> images, String attachments, boolean react) {
         String session = target.session();
+        rememberMedia(session, images);
         try {
             agent.hear(session, line, target.userId(), attachments);
         } catch (RuntimeException e) {
@@ -794,7 +819,8 @@ public final class QqChatBridge {
                 continue;
             }
             String quoted = String.join("", latest.stream().map(l -> "「" + pointer(l) + "」").toList());
-            Media media = media(target, images);
+            List<String> withRecent = Stream.concat(images.stream(), takeRecentMedia(session).stream()).distinct().toList();
+            Media media = media(target, withRecent);
             String prompt = "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）"
                     + (latest.stream().anyMatch(l -> l.contains(POKE_TAG)) ? POKE_HINT : "") + (media.note().isEmpty() ? "" : "\n" + media.note());
             agent.store().markReplying(new AgentStore.Replying(session, target.userId(), target.messageId(), "", String.join("\n", latest),
@@ -976,7 +1002,10 @@ public final class QqChatBridge {
         Target target = trigger == null
                 ? Target.group(state.groupId, "", selfId, "")
                 : Target.group(state.groupId, trigger.userId(), selfId, trigger.messageId());
-        Media media = trigger == null ? new Media(List.of(), "") : media(target, trigger.imageUrls());
+        List<String> triggerMedia = new ArrayList<>(trigger == null ? List.of() : trigger.imageUrls());
+        triggerMedia.addAll(takeRecentMedia(session));
+        List<String> mergedMedia = triggerMedia.stream().distinct().toList();
+        Media media = trigger == null ? new Media(List.of(), "") : media(target, mergedMedia);
         if (!media.note().isEmpty()) {
             prompt.append("\n").append(media.note());
         }
@@ -1260,22 +1289,33 @@ public final class QqChatBridge {
     }
 
     public String speak(String groupId, String text) throws ToolFailure {
-        String reason = whyNot(groupId);
+        return speak(groupId, text, "");
+    }
+
+    public String speak(String groupId, String text, String selfSession) throws ToolFailure {
+        boolean mine = selfSession != null && ("group:" + groupId).equals(selfSession.strip());
+        String reason = whyNot(groupId, mine);
         if (reason != null) {
             throw new ToolFailure("现在不能去：" + reason);
         }
         String formatted = outbox.prepare(text);
         outbox.review(readGroup(groupId, 6), formatted);
         GroupState state = groups.computeIfAbsent(groupId, GroupState::new);
-        if (!claim(state)) {
-            throw new ToolFailure("现在不能去：正在这个群里聊着呢");
+        boolean claimed = false;
+        if (!mine) {
+            if (!claim(state)) {
+                throw new ToolFailure("现在不能去：正在这个群里聊着呢");
+            }
+            claimed = true;
         }
         String selfId = outbox.selfId();
         try {
             outbox.deliver(Target.group(groupId, "", selfId, ""), formatted, null);
             agent.record("group:" + groupId, ChatMessage.assistant(formatted, ""));
         } finally {
-            release(state, selfId);
+            if (claimed) {
+                release(state, selfId);
+            }
         }
         synchronized (proactive) {
             proactive.addLast(System.currentTimeMillis());
@@ -1420,6 +1460,15 @@ public final class QqChatBridge {
     }
 
     public String whyNot(String groupId) {
+        return whyNot(groupId, false);
+    }
+
+    /**
+     * @param mine 当前回合是不是就在这个群里（session == "group:" + groupId）。
+     *             是的话不拦 busy —— 她正被这个群的消息触发，往这个群发一条是正常的；
+     *             以前不分青红皂白一律拦，导致"让她在群里发条消息"永远报「正在这个群里发消息」。
+     */
+    public String whyNot(String groupId, boolean mine) {
         if (!agent.store().qqReply() || !agent.store().groupMode()) {
             return "QQ 自动回复或群聊模式没开";
         }
@@ -1431,7 +1480,7 @@ public final class QqChatBridge {
             return "不在这个群里";
         }
         GroupState state = groups.get(groupId);
-        if (state != null && state.busy) {
+        if (!mine && state != null && state.busy) {
             return "正在这个群里发消息，等这句发完";
         }
         return null;
@@ -1602,7 +1651,12 @@ public final class QqChatBridge {
     private Media media(Target target, List<String> urls) {
         List<ImagePart> parts = new ArrayList<>(download(target, urls.stream().filter(u -> !u.startsWith(QqMessages.VIDEO_REF)).toList()));
         List<String> videos = urls.stream().filter(u -> u.startsWith(QqMessages.VIDEO_REF)).distinct().toList();
-        if (videos.isEmpty() || !agent.vision() || !agent.videoFrames().config().enabled()) {
+        boolean visionOk = agent.vision();
+        boolean videoEnabled = agent.videoFrames().config().enabled();
+        System.err.println("DEBUG media: urls=" + urls.size() + " videos=" + videos.size()
+                + " vision=" + visionOk + " videoEnabled=" + videoEnabled
+                + (videos.isEmpty() ? "" : " first=" + videos.get(0).substring(0, Math.min(60, videos.get(0).length()))));
+        if (videos.isEmpty() || !visionOk || !videoEnabled) {
             return new Media(parts, "");
         }
         List<String> notes = new ArrayList<>();
