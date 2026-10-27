@@ -203,6 +203,11 @@ public final class ImageLoader {
         return encode(image, "png");
     }
 
+    /** 把已经解码好的帧转成 ImagePart（动图抽帧用）。 */
+    public static ImagePart fromImage(BufferedImage image) {
+        return reencode(image);
+    }
+
     private static ImagePart reencode(BufferedImage source) {
         double scale = Math.min(1.0, (double) MAX_SIDE / Math.max(source.getWidth(), source.getHeight()));
         int width = Math.max(1, (int) Math.round(source.getWidth() * scale));

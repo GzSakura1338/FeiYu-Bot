@@ -33,10 +33,11 @@ import java.util.stream.Stream;
 
 public final class VideoFrames {
 
-    public record Config(int intervalMs) {
+    public record Config(int intervalMs, int gifFrames) {
 
         public Config {
             intervalMs = Math.max(0, intervalMs);
+            gifFrames = Math.clamp(gifFrames <= 0 ? DEFAULT_GIF_FRAMES : gifFrames, 1, MAX_GIF_FRAMES);
         }
 
         public boolean enabled() {
@@ -48,7 +49,12 @@ public final class VideoFrames {
 
     private record Probe(double seconds, String size, double fps, boolean audio) {}
 
+    public static final int MAX_GIF_FRAMES = 12;
     private static final int DEFAULT_INTERVAL_MS = 1000;
+    private static final int DEFAULT_GIF_FRAMES = 6;
+    private static final List<String> COMMON_DIRS = Platform.windows()
+            ? List.of("C:/ffmpeg/bin", "C:/Program Files/ffmpeg/bin", "C:/ProgramData/chocolatey/bin", "C:/Users/Public/ffmpeg/bin")
+            : List.of("/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/snap/bin", "/bin");
     private static final String KEY = "agent.video";
     private static final Duration DOWNLOAD = Duration.ofMinutes(30);
     private static final long RUN_BASE_MS = 120_000;
@@ -73,22 +79,28 @@ public final class VideoFrames {
         JsonObject saved = Jsons.parseObject(settings.get(KEY));
         if (saved != null) {
             try {
+                int gif = saved.has("gifFrames") ? saved.get("gifFrames").getAsInt() : DEFAULT_GIF_FRAMES;
                 if (saved.has("intervalMs")) {
-                    return new Config(saved.get("intervalMs").getAsInt());
+                    return new Config(saved.get("intervalMs").getAsInt(), gif);
+                }
+                if (saved.has("secondsPerFrame")) {
+                    return new Config(saved.get("secondsPerFrame").getAsInt() * 1000, gif);
                 }
                 if (saved.has("frames") && saved.get("frames").getAsInt() <= 0) {
-                    return new Config(0);
+                    return new Config(0, gif);
                 }
             } catch (RuntimeException ignored) {
             }
         }
-        return new Config(DEFAULT_INTERVAL_MS);
+        return new Config(DEFAULT_INTERVAL_MS, DEFAULT_GIF_FRAMES);
     }
 
-    public synchronized Config save(int intervalMs) {
-        Config next = new Config(intervalMs);
+    public synchronized Config save(Integer intervalMs, Integer gifFrames) {
+        Config old = config();
+        Config next = new Config(intervalMs == null ? old.intervalMs() : intervalMs, gifFrames == null ? old.gifFrames() : gifFrames);
         JsonObject o = new JsonObject();
         o.addProperty("intervalMs", next.intervalMs());
+        o.addProperty("gifFrames", next.gifFrames());
         settings.put(KEY, o.toString());
         return next;
     }
@@ -108,7 +120,9 @@ public final class VideoFrames {
     private static String locate() {
         String name = Platform.windows() ? "ffmpeg.exe" : "ffmpeg";
         String path = System.getenv().getOrDefault("PATH", System.getenv().getOrDefault("Path", ""));
-        for (String dir : path.split(File.pathSeparator)) {
+        List<String> dirs = new ArrayList<>(List.of(path.split(File.pathSeparator)));
+        dirs.addAll(COMMON_DIRS);
+        for (String dir : dirs) {
             if (dir.isBlank()) {
                 continue;
             }
@@ -121,6 +135,28 @@ public final class VideoFrames {
             }
         }
         return null;
+    }
+
+    public byte[] sampleVideo() throws ToolFailure {
+        String exe = ffmpeg();
+        if (exe == null) {
+            throw new ToolFailure("这台电脑上找不到 ffmpeg，没法探测视频能力");
+        }
+        Path dir = temp.resolve("probe-" + UUID.randomUUID());
+        try {
+            Files.createDirectories(dir);
+            Path out = dir.resolve("probe.mp4");
+            Sandbox.Result result = run(exe, dir, List.of(exe, "-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-f", "lavfi", "-i", "color=c=red:s=320x240:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", out.toString()), RUN_BASE_MS);
+            if (!Files.isRegularFile(out)) {
+                throw new ToolFailure("生成探测视频失败" + (result.stderr().isBlank() ? "" : "：" + result.stderr().strip()));
+            }
+            return Files.readAllBytes(out);
+        } catch (IOException e) {
+            throw new ToolFailure("生成探测视频失败：" + e.getMessage());
+        } finally {
+            delete(dir);
+        }
     }
 
     public Frames extract(String url) throws ToolFailure {

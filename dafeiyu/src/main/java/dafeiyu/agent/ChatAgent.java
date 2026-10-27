@@ -9,6 +9,7 @@ import dafeiyu.agent.image.VideoFrames;
 import dafeiyu.agent.intercom.Intercom;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.memory.Mood;
+import dafeiyu.agent.maintenance.Housekeeping;
 import dafeiyu.agent.memory.Reflection;
 import dafeiyu.agent.memory.SkillStore;
 import dafeiyu.agent.model.AgentStore;
@@ -50,6 +51,7 @@ public final class ChatAgent {
     private final StickerKeeper stickers;
     private final Intercom intercom;
     private final HeldLines held;
+    private final Housekeeping housekeeping;
     private final ImageGen imageGen;
     private final VideoFrames videoFrames;
     private final BackgroundTasks tasks;
@@ -77,6 +79,11 @@ public final class ChatAgent {
         this.tasks = new BackgroundTasks(this, db);
         this.imageGen = new ImageGen(db);
         this.videoFrames = new VideoFrames(db);
+        this.housekeeping = new Housekeeping(db, store);
+    }
+
+    public Housekeeping housekeeping() {
+        return housekeeping;
     }
 
     public VideoFrames videoFrames() {
@@ -113,6 +120,25 @@ public final class ChatAgent {
         } catch (AgentException e) {
             return false;
         }
+    }
+
+    /** 探测模型能不能直接看视频（会缓存结论；探测没做成时返回 false 但不缓存）。 */
+    public boolean nativeVideo() {
+        ModelProfile profile = store.active();
+        if (profile == null) {
+            return false;
+        }
+        try {
+            return capabilities.nativeVideo(profile, Protocols.get(profile.protocol()), videoFrames);
+        } catch (AgentException e) {
+            return false;
+        }
+    }
+
+    /** 读缓存的视频能力结论；从没探过返回 null。 */
+    public Boolean videoNative() {
+        ModelProfile profile = store.active();
+        return profile == null ? null : store.video(profile.id());
     }
 
     public ContentGuard guard() {
@@ -202,6 +228,11 @@ public final class ChatAgent {
     public interface ImageSource {
 
         byte[] load(long id) throws dafeiyu.agent.tool.ToolFailure;
+
+        /** 这张图属于哪个会话；默认不知道。 */
+        default String sessionOf(long id) {
+            return "";
+        }
     }
 
     private volatile ImageSource images = id -> {
@@ -214,6 +245,15 @@ public final class ChatAgent {
 
     byte[] image(long id) throws dafeiyu.agent.tool.ToolFailure {
         return images.load(id);
+    }
+
+    /** 这张图原本属于哪个会话（空串表示不知道）。 */
+    String imageSession(long id) {
+        try {
+            return images.sessionOf(id);
+        } catch (RuntimeException e) {
+            return "";
+        }
     }
 
     private volatile java.util.function.BiFunction<String, Boolean, String> elsewhere = (session, details) -> "";

@@ -184,16 +184,123 @@ async function toggleCurate() {
   renderCurate();
 }
 
+
+// ── 记录清理 ────────────────────────────────────────────────────
+let hk = null;
+const hkSteppers = new Map();
+
+const SCHEDULE_TEXT = {
+  manual: '只在你说的时候',
+  daily: '每天都看一眼',
+  weekly: '每周看一眼',
+  monthly: '每月看一眼',
+};
+
+async function hkLoad() {
+  try {
+    const res = await fetch('/api/agent', { cache: 'no-store' });
+    const json = await res.json();
+    hk = json.housekeeping ?? null;
+    hkRender();
+  } catch (err) {
+    showSnackbar(`读取记录清理设置失败：${err.message}`, 'error');
+  }
+}
+
+async function hkSave(patch) {
+  if (!hk) return;
+  hk = { ...hk, ...patch };
+  hkRender();
+  try {
+    const res = await fetch('/api/agent/housekeeping', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(hk),
+      cache: 'no-store',
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+    hk = json.housekeeping ?? hk;
+    hkRender();
+  } catch (err) {
+    showSnackbar(`保存失败：${err.message}`, 'error');
+    hkLoad();
+  }
+}
+
+function hkRender() {
+  if (!hk) return;
+  $('#housekeeping-enabled').setAttribute('aria-checked', String(hk.enabled));
+  $('#housekeeping-hint').textContent = hk.enabled
+    ? `已开启：消息留 ${hk.messagesDays} 天、用量留 ${hk.usageDays} 天，${SCHEDULE_TEXT[hk.schedule] ?? '只在你说的时候'}`
+    : '关着时她不能清理任何记录';
+  for (const button of $$('#housekeeping-schedule button[role="radio"]')) {
+    button.setAttribute('aria-checked', String(button.dataset.schedule === hk.schedule));
+  }
+  hkSteppers.get('messagesDays')?.show(hk.messagesDays);
+  hkSteppers.get('usageDays')?.show(hk.usageDays);
+}
+
+function buildHkStepper(box) {
+  const min = Number(box.dataset.min);
+  const max = Number(box.dataset.max);
+  const field = box.dataset.field;
+  const minus = el('button', 'icon-button state-layer');
+  const plus = el('button', 'icon-button state-layer');
+  const input = el('input');
+  const unit = el('span', 'stepper-unit body-medium', box.dataset.unit ?? '');
+  minus.type = plus.type = 'button';
+  minus.ariaLabel = '减少';
+  plus.ariaLabel = '增加';
+  minus.append(createIcon('remove'));
+  plus.append(createIcon('add'));
+  input.inputMode = 'numeric';
+  input.ariaLabel = box.closest('.list-item')?.querySelector('.list-headline')?.textContent ?? '';
+  box.append(minus, input, unit, plus);
+  const stepper = { value: min, show: null };
+  stepper.show = value => {
+    stepper.value = value;
+    input.value = String(value);
+    minus.disabled = value <= min;
+    plus.disabled = value >= max;
+  };
+  const change = value => {
+    const next = Math.max(min, Math.min(max, value));
+    stepper.show(next);
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => hkSave({ [field]: stepper.value }), 500);
+  };
+  minus.addEventListener('click', () => change(stepper.value - 1));
+  plus.addEventListener('click', () => change(stepper.value + 1));
+  const commit = () => {
+    const raw = input.value.trim();
+    const n = /^\d{1,4}$/.test(raw) ? Number(raw) : NaN;
+    if (Number.isNaN(n)) stepper.show(stepper.value);
+    else change(n);
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') input.blur();
+  });
+  hkSteppers.set(field, stepper);
+}
+
 export function initSettingsAgent() {
   $('#curate-enabled').addEventListener('click', toggleCurate);
   $('#subagent-enabled').addEventListener('click', () => state && save({ enabled: !state.enabled }));
   $('#subagent-research').addEventListener('click', () => state && save({ research: !state.research }));
   $('#subagent-build').addEventListener('click', () => state && state.workspace && save({ build: !state.build }));
   for (const box of $$('#subagent-limits .stepper')) buildStepper(box);
+  $('#housekeeping-enabled').addEventListener('click', () => hk && hkSave({ enabled: !hk.enabled }));
+  for (const box of $$('#housekeeping-panel .stepper')) buildHkStepper(box);
+  for (const button of $$('#housekeeping-schedule button[role="radio"]')) {
+    button.addEventListener('click', () => hk && hkSave({ schedule: button.dataset.schedule }));
+  }
   onPageChange(page => {
     if (page === 'settings') {
       load();
       loadCurate();
+      hkLoad();
     }
   });
 }

@@ -858,9 +858,9 @@
           <figcaption class="body-small"></figcaption>
         </figure>
       </div>
-      <div class="panel">
+            <div class="panel">
         <div class="panel-header"><h2 class="headline-small">看视频</h2></div>
-        <p class="panel-desc body-medium">有人发视频找她时，用 ffmpeg 把整段视频从头到尾按固定间隔抽帧当图片给她看，不限时长、不限张数；每张对应的时间点、视频多长、原画面多大、有没有声音都会告诉她（声音本身听不到）。帧很多时每张会缩小（最长边从 1024 依次降到 768、512、384 像素），让整个请求不超过接口上限；万一还是太大，会隔一张去一张再发。要模型能看图，电脑上装了 ffmpeg 才行；抽帧在沙盒里做，做完就删。</p>
+        <p class="panel-desc body-medium">有人发视频找她时，用 ffmpeg 把整段视频从头到尾按固定间隔抽帧当图片给她看，不限时长、不限张数；每张对应的时间点、视频多长、原画面多大、有没有声音都会告诉她（声音本身听不到）。帧很多时每张会缩小（最长边从 1024 依次降到 768、512、384 像素），让整个请求不超过接口上限；万一还是太大，会隔一张去一张再发。动态表情包（GIF）也会按帧抽几张给她看。要模型能看图，电脑上装了 ffmpeg 才行；抽帧在沙盒里做，做完就删。</p>
         <ul class="list">
           <li class="list-item settings-row">
             <span class="list-icon"><svg data-icon="image_search"></svg></span>
@@ -877,6 +877,28 @@
               <button class="state-layer" role="radio" data-interval="5000"><svg data-icon="check" class="icon-18 chip-check"></svg>5 秒</button>
             </div>
           </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="gif_box"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">动图抽几张</div>
+              <div class="list-supporting body-medium">动态表情包按帧均匀抽几张给她看；1 张就等于只看第一帧</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="动图抽几张" id="video-gifframes">
+              <button class="state-layer" role="radio" data-gifframes="1"><svg data-icon="check" class="icon-18 chip-check"></svg>1 张</button>
+              <button class="state-layer" role="radio" data-gifframes="4"><svg data-icon="check" class="icon-18 chip-check"></svg>4 张</button>
+              <button class="state-layer" role="radio" data-gifframes="6"><svg data-icon="check" class="icon-18 chip-check"></svg>6 张</button>
+              <button class="state-layer" role="radio" data-gifframes="8"><svg data-icon="check" class="icon-18 chip-check"></svg>8 张</button>
+              <button class="state-layer" role="radio" data-gifframes="12"><svg data-icon="check" class="icon-18 chip-check"></svg>12 张</button>
+            </div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="videocam"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">检测视频能力</div>
+              <div class="list-supporting body-medium" id="video-native-hint">点一下试试现在的模型能不能直接看视频（不用抽帧）</div>
+            </div>
+            <button class="text-button label-large" id="video-probe">检测</button>
+          </li>
         </ul>
         <form class="workspace-row" id="video-custom" novalidate autocomplete="off">
           <div class="text-field" data-field="intervalMs">
@@ -887,6 +909,50 @@
         </form>
       </div>
     </div>
+
+      <div class="panel" id="housekeeping-panel">
+        <div class="panel-header"><h2 class="headline-small">记录清理</h2></div>
+        <p class="panel-desc body-medium">群里说过的话、每次调用的用量都会一直攒着。打开这里，她就能按你定的天数清掉旧的：先演练一遍告诉你"会删多少条"，你点头才真删。最近 7 天的永远不删，不管这里写多少。</p>
+        <ul class="list">
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="delete_sweep"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">启用</div>
+              <div class="list-supporting body-medium" id="housekeeping-hint">关着时她不能清理任何记录</div>
+            </div>
+            <button class="switch" type="button" role="switch" id="housekeeping-enabled" aria-checked="false" aria-label="启用记录清理"><span class="switch-handle"></span></button>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="forum"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">消息保留</div>
+              <div class="list-supporting body-medium">超过这么多天的聊天归档会被清掉，最少 7 天</div>
+            </div>
+            <div class="stepper" data-field="messagesDays" data-min="7" data-max="3650" data-step="1" data-unit="天"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="bar_chart"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">用量记录保留</div>
+              <div class="list-supporting body-medium">Token 用量那本的保留天数，同样最少 7 天</div>
+            </div>
+            <div class="stepper" data-field="usageDays" data-min="7" data-max="3650" data-step="1" data-unit="天"></div>
+          </li>
+          <li class="list-item settings-row">
+            <span class="list-icon"><svg data-icon="schedule"></svg></span>
+            <div class="list-text">
+              <div class="list-headline body-large">多久看一次</div>
+              <div class="list-supporting body-medium">到点她会自己先演练一遍再问你；选「手动」就只有你叫她她才看</div>
+            </div>
+            <div class="segmented label-large" role="radiogroup" aria-label="记录清理的检查频率" id="housekeeping-schedule">
+              <button class="state-layer" role="radio" data-schedule="manual"><svg data-icon="check" class="icon-18 chip-check"></svg>手动</button>
+              <button class="state-layer" role="radio" data-schedule="daily"><svg data-icon="check" class="icon-18 chip-check"></svg>每天</button>
+              <button class="state-layer" role="radio" data-schedule="weekly"><svg data-icon="check" class="icon-18 chip-check"></svg>每周</button>
+              <button class="state-layer" role="radio" data-schedule="monthly"><svg data-icon="check" class="icon-18 chip-check"></svg>每月</button>
+            </div>
+          </li>
+        </ul>
+      </div>
 
     <div class="settings-view" data-view="appearance" hidden>
       <div class="panel">

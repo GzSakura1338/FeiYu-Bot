@@ -1,5 +1,6 @@
 package dafeiyu.agent;
 
+import dafeiyu.agent.maintenance.Housekeeping;
 import dafeiyu.agent.memory.MemoryStore;
 import dafeiyu.agent.tool.Tool;
 import dafeiyu.agent.tool.ToolFailure;
@@ -15,8 +16,36 @@ public final class ChatTools {
     public static final String RECALL = "recall";
     public static final String SKILL = "skill";
     public static final String START_TASK = "start_task";
+    public static final String HOUSEKEEPING = "housekeeping";
 
     private ChatTools() {}
+
+    /**
+     * 记录清理工具。默认只演练，真删要显式 dryRun=false；
+     * 保留天数由主人的设置决定，最近 7 天的永远删不掉（Housekeeping 里有硬下限）。
+     */
+    public static Tool housekeeping(ChatAgent agent) {
+        return Tool.text(HOUSEKEEPING,
+                "看看/清理历史记录（消息归档和用量日志）。默认只演练：告诉你按现在的设置会删多少条，不动任何数据。"
+                        + "真要删就传 dryRun=false。保留天数由主人在「设置 › Agent › 记录清理」里定，最近 7 天的永远不删。"
+                        + "别自己主动清 —— 除非主人问起存储、或者到了定期检查的点。",
+                """
+                {"type": "object", "properties": {
+                  "dryRun": {"type": "boolean", "description": "true（默认）只报告会删多少条，false 才真删"}
+                }}""",
+                (args, context) -> {
+                    boolean dry = !args.has("dryRun") || args.bool("dryRun", true);
+                    if (dry) {
+                        Housekeeping.Plan plan = agent.housekeeping().plan();
+                        return "演练（没动数据）：按保留 " + plan.messagesDays() + " 天的消息、"
+                                + plan.usageDays() + " 天的用量记录，会删 " + plan.messages() + " 条消息、"
+                                + plan.usage() + " 条用量记录。" + plan.note();
+                    }
+                    Housekeeping.Result r = agent.housekeeping().run();
+                    return "清理完了：删掉 " + r.messages() + " 条消息、" + r.usage() + " 条用量记录"
+                            + "（保留最近 " + r.messagesDays() + "/" + r.usageDays() + " 天）。";
+                });
+    }
 
     public static Tool readForward(ChatAgent agent) {
         return Tool.text(READ_FORWARD, "读别人分享的合并转发聊天记录：聊天里或 read_group 里的“[合并转发的聊天记录：编号]”就是，把冒号后面的编号原样填进来，"

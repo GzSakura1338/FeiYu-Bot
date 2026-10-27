@@ -376,15 +376,29 @@ public final class BackgroundTasks {
             return;
         }
         Control control = new Control(limitMs(task));
-        controls.put(task.id(), control);
-        if (PAUSED.equals(task.status())) {
-            control.paused = true;
-            control.limit = timer.schedule(() -> { }, 1, TimeUnit.DAYS);
-            control.limit.cancel(false);
-            put(task.with(PAUSED, ""));
-        } else {
-            put(task.with(RUNNING, ""));
-            control.limit = timer.schedule(() -> expire(task, control), control.remaining, TimeUnit.MILLISECONDS);
+        // 这段在 try/finally 之外：只要其中一个抛 RuntimeException，
+        // 下面 finally 的 pool.release() 就永远不会执行 ⇒ running 只增不减，
+        // 到 limit 之后所有后台任务与子 agent 永久排队。所以这里自己兜一层。
+        try {
+            controls.put(task.id(), control);
+            if (PAUSED.equals(task.status())) {
+                control.paused = true;
+                control.limit = timer.schedule(() -> { }, 1, TimeUnit.DAYS);
+                control.limit.cancel(false);
+                put(task.with(PAUSED, ""));
+            } else {
+                put(task.with(RUNNING, ""));
+                control.limit = timer.schedule(() -> expire(task, control), control.remaining, TimeUnit.MILLISECONDS);
+            }
+        } catch (RuntimeException e) {
+            controls.remove(task.id());
+            synchronized (control) {
+                if (control.limit != null) {
+                    control.limit.cancel(false);
+                }
+            }
+            pool.release();
+            throw e;
         }
         try {
             ChatTurn turn = new ChatTurn(session, ChatMessage.user(prompt), requesterQq, null, sub ? SUBAGENT : "task");

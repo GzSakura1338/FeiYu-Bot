@@ -40,9 +40,12 @@ public final class Database implements AutoCloseable {
 
     public static Database open(Path file) {
         Path absolute = file.toAbsolutePath().normalize();
+        // 失败路径要能关掉连接：迁移抛异常时若不 close，
+        // systemd 反复重启会攒下一堆句柄 + WAL/-shm 不释放，把一次失败放大成崩溃循环。
+        Connection connection = null;
         try {
             Files.createDirectories(absolute.getParent());
-            Connection connection = DriverManager.getConnection("jdbc:sqlite:" + absolute);
+            connection = DriverManager.getConnection("jdbc:sqlite:" + absolute);
             try (Statement st = connection.createStatement()) {
                 st.execute("PRAGMA journal_mode = WAL");
                 st.execute("PRAGMA synchronous = NORMAL");
@@ -53,6 +56,13 @@ public final class Database implements AutoCloseable {
             warnings.forEach(w -> System.err.println("WARN " + w));
             return new Database(absolute, connection, warnings);
         } catch (IOException | SQLException e) {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException ignored) {
+                    // 关不掉也没别的办法，别盖住原始错误
+                }
+            }
             throw new DatabaseException("cannot open database " + absolute + ": " + e.getMessage(), e);
         }
     }

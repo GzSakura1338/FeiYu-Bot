@@ -118,6 +118,12 @@ final class AgentHandler {
                 store.setPacing(pacing);
                 log.info("agent: send pacing set to " + pacing.intervalMs() + " ms, up to " + pacing.maxPieces() + " piece(s)");
                 HttpResponses.json(ex, state());
+            } else if (path.equals("/housekeeping") && method.equals("PUT")) {
+                AgentStore.Housekeeping cfg = Requests.readJson(ex, AgentStore.Housekeeping.class);
+                store.setHousekeeping(cfg);
+                log.info("agent: housekeeping " + (cfg.enabled() ? "ON" : "OFF")
+                        + ", messages " + cfg.messagesDays() + "d, usage " + cfg.usageDays() + "d, schedule " + cfg.schedule());
+                HttpResponses.json(ex, state());
             } else if (path.equals("/models") && method.equals("POST")) {
                 models(ex);
             } else if (path.equals("/chat") && method.equals("POST")) {
@@ -274,7 +280,8 @@ final class AgentHandler {
             } catch (AgentException e) {
                 throw new IllegalArgumentException("图片无法读取：" + e.getMessage());
             }
-            text.append(text.isEmpty() ? "" : "\n").append("[图片]");
+            text.append(text.isEmpty() ? "" : "\n")
+                    .append("[图片已附在本条消息里，画面就在你眼前，直接看就行；不用再去调 view_image 找它（这里没有编号可填）]");
         }
         String session = webSession(req.session());
         ex.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
@@ -494,6 +501,7 @@ final class AgentHandler {
         body.addProperty("freeWill", store.freeWill());
         body.addProperty("reasoningEffort", store.reasoningEffort());
         body.add("pacing", gson.toJsonTree(store.pacing()));
+        body.add("housekeeping", gson.toJsonTree(store.housekeeping()));
         body.addProperty("active", store.activeId());
         body.add("profiles", profiles);
         return body.toString();
