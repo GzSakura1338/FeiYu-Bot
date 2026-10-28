@@ -66,8 +66,6 @@ public final class TurnRunner {
     private static final int MAX_ERRANDS = 2;
     private static final int MAX_VIEWS = 6;
     private static final String VIEWED = "（这是你刚才用工具要看的图）";
-    private static final String IMAGE_NOTE = "（备注：你上面那段对画面的描述，是你真的看到图之后说的，系统已经确认过。"
-            + "之后就算图片被上下文压缩掉、这一轮不再附上，也别收回、别说是自己编的。）";
     public static final String SILENCE = "[沉默]";
     private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
     public static final String AMBIENT = "【旁听】";
@@ -357,9 +355,6 @@ public final class TurnRunner {
             fresh.add(ChatMessage.assistant(stored, result.reasoning(), toRun));
             for (ToolCall call : toRun) {
                 fresh.add(runTool(call));
-            }
-            if (!turn.mind() && !content.isBlank() && sawPicture()) {
-                fresh.add(ChatMessage.user(IMAGE_NOTE));
             }
             save(fresh, result);
             if (!shown.isEmpty()) {
@@ -870,13 +865,6 @@ public final class TurnRunner {
 
     private boolean hasHistory() {
         return !conversation.isEmpty() || userSaved;
-    }
-
-    private boolean sawPicture() {
-        if (turn.user() != null && !turn.user().images().isEmpty()) {
-            return true;
-        }
-        return !shown.isEmpty();
     }
 
     private boolean hasLiveImages() {

@@ -370,7 +370,7 @@ public final class Reflection {
         MemoryStore.Memory diary = memories.diary(persona.id(), day);
         List<MemoryStore.Memory> topics = memories.selfTopics(persona.id());
         List<SkillStore.Skill> known = skills.list(persona.id());
-        String prompt = prompt(persona, session, chunk.transcript(), roster, owners, existing, day, diary, topics, known);
+        String prompt = prompt(persona, session, chunk.transcript(), roster, owners, existing, day, diary, topics, known, agent.seenImages(session));
         String reply = ask(profile, session, prompt);
         try {
             parse(reply);
@@ -414,7 +414,7 @@ public final class Reflection {
 
     private static String prompt(Persona persona, String session, String transcript, List<String[]> roster, Set<String> owners,
                                  List<MemoryStore.Memory> existing, String day, MemoryStore.Memory diary,
-                                 List<MemoryStore.Memory> topics, List<SkillStore.Skill> known) {
+                                 List<MemoryStore.Memory> topics, List<SkillStore.Skill> known, List<String> seen) {
         boolean group = session.startsWith("group:");
         StringBuilder people = new StringBuilder();
         for (String[] person : roster) {
@@ -467,11 +467,11 @@ public final class Reflection {
                         + "\"skills\": [{\"op\": \"add\", \"name\": \"技能名\", \"description\": \"什么时候用\", \"content\": \"具体怎么做\"}, "
                         + "{\"op\": \"update\", \"id\": \"S编号\", \"name\": \"…\", \"description\": \"…\", \"content\": \"…\"}, {\"op\": \"delete\", \"id\": \"S编号\"}]}",
                 "",
-                "看过的画面（很重要，单独记）：",
-                "- 聊天记录里出现“工具返回……画面”“[图片#N]”“看了图”这种，说明你当时真的看到了画面。",
-                "- 你把画面描述出来之后（颜色、动作、图里的文字、数字），要单独记一条记忆，写成“图片#编号 或 那次发的图：你看到的是……”，细节要留住。",
-                "- 以后上下文压缩、图不再附上时，你就靠这条记忆照着回答，不要说自己没看到、更不要说是编的。",
-                "",
+                seen.isEmpty() ? "" : "看过的画面（单独记）：\n"
+                        + "- 系统确认你在这里真的看到过画面的图只有这些：图片#" + String.join("、图片#", seen) + "。\n"
+                        + "- 对这些图，你在聊天里把画面描述出来了（颜色、动作、图里的文字、数字），就单独记一条，写成“图片#编号：你看到的是……”，照你当时说的把细节留住；"
+                        + "以后图不再附上时，就靠这条记忆回答，不要说自己没看到，更不要说是编的。\n"
+                        + "- 不在这份清单里的图号，聊天里提到了也不算你看过，别替它记画面。\n",
                 "日记（diary）：",
                 "- 一天只有一篇。把上面这一天已经写了的日记和这段新聊天合在一起，重写成完整的一篇（不是只写新的部分，已经写了的内容要保留）。",
                 "- 第一人称，按时间顺序，写上大概的时间（比如“下午三点多”“晚上八点多”），在哪个群、和谁、发生了什么、你的感受。"
