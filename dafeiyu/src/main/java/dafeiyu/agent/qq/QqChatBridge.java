@@ -1341,7 +1341,9 @@ public final class QqChatBridge {
                 public void onBlocked(String category, boolean byModel, String replacement) {
                     log.warn("agent [" + target.where() + "] blocked a reply flagged by the " + (byModel ? "model review" : "keyword list")
                             + (replacement.isEmpty() ? ", stayed quiet" : ", sent a deflection instead"));
-                    nudgeBlocked(target);
+                    if ("qq".equals(turn.source())) {
+                        nudgeBlocked(target);
+                    }
                 }
             });
         } catch (AgentException e) {
@@ -1438,10 +1440,6 @@ public final class QqChatBridge {
         return formatted;
     }
 
-    /**
-     * 回复被内容审核拦下时，告诉触发者「还剩几次会被拉黑」。
-     * 只说明是触发了内容审核，不点破具体类别（色情/政治之类不写）。
-     */
     private void nudgeBlocked(Target target) {
         try {
             if (!agent.store().blockEnabled()) {
@@ -1460,7 +1458,7 @@ public final class QqChatBridge {
             if (remaining <= 0) {
                 return;
             }
-            String text = "你这条消息没通过内容审核（原因就不细说了）。"
+            String text = "你这条消息我没法回，回复没通过内容审核（原因就不细说了）。"
                     + "这类情况累计 " + threshold + " 次会被拉黑，你还有 " + remaining + " 次。";
             Target hint = target.group()
                     ? Target.group(target.groupId(), "", outbox.selfId(), "")
