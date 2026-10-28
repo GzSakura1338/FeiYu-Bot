@@ -80,6 +80,10 @@ public final class QqChatBridge {
     private static final java.util.regex.Pattern QUOTED_PICTURE = java.util.regex.Pattern.compile("\\[(图片|表情包)#(\\d+)");
     private static final java.util.regex.Pattern STICKER_MENTION = java.util.regex.Pattern.compile("\\[表情包#(\\d+)]");
     private static final String FRIEND_ASK = "请求添加你为好友";
+    private static final String INVITE_CARD = "邀请你加入群聊";
+    private static final String REQUEST_TAG = "【申请】";
+    private static final long PRIVATE_TALK_MS = 10 * 60_000L;
+    private static final long INVITE_WAIT_MS = 3_000;
     private static final String PICTURE_REF = "picture:";
     private static final String STICKER_REF = "sticker:";
     private static final long AMBIENT_QUIET_MIN_MS = 2_000;
@@ -125,6 +129,8 @@ public final class QqChatBridge {
         final List<String> images = new ArrayList<>();
         final List<String> lines = new ArrayList<>();
         boolean resumed;
+        boolean askPending;
+        final Set<String> asked = new java.util.HashSet<>();
     }
 
     private final ChatAgent agent;
@@ -198,6 +204,12 @@ public final class QqChatBridge {
         });
         this.requests = new QqRequests(agent, db, outbox, contacts, actions, log);
         requests.setOnNew(r -> {
+            if (!r.friend() && talkingPrivately(r.userId())) {
+                requests.handOff(r, "private:" + r.userId());
+                log.info("agent: " + r.kind() + " request from " + r.userId() + " left to the private chat with them");
+                askInPrivate(r);
+                return;
+            }
             Observer o = observer;
             if (o != null) {
                 o.requested(requests.line(r));
@@ -240,7 +252,7 @@ public final class QqChatBridge {
                 return "群聊模式没开";
             }
             Map<String, String> names = contacts.groups();
-            return !names.isEmpty() && !names.containsKey(session.substring(6)) ? "不在这个群里" : null;
+            return !names.isEmpty() && !names.containsKey(session.substring(6)) ? "不在这个群里" : outbox.mutedNote(session.substring(6));
         }
         if (session.startsWith("private:")) {
             String userId = session.substring(8);
@@ -408,6 +420,10 @@ public final class QqChatBridge {
             contacts.forgetMember(optString(event, "group_id"), optString(event, "user_id"));
             return;
         }
+        if (optString(event, "post_type").equals("notice") && optString(event, "notice_type").equals("group_ban")) {
+            onMute(event);
+            return;
+        }
         if (optString(event, "post_type").equals("notice") && optString(event, "notice_type").equals("friend_add")) {
             requests.friendAdded(optString(event, "user_id"));
             contacts.forgetFriends();
@@ -446,11 +462,39 @@ public final class QqChatBridge {
                 }
                 outbox.rememberTempGroup(optString(event, "user_id"), via);
             }
+            if (optString(event, "message_type").equals("group")) {
+                backfill.seen(optString(event, "group_id"), optString(event, "message_id"), this::ingest);
+            }
             ingest(event, true);
         }
     }
 
+    private void onMute(JsonObject event) {
+        String groupId = optString(event, "group_id");
+        String userId = optString(event, "user_id");
+        long seconds = event.has("duration") && event.get("duration").isJsonPrimitive() ? event.get("duration").getAsLong() : 0;
+        if (userId.isEmpty() || userId.equals("0")) {
+            if (seconds <= 0) {
+                outbox.wholeMuteLifted(groupId);
+            }
+            return;
+        }
+        if (!userId.equals(outbox.selfId())) {
+            return;
+        }
+        long until = seconds > 0 ? System.currentTimeMillis() + seconds * 1000 : 0;
+        outbox.muted(groupId, until);
+        String operator = optString(event, "operator_id");
+        String by = agent.personas().isOwner(operator) ? "主人" : unforgeable(memberOr(groupId, operator));
+        String line = seconds > 0 ? "（" + by + " 把你禁言了，" + Clock.stamp(until) + " 解除；这之前你在这个群说不了话）"
+                : "（" + by + " 解除了你的禁言，你又能在这个群说话了）";
+        heardNow(groups.computeIfAbsent(groupId, GroupState::new), line, "", "");
+        agent.intercom().report("group:" + groupId, "「" + groupName(groupId) + "」：" + line);
+        log.info("agent [group " + groupId + "] " + (seconds > 0 ? "muted by " + operator + " until " + Clock.stamp(until) : "unmuted by " + operator));
+    }
+
     public void onConnected() {
+        backfill.connected();
         resumeInterrupted();
         executor.submit(requests::backfill);
         backfill.run(this::ingest);
@@ -762,6 +806,40 @@ public final class QqChatBridge {
         return got == null ? List.of() : got.stream().filter(m -> now - m.at() < RECENT_MEDIA_MS).map(RecentMedia::url).toList();
     }
 
+    private boolean talkingPrivately(String userId) {
+        return agent.store().qqReply() && archive.privatePeers(System.currentTimeMillis() - PRIVATE_TALK_MS, 50).contains(userId);
+    }
+
+    private void askInPrivate(QqRequests.Request r) {
+        Inbox inbox = inboxes.computeIfAbsent("private:" + r.userId(), k -> new Inbox());
+        synchronized (inbox) {
+            if (inbox.asked.contains(r.flag())) {
+                return;
+            }
+            if (inbox.busy) {
+                inbox.askPending = true;
+                return;
+            }
+        }
+        onPrivate(Target.direct(r.userId(), outbox.selfId(), ""), REQUEST_TAG + requests.line(r), List.of(), "", true);
+    }
+
+    private List<QqRequests.Request> asksFrom(String userId, List<String> latest) {
+        List<QqRequests.Request> asks = requests.pendingFrom(userId);
+        long deadline = System.currentTimeMillis() + INVITE_WAIT_MS;
+        while (asks.isEmpty() && latest.stream().anyMatch(l -> l.contains(INVITE_CARD)) && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            asks = requests.pendingFrom(userId);
+        }
+        asks.forEach(r -> requests.handOff(r, "private:" + userId));
+        return asks;
+    }
+
     private void onPrivate(Target target, String line, List<String> images, String attachments, boolean react) {
         String session = target.session();
         try {
@@ -820,10 +898,17 @@ public final class QqChatBridge {
                 }
                 continue;
             }
-            String quoted = String.join("", latest.stream().map(l -> "「" + pointer(l) + "」").toList());
+            List<QqRequests.Request> asks = asksFrom(target.userId(), latest);
+            synchronized (inbox) {
+                asks.forEach(r -> inbox.asked.add(r.flag()));
+            }
+            List<String> said = latest.stream().filter(l -> !l.startsWith(REQUEST_TAG)).toList();
+            String quoted = String.join("", said.stream().map(l -> "「" + pointer(l) + "」").toList());
             Media media = media(target, images);
-            String prompt = "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）"
-                    + (latest.stream().anyMatch(l -> l.contains(POKE_TAG)) ? POKE_HINT : "") + (media.note().isEmpty() ? "" : "\n" + media.note());
+            String prompt = (said.isEmpty() ? "" : "（" + (resumed ? RESUMED : "") + "对方在私聊里刚发来：" + quoted + "。" + FOCUS + "）")
+                    + (said.stream().anyMatch(l -> l.contains(POKE_TAG)) ? POKE_HINT : "") + (media.note().isEmpty() ? "" : "\n" + media.note())
+                    + (asks.isEmpty() ? "" : (said.isEmpty() ? "" : "\n") + "（对方的申请在等你答复：" + String.join("；", asks.stream().map(requests::line).toList())
+                            + "。同不同意你自己定，按你们聊的来：用 answer_group 答复，答复完跟对方说一声；别让它一直挂着，也别说看不到邀请）");
             agent.store().markReplying(new AgentStore.Replying(session, target.userId(), target.messageId(), "", String.join("\n", latest),
                     System.currentTimeMillis()));
             try {
@@ -836,6 +921,24 @@ public final class QqChatBridge {
                 log.error("agent [" + target.where() + "] reply crashed: " + e);
             } finally {
                 agent.store().clearReplying(session);
+            }
+            boolean askAgain;
+            synchronized (inbox) {
+                askAgain = inbox.askPending;
+                inbox.askPending = false;
+            }
+            if (askAgain) {
+                for (QqRequests.Request r : requests.pendingFrom(target.userId())) {
+                    String line = REQUEST_TAG + requests.line(r);
+                    synchronized (inbox) {
+                        if (inbox.asked.contains(r.flag())) {
+                            continue;
+                        }
+                        inbox.lines.add(line);
+                        inbox.pending = true;
+                    }
+                    agent.hear(session, line, target.userId(), "");
+                }
             }
             synchronized (inbox) {
                 if (!inbox.pending && !agent.intercom().hasNotes(session)) {
@@ -931,6 +1034,10 @@ public final class QqChatBridge {
     private void runGroupTurn(GroupState state, String selfId, Mode mode) {
         String session = "group:" + state.groupId;
         List<Line> lines = state.drain();
+        if (mode != Mode.NOTE && outbox.mutedNote(state.groupId) != null) {
+            state.restore(lines);
+            return;
+        }
         List<Intercom.Note> notes = mode == Mode.NOTE ? agent.intercom().takeNotes(session) : List.of();
         if (mode == Mode.NOTE && notes.isEmpty()) {
             state.restore(lines);
@@ -1365,6 +1472,10 @@ public final class QqChatBridge {
         }
         Target target = session.startsWith("group:") ? Target.group(session.substring(6), userId, outbox.selfId(), "")
                 : Target.direct(userId, outbox.selfId(), "");
+        String muted = target.group() ? outbox.mutedNote(target.groupId()) : null;
+        if (muted != null) {
+            throw new ToolFailure("现在不能拍：" + muted);
+        }
         pokedAt.put(userId, now);
         try {
             outbox.poke(target, userId);
@@ -1472,6 +1583,10 @@ public final class QqChatBridge {
         Map<String, String> names = contacts.groups();
         if (!names.isEmpty() && !names.containsKey(groupId)) {
             return "不在这个群里";
+        }
+        String muted = outbox.mutedNote(groupId);
+        if (muted != null) {
+            return muted;
         }
         GroupState state = groups.get(groupId);
         if (!mine && state != null && state.busy) {

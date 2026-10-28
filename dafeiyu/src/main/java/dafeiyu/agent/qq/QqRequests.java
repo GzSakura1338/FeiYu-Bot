@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.tool.Args;
 import dafeiyu.agent.tool.Tool;
+import dafeiyu.agent.tool.ToolContext;
 import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
@@ -58,7 +59,10 @@ public final class QqRequests {
     private static final int MAX_IGNORED = 200;
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final Duration BACKFILL_TIMEOUT = Duration.ofSeconds(60);
+    private static final long HANDOFF_MS = 30 * 60_000L;
     private static final Gson GSON = new Gson();
+
+    private record Handoff(String session, long at) {}
 
     private final ChatAgent agent;
     private final QqOutbox outbox;
@@ -69,6 +73,7 @@ public final class QqRequests {
     private final Map<String, Request> pending = new LinkedHashMap<>();
     private final Set<String> ignored = new LinkedHashSet<>();
     private final Map<String, Long> added = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, Handoff> handoffs = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile Consumer<Request> onNew = r -> {};
 
     QqRequests(ChatAgent agent, Database db, QqOutbox outbox, QqContacts contacts, QqActions actions, LogBuffer log) {
@@ -85,7 +90,7 @@ public final class QqRequests {
         return List.of(
                 Tool.text("requests", "看看有哪些申请等你处理：谁加你好友、谁邀请你进群、谁申请加入你当管理员的群，验证消息写了什么、你们在哪见过。", """
                         {"type": "object", "properties": {}}""", (args, context) -> {
-                    String list = describe();
+                    String list = describe(context.session());
                     return list.isEmpty() ? "现在没有等你处理的申请" : list;
                 }),
                 Tool.text("answer_friend", "同意或拒绝好友申请。主人让你同意或拒绝就照做；其他的你自己决定：认识的、聊得来的、正常说明来意的可以加；"
@@ -97,14 +102,15 @@ public final class QqRequests {
                         }, "required": ["user_id", "approve"]}""",
                         (args, context) -> answerFriend(args.qq("user_id"), approve(args), args.text("remark"))),
                 Tool.text("answer_group", "同意或拒绝进群的事：别人邀请你进某个群，或者有人申请加入你当管理员的群。主人邀请的、主人让你同意的就同意；"
-                        + "其他的你自己决定：熟人拉你进正常的群可以去，来路不明的、广告群、验证消息奇怪的就拒绝。", """
+                        + "其他的你自己决定：好友、私聊过、在群里见过的人拉你进群，一般就去，在私聊里跟他说好了的就照说好的办；"
+                        + "来路不明的、广告群、验证消息奇怪的才拒绝。", """
                         {"type": "object", "properties": {
                           "group_id": {"type": "string", "description": "群号"},
                           "user_id": {"type": "string", "description": "申请进群的人的 QQ 号；别人邀请你进群时不用写"},
                           "approve": {"type": "boolean", "description": "true 同意，false 拒绝"},
                           "reason": {"type": "string", "description": "拒绝时告诉对方的理由，可以不写"}
                         }, "required": ["group_id", "approve"]}""",
-                        (args, context) -> answerGroup(args.group("group_id"), args.optQq("user_id"), approve(args), args.text("reason"))));
+                        (args, context) -> answerGroup(args.group("group_id"), args.optQq("user_id"), approve(args), args.text("reason"), context)));
     }
 
     List<Tool> ownerTools() {
@@ -145,6 +151,19 @@ public final class QqRequests {
             save();
         }
         return List.copyOf(pending.values());
+    }
+
+    List<Request> pendingFrom(String userId) {
+        return pending().stream().filter(r -> !r.friend() && r.userId().equals(userId)).toList();
+    }
+
+    void handOff(Request r, String session) {
+        handoffs.put(r.key(), new Handoff(session, System.currentTimeMillis()));
+    }
+
+    private boolean heldElsewhere(Request r, String session) {
+        Handoff h = handoffs.get(r.key());
+        return h != null && !h.session().equals(session) && System.currentTimeMillis() - h.at() < HANDOFF_MS;
     }
 
     void received(JsonObject event) {
@@ -344,14 +363,14 @@ public final class QqRequests {
         }
     }
 
-    public String describe() {
+    public String describe(String session) {
         List<Request> list = pending();
         if (list.isEmpty()) {
             return "";
         }
         List<String> lines = new ArrayList<>();
         for (Request r : list.subList(Math.max(0, list.size() - MAX_LISTED), list.size())) {
-            lines.add("- " + line(r));
+            lines.add("- " + line(r) + (heldElsewhere(r, session) ? "（他正在私聊里跟你说这事，交给私聊那边答复，你别替那边做决定）" : ""));
         }
         if (list.size() > MAX_LISTED) {
             lines.addFirst("（一共 " + list.size() + " 个，这里是最近的 " + MAX_LISTED + " 个）");
@@ -365,7 +384,8 @@ public final class QqRequests {
         String words = r.comment().isEmpty() ? "（没写）" : r.comment();
         String when = Clock.ago(r.at());
         return switch (r.kind()) {
-            case INVITE -> who + "邀请你进" + group(r) + "，" + when + "，附言：" + words;
+            case INVITE -> who + "邀请你进" + group(r) + "，" + when + "，附言：" + words
+                    + (contacts.friends().containsKey(r.userId()) ? "；是你的好友" : "") + seenIn(r.userId());
             case JOIN -> who + "申请加入" + group(r) + "（你是管理员），" + when + "，验证消息：" + words;
             default -> who + "想加你好友" + (r.kind().equals(DOUBT) ? "（QQ 提示这个申请可能有风险）" : "") + "，" + when + "，验证消息：" + words
                     + seenIn(r.userId());
@@ -424,7 +444,7 @@ public final class QqRequests {
         return approve ? "通过了" + name + "的好友申请，现在可以私聊了" : "拒绝了" + name + "的好友申请";
     }
 
-    public String answerGroup(String groupId, String userId, boolean approve, String reason) throws ToolFailure {
+    public String answerGroup(String groupId, String userId, boolean approve, String reason, ToolContext context) throws ToolFailure {
         List<Request> matches = pending().stream().filter(r -> !r.friend() && r.groupId().equals(groupId))
                 .filter(r -> userId.isEmpty() || r.kind().equals(INVITE) || r.userId().equals(userId)).toList();
         if (matches.isEmpty()) {
@@ -435,6 +455,11 @@ public final class QqRequests {
                     matches.stream().map(r -> (r.nickname().isEmpty() ? "" : r.nickname()) + "（QQ " + r.userId() + "）").toList()));
         }
         Request r = matches.getFirst();
+        boolean owner = context.userId() != null && agent.personas().isOwner(context.userId());
+        if (!owner && heldElsewhere(r, context.session())) {
+            throw new ToolFailure((r.nickname().isEmpty() ? "QQ " + r.userId() : r.nickname()) + " 正在私聊里跟你说这件事，交给私聊那边答复；"
+                    + "那边半小时都没答复的话你再处理");
+        }
         JsonObject params = new JsonObject();
         params.addProperty("flag", r.flag());
         params.addProperty("approve", approve);

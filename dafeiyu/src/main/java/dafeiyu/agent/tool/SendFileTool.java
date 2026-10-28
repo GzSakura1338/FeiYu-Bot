@@ -22,8 +22,11 @@ final class SendFileTool extends TextTool {
 
     @Override
     public String description(ToolContext context) {
-        return "Send a file from the working directory to the user in the current chat as an attachment. Images are shown inline. "
-                + "Use it when the user asks you to send, share, or deliver a file. The file must already exist; create it with write first if needed.";
+        String session = context.session() == null ? "" : context.session();
+        return "Send a file from the working directory to the current chat as an attachment. Images are shown inline. "
+                + "Use it when the user asks you to send, share, or deliver a file. The file must already exist; create it with write first if needed."
+                + (session.startsWith("group:") ? " 这里是群聊：文件会发给全群，所有人都能看到、下载，不是只发给某一个人。给某个人私下的东西去和他的私聊里发；"
+                        + "你自己的人设、记忆、笔记、备份、私聊内容、主人的信息、服务器和账号配置，一律不准发到群里（【保密红线】）。" : "");
     }
 
     @Override

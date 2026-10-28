@@ -12,6 +12,7 @@ import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.log.LogBuffer;
 import dafeiyu.message.MessageArchive;
 import dafeiyu.onebot.OneBotService;
+import dafeiyu.util.Clock;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,6 +54,8 @@ final class QqOutbox {
         }
     }
 
+    private record Mute(long until, boolean known) {}
+
     static final int MAX_REPLY_LENGTH = 3000;
     private static final long MAX_IMAGE = 30L * 1024 * 1024;
     private static final int INLINE_SIDE = 2048;
@@ -63,6 +66,8 @@ final class QqOutbox {
     private static final Pattern UNREADABLE_PATH = Pattern.compile("(?i)识别\\s*URL|ENOENT|no such file|not exist|不存在|文件处理失败|找不到");
     private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(3);
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
+    private static final Pattern MUTED = Pattern.compile("result=120\\b");
+    private static final long MUTE_RECHECK_MS = 10 * 60_000L;
 
     private final ChatAgent agent;
     private final OneBotService onebot;
@@ -72,6 +77,7 @@ final class QqOutbox {
     private final Map<String, GroupState> groups;
     private volatile MessageGate gate = MessageGate.NONE;
     private final Map<String, String> tempGroups = new ConcurrentHashMap<>();
+    private final Map<String, Mute> mutes = new ConcurrentHashMap<>();
     private volatile boolean pathsUnreadable;
 
     QqOutbox(ChatAgent agent, OneBotService onebot, MessageArchive archive, LogBuffer log, Map<String, GroupState> groups) {
@@ -129,6 +135,54 @@ final class QqOutbox {
 
     boolean hasTempGroup(String userId) {
         return tempGroups.containsKey(userId);
+    }
+
+    void muted(String groupId, long until) {
+        hold(groupId, until, true);
+    }
+
+    void wholeMuteLifted(String groupId) {
+        mutes.computeIfPresent(groupId, (id, mute) -> mute.known() ? mute : null);
+    }
+
+    private void hold(String groupId, long until, boolean known) {
+        if (until > System.currentTimeMillis()) {
+            mutes.put(groupId, new Mute(until, known));
+        } else {
+            mutes.remove(groupId);
+        }
+    }
+
+    String mutedNote(String groupId) {
+        Mute mute = mutes.get(groupId);
+        if (mute == null) {
+            return null;
+        }
+        if (mute.until() <= System.currentTimeMillis()) {
+            mutes.remove(groupId, mute);
+            return null;
+        }
+        return mute.known() ? "你在这个群被禁言了，" + Clock.stamp(mute.until()) + " 解除" : "你在这个群被禁言了（可能是全员禁言），过一会儿再试";
+    }
+
+    private String mutedNow(String groupId) {
+        long now = System.currentTimeMillis();
+        long shutUp = 0;
+        try {
+            JsonObject params = new JsonObject();
+            put(params, "group_id", groupId);
+            put(params, "user_id", selfId());
+            params.addProperty("no_cache", true);
+            JsonObject member = optObject(call("get_group_member_info", params, TEXT_TIMEOUT), "data");
+            shutUp = member != null && member.has("shut_up_timestamp") ? member.get("shut_up_timestamp").getAsLong() * 1000 : 0;
+        } catch (ToolFailure | RuntimeException e) {
+            log.warn("agent [group " + groupId + "] could not check the mute: " + e.getMessage());
+        }
+        boolean known = shutUp > now;
+        hold(groupId, known ? shutUp : now + MUTE_RECHECK_MS, known);
+        log.warn("agent [group " + groupId + "] is muted, holding replies " + (known ? "until " + Clock.stamp(shutUp)
+                : "for " + MUTE_RECHECK_MS / 60_000 + " min (whole-group mute or unknown end)"));
+        return mutedNote(groupId);
     }
 
     void numberSentImages(java.util.function.BiFunction<Path, String, String> numbering) {
@@ -275,7 +329,7 @@ final class QqOutbox {
                 String label = number == null ? "[图片]" : "[图片#" + number + "]";
                 Attempt sent = sendImageFile(target, file, name, label + " " + name);
                 log.info("agent [" + target.where() + "] sent image " + name + " via " + sent.via() + " (message " + sent.messageId() + ")");
-                return "Sent image " + name + " to the user" + (number == null ? "." : " as " + label + " (view_image " + number + " shows it again).");
+                return "Sent image " + name + " to " + recipient(target) + (number == null ? "." : " as " + label + " (view_image " + number + " shows it again).");
             }
             String action = target.group() ? "upload_group_file" : "upload_private_file";
             JsonObject params = destination(target);
@@ -302,8 +356,13 @@ final class QqOutbox {
             }
             archive(target, null, "[文件] " + name);
             log.info("agent [" + target.where() + "] sent file " + name + " (" + size / 1024 + " KB) via " + (byPath ? "path" : "base64"));
-            return "Sent file " + name + " to the user.";
+            return "Sent file " + name + " to " + recipient(target) + ".";
         };
+    }
+
+    private static String recipient(Target target) {
+        return target.group() ? "the whole group " + target.groupId() + " (every member can see and download it; it was NOT sent privately to anyone)"
+                : "QQ " + target.userId() + " in your private chat";
     }
 
     void send(Target target, JsonArray message, String archiveText) throws ToolFailure {
@@ -320,10 +379,17 @@ final class QqOutbox {
     private record Attempt(String error, String messageId, String via) {}
 
     private Attempt attempt(Target target, JsonArray message, String archiveText, boolean mine, Duration timeout) throws ToolFailure {
+        String muted = target.group() ? mutedNote(target.groupId()) : null;
+        if (muted != null) {
+            throw new ToolFailure(muted);
+        }
         JsonObject params = destination(target);
         params.add("message", message);
         JsonObject response = request(target.group() ? "send_group_msg" : "send_private_msg", params, timeout);
         if (!ok(response)) {
+            if (target.group() && MUTED.matcher(reason(response)).find()) {
+                throw new ToolFailure(mutedNow(target.groupId()));
+            }
             return new Attempt(reason(response), null, null);
         }
         JsonObject data = optObject(response, "data");

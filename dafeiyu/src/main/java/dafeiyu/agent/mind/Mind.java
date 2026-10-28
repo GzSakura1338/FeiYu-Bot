@@ -445,7 +445,7 @@ public final class Mind implements QqChatBridge.Observer {
             }
             memories += busy.append("</子 agent 在做>\n\n");
         }
-        String requests = bridge.requests().describe();
+        String requests = bridge.requests().describe(SESSION);
         if (!requests.isEmpty()) {
             memories += "<等你处理的申请>\n" + requests + "\n（用 answer_friend / answer_group 同意或拒绝，处理完就不在这里了）\n</等你处理的申请>\n\n";
         }
