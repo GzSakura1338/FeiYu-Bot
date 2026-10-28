@@ -95,6 +95,7 @@ function render() {
   const active = activePersona();
   $('#chat-persona span').textContent = active ? active.name : '不使用人格';  if (document.activeElement !== $('#owners-input')) $('#owners-input').value = (state.owners ?? []).join(', ');
   syncOwners();
+  loadBlocklist().catch(() => {});
 }
 
 const parseOwners = text => text.split(/[\s,，、;；]+/).map(s => s.trim()).filter(Boolean);
@@ -110,6 +111,30 @@ async function saveOwners(e) {
     $('#owners-input').blur();
     showSnackbar(state.owners.length ? `已设置主人：${state.owners.join('、')}` : '已清除主人', 'success');
     render();
+  } catch (err) {
+    showSnackbar(`保存失败：${err.message}`, 'error');
+  }
+}
+
+async function loadBlocklist() {
+  const b = await request('GET', '/blocklist');
+  $('#block-enabled').checked = !!b.enabled;
+  $('#block-threshold').value = String(b.threshold ?? 0);
+  const items = Object.entries(b.list ?? {});
+  const strikes = b.strikes ?? {};
+  $('#block-list').innerHTML = items.length
+    ? items.map(([id, e]) => `<div>🚫 ${id}（${(e.name ?? '') || '未知'}）${e.reason ?? ''}${strikes[id] ? ` · 已触发 ${strikes[id]} 次` : ''} <button type="button" class="text-button" data-unblock="${id}">解除</button></div>`).join('')
+    : '（没拉黑任何人）';
+}
+
+async function saveBlocklist() {
+  try {
+    const b = await request('PUT', '/blocklist', {
+      enabled: $('#block-enabled').checked,
+      threshold: Number($('#block-threshold').value || 0)
+    });
+    await loadBlocklist();
+    showSnackbar(`拉黑设置已保存（${b.enabled ? '开' : '关'}，阈值 ${b.threshold}）`, 'success');
   } catch (err) {
     showSnackbar(`保存失败：${err.message}`, 'error');
   }
@@ -317,5 +342,17 @@ export function initAgentPersonas() {
   hint.textContent = hint.dataset.hint;
   $('#owners-form').addEventListener('input', syncOwners);
   $('#owners-form').addEventListener('submit', saveOwners);
+  $('#block-save').addEventListener('click', saveBlocklist);
+  $('#block-list').addEventListener('click', async e => {
+    const id = e.target?.dataset?.unblock;
+    if (!id) return;
+    try {
+      await request('PUT', '/blocklist', { remove: [id] });
+      await loadBlocklist();
+      showSnackbar(`已解除 ${id} 的拉黑`, 'success');
+    } catch (err) {
+      showSnackbar(`解除失败：${err.message}`, 'error');
+    }
+  });
   load();
 }
