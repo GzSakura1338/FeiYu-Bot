@@ -195,7 +195,8 @@ final class MindTools {
                         {"type": "object", "properties": {
                           "user_id": {"type": "string", "description": "要删的好友的 QQ 号"}
                         }, "required": ["user_id"]}""", (args, context) -> bridge.actions().deleteFriend(args.qq("user_id"))),
-                Tool.text("message_stranger", "主动给不是好友的人发私信（走群临时会话，你们得在同一个群里）。是好友或私聊过的人用 tell_private。"
+                Tool.text("message_stranger", "给不是好友、但最近通过群临时会话私聊过你的人回私信。QQ 不让你主动给不是好友的人开私聊："
+                        + "对方没先找过你就发不出去，这时去你们都在的群里 @ 他，请他先私聊你或者加你好友。是好友的人用 tell_private。"
                         + "这里写的就是直接发出去的话。", """
                         {"type": "object", "properties": {
                           "user_id": {"type": "string", "description": "对方 QQ 号，find_person 里有"},

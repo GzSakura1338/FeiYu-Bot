@@ -124,7 +124,7 @@ final class QqContacts {
     }
 
     boolean canMessage(String userId) {
-        return friends().containsKey(userId) || agent.session("private:" + userId, 0).totalTurns() > 0;
+        return friends().containsKey(userId) || outbox.hasTempGroup(userId);
     }
 
     String findPerson(String query) {
@@ -158,7 +158,7 @@ final class QqContacts {
             lines.add("- " + e.getValue() + "（QQ " + id + (owners.contains(id) ? "，你的主人" : "") + "）"
                     + (in.isEmpty() ? "" : "：在" + String.join("、", in.stream().distinct().limit(3).toList()) + "说过话")
                     + (lastAt.containsKey(id) ? "，最近一次是 " + Clock.ago(lastAt.get(id)) : "")
-                    + (canMessage(id) ? "；可以私聊（tell_private）" : "；不是好友：可以用 message_stranger 走群临时会话发，或者去你们都在的群里 @ 他"));
+                    + (canMessage(id) ? "；可以私聊（tell_private）" : "；不是好友，也没有正在进行的临时会话：私聊发不了，去你们都在的群里 @ 他，请他先私聊你或者加你好友"));
         });
         return String.join("\n", lines);
     }

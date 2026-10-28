@@ -176,9 +176,9 @@ public final class QqActions {
         if (!userId.matches("\\d{5,12}") || userId.equals(outbox.selfId())) {
             throw new ToolFailure("QQ 号不对：" + userId);
         }
-        String via = groupId.isEmpty() ? sharedGroup(userId) : groupId;
+        String via = outbox.tempGroup(userId) != null ? outbox.tempGroup(userId) : groupId.isEmpty() ? sharedGroup(userId) : groupId;
         if (via == null) {
-            throw new ToolFailure("你和 QQ " + userId + " 没在同一个群里见过，发不了临时会话；去你们都在的群里 @ 他吧");
+            throw new ToolFailure(QqOutbox.NO_PRIVATE_CHAT);
         }
         String formatted = outbox.prepare(text);
         if (formatted.isBlank()) {

@@ -259,8 +259,7 @@ public final class QqChatBridge {
             if (!userId.matches("\\d{5,12}")) {
                 return "QQ 号不对";
             }
-            return contacts.canMessage(userId) || outbox.hasTempGroup(userId) ? null
-                    : "不是好友，也没私聊过；可以用 message_stranger 走群临时会话直接发，或者去你们都在的群里 @ 他";
+            return contacts.canMessage(userId) ? null : QqOutbox.NO_PRIVATE_CHAT;
         }
         return "只能交给群聊或私聊";
     }
@@ -1492,7 +1491,7 @@ public final class QqChatBridge {
             throw new ToolFailure("QQ 号不对：" + userId);
         }
         if (!contacts.canMessage(userId)) {
-            throw new ToolFailure("不能私聊 QQ " + userId + "：不是好友，也没私聊过。去你们都在的群里 @ 他吧");
+            throw new ToolFailure("不能私聊 QQ " + userId + "，" + QqOutbox.NO_PRIVATE_CHAT);
         }
         String session = "private:" + userId;
         String formatted = outbox.prepare(text);

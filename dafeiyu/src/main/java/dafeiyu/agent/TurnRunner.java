@@ -66,6 +66,7 @@ public final class TurnRunner {
     private static final int MAX_ERRANDS = 2;
     private static final int MAX_VIEWS = 6;
     private static final String VIEWED = "（这是你刚才用工具要看的图）";
+    private static final String OWNER_TAG = "【主人】";
     public static final String SILENCE = "[沉默]";
     private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
     public static final String AMBIENT = "【旁听】";
@@ -805,8 +806,18 @@ public final class TurnRunner {
         text.append("\n现在一起回一次：原来那句还合适就照发或者改一改，已经不合适了就按现在的情况重新说，或者只写 ").append(SILENCE)
                 .append("。别一条条分开回，也别把同一个意思说两遍。").append(ADDRESS_HINT).append("）");
         live.add(ChatMessage.user(text.toString()));
+        ownerJoined();
         agent.interjected(turn.session(), List.copyOf(arrived));
         arrived.clear();
+    }
+
+    private void ownerJoined() {
+        if (owners.isEmpty() || owners.contains(toolSet.context().userId())
+                || arrived.stream().noneMatch(h -> h.content().startsWith(OWNER_TAG))) {
+            return;
+        }
+        toolSet = toolSet.askedBy(owners.getFirst());
+        System.err.println("[turn] " + turn.session() + ": the owner joined in mid-turn, owner-only tools now act for the owner");
     }
 
     private void interject() {
@@ -824,6 +835,7 @@ public final class TurnRunner {
                         + (turn.session().startsWith("group:") ? ADDRESS_HINT : "") + "）");
         arrived.forEach(h -> text.append('\n').append(h.content()));
         live.add(ChatMessage.user(text.toString()));
+        ownerJoined();
         agent.interjected(turn.session(), List.copyOf(arrived));
         arrived.clear();
     }

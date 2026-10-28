@@ -68,6 +68,9 @@ final class QqOutbox {
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
     private static final Pattern MUTED = Pattern.compile("result=120\\b");
     private static final long MUTE_RECHECK_MS = 10 * 60_000L;
+    private static final Pattern NO_TEMP_SESSION = Pattern.compile("no such temp session");
+    static final String NO_PRIVATE_CHAT = "私聊发不出去：TA 不是你的好友，QQ 不让你主动给不是好友的人开私聊（临时会话只能回 TA 先发起的）。"
+            + "去你们都在的群里 @ TA，请 TA 先私聊你一句或者加你好友，之后就能私聊了";
 
     private final ChatAgent agent;
     private final OneBotService onebot;
@@ -135,6 +138,10 @@ final class QqOutbox {
 
     boolean hasTempGroup(String userId) {
         return tempGroups.containsKey(userId);
+    }
+
+    String tempGroup(String userId) {
+        return tempGroups.get(userId);
     }
 
     void muted(String groupId, long until) {
@@ -389,6 +396,10 @@ final class QqOutbox {
         if (!ok(response)) {
             if (target.group() && MUTED.matcher(reason(response)).find()) {
                 throw new ToolFailure(mutedNow(target.groupId()));
+            }
+            if (!target.group() && NO_TEMP_SESSION.matcher(reason(response)).find()) {
+                tempGroups.remove(target.userId());
+                throw new ToolFailure(NO_PRIVATE_CHAT);
             }
             return new Attempt(reason(response), null, null);
         }

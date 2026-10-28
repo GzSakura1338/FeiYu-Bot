@@ -17,13 +17,23 @@ public final class ToolSet {
     private final List<String> order;
     private final ToolContext context;
     private final int maxSteps;
-    private final AtomicInteger calls = new AtomicInteger();
+    private final AtomicInteger calls;
 
     private ToolSet(Map<String, Tool> tools, ToolContext context, int maxSteps) {
-        this.tools = Map.copyOf(tools);
-        this.order = List.copyOf(tools.keySet());
+        this(Map.copyOf(tools), List.copyOf(tools.keySet()), context, maxSteps, new AtomicInteger());
+    }
+
+    private ToolSet(Map<String, Tool> tools, List<String> order, ToolContext context, int maxSteps, AtomicInteger calls) {
+        this.tools = tools;
+        this.order = order;
         this.context = context;
         this.maxSteps = maxSteps;
+        this.calls = calls;
+    }
+
+    public ToolSet askedBy(String userId) {
+        return new ToolSet(tools, order, new ToolContext(context.session(), userId, context.workspace(), context.files(), context.network(), context.direct()),
+                maxSteps, calls);
     }
 
     public static ToolSet none() {
