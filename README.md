@@ -16,7 +16,8 @@
 4. 双击 `start-snowluma.bat`：它启动 SnowLuma（最小化的窗口），另开一个 QQ，并且只往这个 QQ 里注入钩子，你自己开着的 QQ 不会被接管。在新开的 QQ 窗口里登录机器人的号（扫码或者点快速登录），登录成功后脚本会记下 QQ 号（`snowluma/bot-qq.txt`）。下次再运行时，机器人的 QQ 还开着就直接接上，不会再开一个
    - 第一次运行会生成 SnowLuma 网页后台（http://127.0.0.1:5099）的密码，存在 `snowluma/webui-password.txt`。脚本提示要同意协议时，用这个密码登录后台，读完并同意 SnowLuma 的用户协议和隐私政策，脚本会自己接着往下走
    - 机器人的 QQ 窗口登录后可以最小化到托盘，别退出；退出了重新运行 `start-snowluma.bat` 就行
-   - 接上以后 `start-snowluma.bat` 的窗口不会结束，每 15 秒看一眼：机器人的 QQ 自己重启（退出登录再登、被挤下线后重登、QQ 更新都会这样，新进程带 `--relaunch`，钩子不会跟过去）后，只要登录的还是机器人的号，就自动重新注入。关掉这个窗口只是不再自动注入，QQ 重启后要自己再运行一次。`-NoWatch` 参数可以只接一次就退出
+   - 接上以后 `start-snowluma.bat` 的窗口不会结束，每 15 秒看一眼：机器人的 QQ 自己重启（退出登录再登、被挤下线后重登、QQ 更新都会这样，新进程带 `--relaunch`，钩子不会跟过去）后，只要登录的还是机器人的号，就自动重新注入；SnowLuma 的网页后台连续 5 分钟没反应（卡死或者退出了），就把 SnowLuma 停掉重开，机器人的 QQ 不动，钩子会自己接回来。关掉这个窗口只是不再自动处理这些，QQ 重启后要自己再运行一次。`-NoWatch` 参数可以只接一次就退出
+   - SnowLuma 跑在标题为「SnowLuma」的 PowerShell 窗口里（`snowluma-console.ps1`），这个窗口关掉了快速编辑模式：以前在窗口里点一下就会进入选择文本状态，SnowLuma 往窗口输出时被挂住，整个停下不动（2026-10-28 出过一次，机器人断了 50 分钟）
 5. 控制台概览页显示「SnowLuma 已连接」就好了
 
 关闭：关掉 FeiYu Bot 和 SnowLuma 的命令行窗口；机器人的 QQ 在托盘里退出。改了 Java 代码要重启 FeiYu Bot，改前端只要刷新浏览器。
@@ -39,7 +40,7 @@ Linux 和 macOS 上的命令沙盒和 Windows 不完全一样：联网时本机�
 | --- | --- | --- |
 | `dafeiyu/` | FeiYu Bot 本体：后端、网页、插件 SDK、说明文档 | 是（`data/`、`config.properties`、`build/` 除外） |
 | `personas/` | 人格角色卡，正文复制到控制台「人格」里用 | 是 |
-| `start-*.bat`、`launch-*.ps1`、`start-dafeiyu.sh` | 启动脚本（`.sh` 给 Linux 和 macOS） | 是 |
+| `start-*.bat`、`launch-*.ps1`、`snowluma-console.ps1`、`start-dafeiyu.sh` | 启动脚本（`.sh` 给 Linux 和 macOS） | 是 |
 | `snowluma/` | SnowLuma v2.2.0 Windows 完整版，加上 `config/`、WebUI 密码和机器人 QQ 号 | 否 |
 | `napcat/` | 换掉之前用的 NapCatQQ v4.18.41，已经不用 | 否 |
 | `file/` | 她的工作目录：写的网页、画的图、跑的命令都在这里 | 否 |

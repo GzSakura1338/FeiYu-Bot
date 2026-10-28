@@ -71,8 +71,26 @@ function Watch-Bot {
     if ($NoWatch -or -not $Qq) { exit 0 }
     Write-Host "Keeping QQ $Qq attached: when that QQ restarts, SnowLuma is attached to it again. Closing this window only stops this check."
     $tries = @{}
+    $silent = 0
     while ($true) {
         Start-Sleep -Seconds 15
+        if (-not (Test-WebUi)) {
+            $silent++
+            if ($silent -ge 20) {
+                $silent = 0
+                $time = Get-Date -Format "MM-dd HH:mm:ss"
+                Write-Host "$time SnowLuma has not answered for 5 minutes, restarting it"
+                Stop-SnowLuma
+                if (Start-SnowLuma) {
+                    try { Connect-WebUi } catch { }
+                    Write-Host "$time SnowLuma restarted"
+                } else {
+                    Write-Host "$time SnowLuma did not start again, check its window"
+                }
+            }
+            continue
+        }
+        $silent = 0
         try {
             $list = @((Invoke-SnowLuma "/processes").list)
         } catch {
@@ -93,7 +111,7 @@ function Watch-Bot {
     }
 }
 
-if (-not (Test-WebUi)) {
+function Start-SnowLuma {
     if (-not (Test-Path (Join-Path $root "config\webui.json"))) {
         if (-not (Test-Path $passwordFile)) {
             $chars = [char[]]"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
@@ -105,10 +123,27 @@ if (-not (Test-WebUi)) {
         $env:SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD = (Get-Content $passwordFile -Raw).Trim()
     }
     $env:SNOWLUMA_HOOK_AUTOLOAD = "0"
-    Start-Process cmd.exe -ArgumentList "/k", ".\node.exe index.mjs" -WorkingDirectory $root -WindowStyle Minimized
+    Start-Process powershell.exe -ArgumentList "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$(Join-Path $PSScriptRoot 'snowluma-console.ps1')`"" `
+        -WorkingDirectory $root -WindowStyle Minimized
     Remove-Item Env:SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD -ErrorAction SilentlyContinue
     for ($i = 0; $i -lt 60 -and -not (Test-WebUi); $i++) { Start-Sleep -Seconds 1 }
-    if (-not (Test-WebUi)) {
+    return Test-WebUi
+}
+
+function Stop-SnowLuma {
+    $listener = Get-NetTCPConnection -LocalPort 5099 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    $id = if ($listener) { $listener.OwningProcess } else { 0 }
+    while ($id) {
+        $p = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue
+        if (-not $p -or "$($p.CommandLine)" -notmatch "index\.mjs|snowluma-console\.ps1") { break }
+        Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+        $id = $p.ParentProcessId
+    }
+    Start-Sleep -Seconds 2
+}
+
+if (-not (Test-WebUi)) {
+    if (-not (Start-SnowLuma)) {
         Write-Host "SnowLuma did not start, check its window"
         exit 1
     }
