@@ -162,7 +162,6 @@ class Plugin:
         return self.call("qq/send", params)
 
     def qq(self, action, params=None):
-        """直接调协议端原始接口（需要 qq.api 权限）。"""
         return self.call("qq/call", {"action": action, "params": params or {}})
 
     def history(self, group_id=None, user_id=None, count=20):

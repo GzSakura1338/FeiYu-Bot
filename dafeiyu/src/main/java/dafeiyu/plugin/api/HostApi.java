@@ -121,11 +121,28 @@ public final class HostApi {
         }
         JsonObject args = params.has("params") && params.get("params").isJsonObject()
                 ? params.getAsJsonObject("params") : new JsonObject();
+        boolean write;
+        try {
+            write = qq.writes(action);
+        } catch (ToolFailure e) {
+            throw new RpcError(RpcError.BAD_PARAMS, e.getMessage());
+        }
+        String groupId = optString(args, "group_id").strip();
+        if (!groupId.isEmpty()) {
+            requireGroup(caller, "qq/call", groupId);
+        }
+        if (write) {
+            limit(caller);
+        }
         try {
             JsonObject response = qq.raw(action, args);
+            JsonElement data = response == null ? null : response.get("data");
             JsonObject out = new JsonObject();
             out.addProperty("ok", true);
-            out.add("data", response == null ? JsonNull.INSTANCE : response);
+            out.add("data", data == null ? JsonNull.INSTANCE : data);
+            if (write) {
+                services.log(caller.id(), "info", "调了 QQ 接口 " + action + (groupId.isEmpty() ? "" : "（群 " + groupId + "）"));
+            }
             return out;
         } catch (ToolFailure e) {
             throw new RpcError(RpcError.FAILED, e.getMessage());
@@ -237,7 +254,7 @@ public final class HostApi {
     }
 
     private JsonElement groups(Caller caller) throws RpcError {
-        if (!caller.granted().contains(Permission.QQ_SEND)) {
+        if (!caller.granted().contains(Permission.QQ_SEND) && !caller.granted().contains(Permission.QQ_API)) {
             need(caller, "qq/groups", Permission.QQ_READ);
         }
         Map<String, String> names = qq.groupNames();

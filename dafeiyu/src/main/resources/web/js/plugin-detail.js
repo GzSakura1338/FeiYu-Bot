@@ -155,10 +155,10 @@ function settings(detail) {
 
 function options(detail) {
   const rows = [];
-  if ((detail.permissions ?? []).some(p => p.key === 'qq.send')) {
+  if ((detail.permissions ?? []).some(p => ['qq.send', 'qq.read', 'qq.api'].includes(p.key))) {
     const picker = el('div', 'group-picker');
     const groups = pluginState()?.groups ?? [];
-    const count = () => `只有勾上的群，这个插件才能主动发消息和读记录 · 已勾选 ${(detail.groups ?? []).length} 个`;
+    const count = () => `只有勾上的群，这个插件才能主动发消息、读记录、调 QQ 接口 · 已勾选 ${(detail.groups ?? []).length} 个`;
     groups.forEach(g => {
       const chip = el('button', 'filter-chip label-medium state-layer', g.name || g.groupId);
       chip.type = 'button';

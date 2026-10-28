@@ -123,6 +123,11 @@ public final class Main {
             }
 
             @Override
+            public boolean writes(String action) throws ToolFailure {
+                return bridge.qqApi().writes(action);
+            }
+
+            @Override
             public com.google.gson.JsonObject raw(String action, com.google.gson.JsonObject params) throws ToolFailure {
                 return bridge.qqApi().raw(action, params);
             }

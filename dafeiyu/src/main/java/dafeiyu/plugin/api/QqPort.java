@@ -1,6 +1,7 @@
 package dafeiyu.plugin.api;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import dafeiyu.agent.tool.ToolFailure;
 
 import java.util.Map;
@@ -15,6 +16,7 @@ public interface QqPort {
 
     boolean connected();
 
-    /** 直接调协议端的原始 QQ 接口（qq/call 用）；锁死的接口由实现方拒绝。 */
-    com.google.gson.JsonObject raw(String action, com.google.gson.JsonObject params) throws ToolFailure;
+    boolean writes(String action) throws ToolFailure;
+
+    JsonObject raw(String action, JsonObject params) throws ToolFailure;
 }

@@ -153,7 +153,7 @@ class Plugin {
   }
 
   qq(action, params) {
-    return this.call("qq/call", { action, params: params || {} });
+    return this.call('qq/call', { action, params: params || {} });
   }
 
   history({ groupId, userId, count = 20 } = {}) {
