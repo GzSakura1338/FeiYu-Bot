@@ -326,10 +326,10 @@ public final class TurnRunner {
                 if (verdict != null) {
                     blocked = true;
                     content = ambient() || "note".equals(turn.source()) ? "" : ContentGuard.deflection();
-                    listener.onBlocked(verdict.category().label(), verdict.byModel(), content);
                     if (!subagent() && "qq".equals(turn.source()) && turn.qqUser() != null) {
                         agent.noteStrikes(turn.qqUser(), requester());
                     }
+                    listener.onBlocked(verdict.category().label(), verdict.byModel(), content);
                     if (content.isEmpty()) {
                         return silence(result, started);
                     }

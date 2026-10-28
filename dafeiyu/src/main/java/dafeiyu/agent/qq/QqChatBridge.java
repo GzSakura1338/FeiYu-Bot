@@ -1341,6 +1341,7 @@ public final class QqChatBridge {
                 public void onBlocked(String category, boolean byModel, String replacement) {
                     log.warn("agent [" + target.where() + "] blocked a reply flagged by the " + (byModel ? "model review" : "keyword list")
                             + (replacement.isEmpty() ? ", stayed quiet" : ", sent a deflection instead"));
+                    nudgeBlocked(target);
                 }
             });
         } catch (AgentException e) {
@@ -1435,6 +1436,51 @@ public final class QqChatBridge {
         lastActivity = System.currentTimeMillis();
         log.info("agent [group " + groupId + "] went over and said: " + abbreviate(formatted.replace('\n', ' '), 120));
         return formatted;
+    }
+
+    /**
+     * 回复被内容审核拦下时，告诉触发者「还剩几次会被拉黑」。
+     * 只说明是触发了内容审核，不点破具体类别（色情/政治之类不写）。
+     */
+    private void nudgeBlocked(Target target) {
+        try {
+            if (!agent.store().blockEnabled()) {
+                return;
+            }
+            int threshold = agent.store().blockThreshold();
+            if (threshold <= 0) {
+                return;
+            }
+            String userId = target.userId();
+            if (userId == null || userId.isBlank() || agent.personas().owners().contains(userId)) {
+                return;
+            }
+            int strikes = agent.store().blockStrikes().getOrDefault(userId, 0);
+            int remaining = threshold - strikes;
+            if (remaining <= 0) {
+                return;
+            }
+            String text = "你这条消息没通过内容审核（原因就不细说了）。"
+                    + "这类情况累计 " + threshold + " 次会被拉黑，你还有 " + remaining + " 次。";
+            Target hint = target.group()
+                    ? Target.group(target.groupId(), "", outbox.selfId(), "")
+                    : Target.direct(userId, outbox.selfId(), "");
+            try {
+                com.google.gson.JsonArray message = new com.google.gson.JsonArray();
+                if (target.group()) {
+                    message.add(QqMessages.segment("at", "qq", userId));
+                    message.add(QqMessages.segment("text", "text", " "));
+                }
+                message.add(QqMessages.segment("text", "text", text));
+                outbox.send(hint, message, text);
+            } catch (ToolFailure e) {
+                log.warn("agent [" + target.where() + "] block hint failed: " + e.getMessage());
+                return;
+            }
+            log.info("agent [" + target.where() + "] told " + userId + " they have " + remaining + " left before being blocked");
+        } catch (RuntimeException e) {
+            log.warn("agent [" + target.where() + "] block hint error: " + e.getMessage());
+        }
     }
 
     public String speakPrivate(String userId, String text) throws ToolFailure {
