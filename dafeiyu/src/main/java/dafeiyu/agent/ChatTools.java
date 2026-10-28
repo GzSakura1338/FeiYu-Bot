@@ -7,6 +7,7 @@ import dafeiyu.agent.tool.ToolFailure;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
@@ -41,6 +42,66 @@ public final class ChatTools {
                     return "清理完了：删掉 " + r.messages() + " 条消息、" + r.usage() + " 条用量记录"
                             + "（保留最近 " + r.messagesDays() + "/" + r.usageDays() + " 天）。";
                 });
+    }
+
+    public static final String BLOCK_USER = "block_user";
+
+    public static Tool blockUser(ChatAgent agent, Set<String> owners) {
+        return Tool.text(BLOCK_USER, "拉黑 / 解除拉黑 / 查看黑名单。拉黑后他发的所有消息都不会再被处理、也不会得到回复。"
+                        + "只有主人能让你用这个。", """
+                {"type": "object", "properties": {
+                  "user_id": {"type": "string", "description": "对方的 QQ 号"},
+                  "action": {"type": "string", "description": "block=拉黑，unblock=解除，list=看黑名单"}
+                }, "required": ["action"]}""", (args, context) -> {
+            String action = args.text("action").strip().toLowerCase();
+            if (!owners.contains(context.userId() == null ? "" : context.userId().strip())) {
+                return "只有主人能让你动拉黑名单。";
+            }
+            if (action.equals("list")) {
+                var list = agent.store().blockList();
+                if (list.isEmpty()) {
+                    return "现在没拉黑任何人。";
+                }
+                StringBuilder sb = new StringBuilder("当前拉黑 " + list.size() + " 人：\n");
+                list.forEach((id, e) -> sb.append("- ").append(id)
+                        .append("（").append(e.getOrDefault("name", "")).append("）")
+                        .append(" ").append(e.getOrDefault("reason", "")).append("\n"));
+                return sb.toString();
+            }
+            String userId = args.optString("user_id").strip();
+            if (!userId.matches("\\d{5,12}")) {
+                return "user_id 要是 QQ 号（5~12 位数字）。";
+            }
+            if (owners.contains(userId)) {
+                return "那是主人，不能拉黑。";
+            }
+            var list = new java.util.LinkedHashMap<>(agent.store().blockList());
+            var strikes = new java.util.LinkedHashMap<>(agent.store().blockStrikes());
+            if (action.equals("block")) {
+                if (list.containsKey(userId)) {
+                    return userId + " 已经在黑名单里了。";
+                }
+                Map<String, Object> entry = new java.util.LinkedHashMap<>();
+                entry.put("at", System.currentTimeMillis());
+                entry.put("reason", "主人拉黑");
+                list.put(userId, entry);
+                strikes.remove(userId);
+                agent.store().setBlockList(list);
+                agent.store().setBlockStrikes(strikes);
+                return "已拉黑 " + userId + "。";
+            }
+            if (action.equals("unblock")) {
+                if (!list.containsKey(userId)) {
+                    return userId + " 不在黑名单里。";
+                }
+                list.remove(userId);
+                strikes.remove(userId);
+                agent.store().setBlockList(list);
+                agent.store().setBlockStrikes(strikes);
+                return "已解除 " + userId + " 的拉黑。";
+            }
+            return "action 只能是 block / unblock / list。";
+        });
     }
 
     public static Tool readForward(ChatAgent agent) {

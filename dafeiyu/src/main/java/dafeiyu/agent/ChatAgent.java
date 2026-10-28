@@ -522,6 +522,37 @@ public final class ChatAgent {
         }
     }
 
+    public boolean blocked(String userId) {
+        if (userId == null || userId.isBlank() || personas.owners().contains(userId)) {
+            return false;
+        }
+        return store.blockList().containsKey(userId);
+    }
+
+    public void noteStrikes(String userId, String name) {
+        if (userId == null || userId.isBlank() || personas.owners().contains(userId) || !store.blockEnabled()) {
+            return;
+        }
+        int threshold = store.blockThreshold();
+        if (threshold <= 0) {
+            return;
+        }
+        Map<String, Integer> strikes = new java.util.LinkedHashMap<>(store.blockStrikes());
+        int now = strikes.getOrDefault(userId, 0) + 1;
+        strikes.put(userId, now);
+        store.setBlockStrikes(strikes);
+        if (now >= threshold && !store.blockList().containsKey(userId)) {
+            Map<String, Map<String, Object>> list = new java.util.LinkedHashMap<>(store.blockList());
+            Map<String, Object> entry = new java.util.LinkedHashMap<>();
+            entry.put("name", name == null ? "" : name);
+            entry.put("at", System.currentTimeMillis());
+            entry.put("reason", "审核拦截 " + now + " 次，自动拉黑");
+            list.put(userId, entry);
+            store.setBlockList(list);
+            System.err.println("[block] " + userId + " (" + name + ") 触发审核 " + now + " 次，已自动拉黑");
+        }
+    }
+
     public boolean probeVision(String profileId) throws AgentException {
         ModelProfile profile = store.get(profileId);
         if (profile == null) {

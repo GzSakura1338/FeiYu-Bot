@@ -743,6 +743,9 @@ public final class QqChatBridge {
 
     private void onGroupMessage(JsonObject event, GroupState state, Incoming incoming, String text, boolean owner, String selfId, String userId,
                                 boolean react) {
+        if (agent.store().blockEnabled() && agent.blocked(userId)) {
+            return;
+        }
         String groupId = state.groupId;
         rememberMedia(groupId, userId, incoming.imageUrls());
         String messageId = optString(event, "message_id");
@@ -841,6 +844,9 @@ public final class QqChatBridge {
     }
 
     private void onPrivate(Target target, String line, List<String> images, String attachments, boolean react) {
+        if (agent.store().blockEnabled() && agent.blocked(target.userId())) {
+            return;
+        }
         String session = target.session();
         try {
             agent.hear(session, line, target.userId(), attachments);

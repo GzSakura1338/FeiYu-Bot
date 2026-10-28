@@ -33,6 +33,10 @@ public final class AgentStore {
     private static final String EFFORT_KEY = "agent.reasoningEffort";
     private static final String REPLYING_KEY = "agent.replying";
     private static final String PACING_KEY = "agent.pacing";
+    private static final String BLOCK_ENABLED_KEY = "agent.block.enabled";
+    private static final String BLOCK_THRESHOLD_KEY = "agent.block.threshold";
+    private static final String BLOCK_LIST_KEY = "agent.block.list";
+    private static final String BLOCK_STRIKES_KEY = "agent.block.strikes";
     public static final Pacing DEFAULT_PACING = new Pacing(2_000, 4);
     private static final com.google.gson.Gson GSON = new com.google.gson.Gson();
     private static final List<String> EFFORTS = List.of("default", "none", "low", "medium", "high", "max");
@@ -252,6 +256,62 @@ public final class AgentStore {
         MindNight clean = new MindNight(night.enabled(), night.start(), night.end(), night.seconds());
         settings.put(MIND_NIGHT_KEY, GSON.toJson(clean));
         return clean;
+    }
+
+
+    public boolean blockEnabled() {
+        return Boolean.parseBoolean(settings.get(BLOCK_ENABLED_KEY));
+    }
+
+    public void setBlockEnabled(boolean on) {
+        settings.put(BLOCK_ENABLED_KEY, Boolean.toString(on));
+    }
+
+    public int blockThreshold() {
+        try {
+            return Math.max(0, Integer.parseInt(settings.get(BLOCK_THRESHOLD_KEY)));
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    public void setBlockThreshold(int n) {
+        settings.put(BLOCK_THRESHOLD_KEY, Integer.toString(Math.max(0, n)));
+    }
+
+    public synchronized Map<String, Map<String, Object>> blockList() {
+        return blockJson(BLOCK_LIST_KEY);
+    }
+
+    public synchronized void setBlockList(Map<String, Map<String, Object>> list) {
+        settings.put(BLOCK_LIST_KEY, GSON.toJson(list == null ? Map.of() : list));
+    }
+
+    public synchronized Map<String, Integer> blockStrikes() {
+        Map<String, Map<String, Object>> raw = blockJson(BLOCK_STRIKES_KEY);
+        Map<String, Integer> out = new LinkedHashMap<>();
+        raw.forEach((k, v) -> out.put(k, v == null ? 0 : ((Number) v).intValue()));
+        return out;
+    }
+
+    public synchronized void setBlockStrikes(Map<String, Integer> strikes) {
+        settings.put(BLOCK_STRIKES_KEY, GSON.toJson(strikes == null ? Map.of() : strikes));
+    }
+
+    private Map<String, Map<String, Object>> blockJson(String key) {
+        String raw = settings.get(key);
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        if (raw != null && !raw.isBlank()) {
+            try {
+                Map<String, Map<String, Object>> parsed = GSON.fromJson(raw,
+                        com.google.gson.reflect.TypeToken.getParameterized(Map.class, String.class, Map.class).getType());
+                if (parsed != null) {
+                    out.putAll(parsed);
+                }
+            } catch (JsonParseException ignored) {
+            }
+        }
+        return out;
     }
 
     public record Replying(String session, String userId, String messageId, String speaker, String line, long at) {}

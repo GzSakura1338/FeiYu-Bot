@@ -17,13 +17,26 @@ final class PersonaHandler {
 
     private record OwnersRequest(List<String> owners) {}
 
+    private record BlockRequest(Boolean enabled, Integer threshold, List<String> remove) {}
+
     private final Gson gson = new Gson();
     private final PersonaStore store;
+    private final dafeiyu.agent.model.AgentStore agentStore;
     private final LogBuffer log;
 
-    PersonaHandler(PersonaStore store, LogBuffer log) {
+    PersonaHandler(PersonaStore store, dafeiyu.agent.model.AgentStore agentStore, LogBuffer log) {
         this.store = store;
+        this.agentStore = agentStore;
         this.log = log;
+    }
+
+    private com.google.gson.JsonObject blockState() {
+        com.google.gson.JsonObject out = new com.google.gson.JsonObject();
+        out.addProperty("enabled", agentStore.blockEnabled());
+        out.addProperty("threshold", agentStore.blockThreshold());
+        out.add("list", gson.toJsonTree(agentStore.blockList()));
+        out.add("strikes", gson.toJsonTree(agentStore.blockStrikes()));
+        return out;
     }
 
     void handle(HttpExchange ex) throws IOException {
@@ -38,6 +51,29 @@ final class PersonaHandler {
                     case "POST" -> create(ex);
                     default -> HttpResponses.json(ex, 405, error("不支持的请求方法"));
                 }
+            } else if (rest.equals("/blocklist") && method.equals("GET")) {
+                HttpResponses.json(ex, blockState().toString());
+            } else if (rest.equals("/blocklist") && method.equals("PUT")) {
+                BlockRequest req = Requests.readJson(ex, BlockRequest.class);
+                if (req.enabled() != null) {
+                    agentStore.setBlockEnabled(req.enabled());
+                }
+                if (req.threshold() != null) {
+                    agentStore.setBlockThreshold(req.threshold());
+                }
+                if (req.remove() != null) {
+                    var list = new java.util.LinkedHashMap<>(agentStore.blockList());
+                    var strikes = new java.util.LinkedHashMap<>(agentStore.blockStrikes());
+                    for (String id : req.remove()) {
+                        list.remove(id);
+                        strikes.remove(id);
+                    }
+                    agentStore.setBlockList(list);
+                    agentStore.setBlockStrikes(strikes);
+                }
+                log.info("agent: blocklist changed (enabled " + agentStore.blockEnabled()
+                        + ", threshold " + agentStore.blockThreshold() + ", size " + agentStore.blockList().size() + ")");
+                HttpResponses.json(ex, blockState().toString());
             } else if (rest.equals("/owners") && method.equals("PUT")) {
                 List<String> owners = store.setOwners(Requests.readJson(ex, OwnersRequest.class).owners());
                 log.info("agent: owner QQ set to " + (owners.isEmpty() ? "(none)" : String.join(",", owners)));

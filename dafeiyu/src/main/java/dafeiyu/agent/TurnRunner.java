@@ -199,6 +199,9 @@ public final class TurnRunner {
         if (qqSession()) {
             set.add(Toolbox.get(SEARCH));
             set.add(ChatTools.readForward(agent));
+            if (agent.store().blockEnabled()) {
+                set.add(ChatTools.blockUser(agent, Set.copyOf(owners)));
+            }
             set.addAll(agent.sessionTools(turn.session()));
             if (persona != null) {
                 set.add(ChatTools.recall(agent, persona.id(), Set.copyOf(owners), this::noteScope));
@@ -324,6 +327,9 @@ public final class TurnRunner {
                     blocked = true;
                     content = ambient() || "note".equals(turn.source()) ? "" : ContentGuard.deflection();
                     listener.onBlocked(verdict.category().label(), verdict.byModel(), content);
+                    if (!subagent() && !turn.qqUser().isBlank()) {
+                        agent.noteStrikes(turn.qqUser(), requester());
+                    }
                     if (content.isEmpty()) {
                         return silence(result, started);
                     }
