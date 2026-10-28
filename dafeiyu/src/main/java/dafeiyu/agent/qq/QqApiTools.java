@@ -369,6 +369,25 @@ public final class QqApiTools {
         return reason.isEmpty() ? "主人在设置里关掉了" : "高危接口（" + reason + "），默认关着，要用得请主人在网页「设置 › Agent › QQ 接口」里打开";
     }
 
+    /**
+     * 给插件用的裸调用：插件已由用户单独授权 qq.api，所以这里不走「只有主人能调」，
+     * 但仍然挡住锁死的接口（凭据 / 账号 / 内部 / 流式），并沿用接口开关。
+     */
+    public JsonObject raw(String action, JsonObject params) throws ToolFailure {
+        Action target = api.get(action);
+        if (target == null) {
+            throw new ToolFailure("没有叫「" + action + "」的接口");
+        }
+        if (QqApiPolicy.locked(target.name())) {
+            throw new ToolFailure(target.name() + " 用不了：" + QqApiPolicy.lockReason(target.name()));
+        }
+        if (!policy.allowed(target.name())) {
+            throw new ToolFailure(target.name() + "（" + target.summary() + "）现在用不了：" + why(target));
+        }
+        Duration timeout = SLOW.matcher(target.name()).find() ? SLOW_TIMEOUT : TIMEOUT;
+        return outbox.call(target.name(), params == null ? new JsonObject() : params, timeout);
+    }
+
     private String call(Args args, ToolContext context) throws ToolFailure {
         String name = args.text("action");
         Action action = api.get(name);
