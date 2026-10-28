@@ -258,7 +258,6 @@ public final class AgentStore {
         return clean;
     }
 
-
     public boolean blockEnabled() {
         return Boolean.parseBoolean(settings.get(BLOCK_ENABLED_KEY));
     }
@@ -288,9 +287,18 @@ public final class AgentStore {
     }
 
     public synchronized Map<String, Integer> blockStrikes() {
-        Map<String, Map<String, Object>> raw = blockJson(BLOCK_STRIKES_KEY);
         Map<String, Integer> out = new LinkedHashMap<>();
-        raw.forEach((k, v) -> out.put(k, v == null ? 0 : ((Number) v).intValue()));
+        String raw = settings.get(BLOCK_STRIKES_KEY);
+        if (raw != null && !raw.isBlank()) {
+            try {
+                Map<String, Integer> parsed = GSON.fromJson(raw,
+                        com.google.gson.reflect.TypeToken.getParameterized(Map.class, String.class, Integer.class).getType());
+                if (parsed != null) {
+                    parsed.forEach((k, v) -> out.put(k, v == null ? 0 : v));
+                }
+            } catch (JsonParseException ignored) {
+            }
+        }
         return out;
     }
 

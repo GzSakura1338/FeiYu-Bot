@@ -122,9 +122,15 @@ async function loadBlocklist() {
   $('#block-threshold').value = String(b.threshold ?? 0);
   const items = Object.entries(b.list ?? {});
   const strikes = b.strikes ?? {};
-  $('#block-list').innerHTML = items.length
-    ? items.map(([id, e]) => `<div>🚫 ${id}（${(e.name ?? '') || '未知'}）${e.reason ?? ''}${strikes[id] ? ` · 已触发 ${strikes[id]} 次` : ''} <button type="button" class="text-button" data-unblock="${id}">解除</button></div>`).join('')
-    : '（没拉黑任何人）';
+  const box = $('#block-list');
+  box.replaceChildren(...(items.length ? items.map(([id, e]) => {
+    const row = el('div', null, `🚫 ${id}（${e?.name || '未知'}）${e?.reason ?? ''}${strikes[id] ? ` · 已触发 ${strikes[id]} 次` : ''} `);
+    const button = el('button', 'text-button', '解除');
+    button.type = 'button';
+    button.dataset.unblock = id;
+    row.append(button);
+    return row;
+  }) : [el('span', null, '（没拉黑任何人）')]));
 }
 
 async function saveBlocklist() {

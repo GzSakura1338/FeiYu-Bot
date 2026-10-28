@@ -692,7 +692,7 @@ public final class QqChatBridge {
         String sender = optString(event, "sender_id");
         String userId = sender.isEmpty() || sender.equals("0") ? optString(event, "user_id") : sender;
         String targetId = optString(event, "target_id");
-        if (userId.isEmpty() || userId.equals(selfId)) {
+        if (userId.isEmpty() || userId.equals(selfId) || agent.blocked(userId)) {
             return;
         }
         List<String> words = new ArrayList<>();
@@ -743,7 +743,7 @@ public final class QqChatBridge {
 
     private void onGroupMessage(JsonObject event, GroupState state, Incoming incoming, String text, boolean owner, String selfId, String userId,
                                 boolean react) {
-        if (agent.store().blockEnabled() && agent.blocked(userId)) {
+        if (agent.blocked(userId)) {
             return;
         }
         String groupId = state.groupId;
@@ -844,7 +844,7 @@ public final class QqChatBridge {
     }
 
     private void onPrivate(Target target, String line, List<String> images, String attachments, boolean react) {
-        if (agent.store().blockEnabled() && agent.blocked(target.userId())) {
+        if (agent.blocked(target.userId())) {
             return;
         }
         String session = target.session();

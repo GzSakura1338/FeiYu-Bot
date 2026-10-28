@@ -523,14 +523,14 @@ public final class ChatAgent {
     }
 
     public boolean blocked(String userId) {
-        if (userId == null || userId.isBlank() || personas.owners().contains(userId)) {
+        if (userId == null || userId.isBlank() || personas.owners().contains(userId) || !store.blockEnabled()) {
             return false;
         }
         return store.blockList().containsKey(userId);
     }
 
-    public void noteStrikes(String userId, String name) {
-        if (userId == null || userId.isBlank() || personas.owners().contains(userId) || !store.blockEnabled()) {
+    public synchronized void noteStrikes(String userId, String name) {
+        if (userId == null || !userId.matches("\\d{5,12}") || personas.owners().contains(userId) || !store.blockEnabled()) {
             return;
         }
         int threshold = store.blockThreshold();
