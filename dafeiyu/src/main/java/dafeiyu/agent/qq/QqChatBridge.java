@@ -1671,11 +1671,17 @@ public final class QqChatBridge {
 
     private List<ImagePart> download(Target target, List<String> imageUrls) {
         List<ImagePart> parts = new ArrayList<>();
+        boolean vision = !imageUrls.isEmpty() && agent.vision();
         for (String url : imageUrls.subList(0, Math.min(MAX_IMAGES, imageUrls.size()))) {
             try {
                 parts.add(url.startsWith(PICTURE_REF) ? ImageLoader.fromBytes(images.load(Long.parseLong(url.substring(PICTURE_REF.length()))))
                         : url.startsWith(STICKER_REF) ? stickerPart(Long.parseLong(url.substring(STICKER_REF.length())))
                         : ImageLoader.download(url));
+                String number = url.startsWith(STICKER_REF) || !vision ? null
+                        : url.startsWith(PICTURE_REF) ? url.substring(PICTURE_REF.length()) : images.numberOf(url);
+                if (number != null) {
+                    agent.noteSeenImage(target.session(), number);
+                }
             } catch (AgentException | ToolFailure | IOException e) {
                 log.warn("agent [" + target.where() + "] image skipped: " + e.getMessage());
             }

@@ -60,36 +60,6 @@ public final class ChatAgent {
 
     private static final int SEEN_IMAGES_MAX = 30;
     private final Map<String, java.util.LinkedHashSet<String>> seenImages = new ConcurrentHashMap<>();
-
-    public void noteSeenImage(String session, String id) {
-        String key = id == null ? "" : id.strip().replaceAll("^#", "");
-        if (!key.matches("\\d{1,9}") || session == null || session.isEmpty()) {
-            return;
-        }
-        java.util.LinkedHashSet<String> set = seenImages.computeIfAbsent(session, k -> new java.util.LinkedHashSet<>());
-        synchronized (set) {
-            set.add(key);
-            while (set.size() > SEEN_IMAGES_MAX) {
-                java.util.Iterator<String> it = set.iterator();
-                it.next();
-                it.remove();
-            }
-        }
-    }
-
-    public List<String> seenImages(String session) {
-        java.util.LinkedHashSet<String> set = seenImages.get(session);
-        if (set == null) {
-            return List.of();
-        }
-        synchronized (set) {
-            return List.copyOf(set);
-        }
-    }
-
-    public void clearSeenImages(String session) {
-        seenImages.remove(session);
-    }
     private final Map<String, Set<Long>> consumed = new ConcurrentHashMap<>();
     private volatile java.util.function.BiConsumer<String, List<String>> interjections = (session, lines) -> {};
     static final String CONTINUE = "（上面是刚发来的消息，接着回应）";
@@ -522,8 +492,33 @@ public final class ChatAgent {
         try {
             memory.clear(session);
             reflection.forget(session);
+            seenImages.remove(session);
         } finally {
             lock.unlock();
+        }
+    }
+
+    public void noteSeenImage(String session, String id) {
+        if (session == null || session.isEmpty() || id == null || !id.matches("\\d{1,12}")) {
+            return;
+        }
+        java.util.LinkedHashSet<String> set = seenImages.computeIfAbsent(session, k -> new java.util.LinkedHashSet<>());
+        synchronized (set) {
+            set.remove(id);
+            set.add(id);
+            while (set.size() > SEEN_IMAGES_MAX) {
+                set.remove(set.iterator().next());
+            }
+        }
+    }
+
+    public List<String> seenImages(String session) {
+        java.util.LinkedHashSet<String> set = seenImages.get(session);
+        if (set == null) {
+            return List.of();
+        }
+        synchronized (set) {
+            return List.copyOf(set);
         }
     }
 

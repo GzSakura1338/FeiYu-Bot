@@ -57,6 +57,15 @@ final class QqImages {
         return number(path.toString(), path.toUri().toString(), session);
     }
 
+    String numberOf(String url) {
+        try {
+            Long id = db.one("SELECT id FROM images WHERE url = ? ORDER BY id DESC LIMIT 1", rs -> rs.getLong(1), url);
+            return id == null ? null : String.valueOf(id);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     String sessionOf(long id) {
         try {
             String s = db.one("SELECT session FROM images WHERE id = ?", rs -> rs.getString(1), id);

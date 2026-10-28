@@ -75,6 +75,11 @@ public final class ImageViewer implements Tool {
     private final ChatAgent agent;
     private final boolean workspaceFiles;
 
+    static String imageNumber(String ref) {
+        Matcher number = NUMBER.matcher(ref == null ? "" : ref.strip());
+        return number.matches() ? number.group(1) : null;
+    }
+
     public ImageViewer(ChatAgent agent, boolean workspaceFiles) {
         this.agent = agent;
         this.workspaceFiles = workspaceFiles;
