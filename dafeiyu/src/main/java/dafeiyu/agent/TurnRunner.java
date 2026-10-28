@@ -66,6 +66,7 @@ public final class TurnRunner {
     private static final int MAX_ERRANDS = 2;
     private static final int MAX_VIEWS = 6;
     private static final String VIEWED = "（这是你刚才用工具要看的图）";
+    private static final java.util.regex.Pattern IMAGE_ID_PATTERN = java.util.regex.Pattern.compile("\\[图片#(\\d+)\\]");
     public static final String SILENCE = "[沉默]";
     private static final java.util.regex.Pattern SILENT = java.util.regex.Pattern.compile("[\\[［【<＜(（]\\s*/?\\s*沉默\\s*/?\\s*[\\]］】>＞)）]");
     public static final String AMBIENT = "【旁听】";
@@ -155,7 +156,49 @@ public final class TurnRunner {
         this.tools = toolSet.specs();
         this.enabled = toolSet.names();
         this.maxSteps = turn.tools() == null ? MAX_STEPS : Math.min(MAX_STEPS, turn.tools().maxSteps());
+        noteIncomingImages();
         buildSystem();
+    }
+
+
+    private void noteIncomingImages() {
+        if (turn.user() == null || turn.user().content() == null) {
+            return;
+        }
+        java.util.regex.Matcher m = IMAGE_ID_PATTERN.matcher(turn.user().content());
+        while (m.find()) {
+            agent.noteSeenImage(turn.session(), m.group(1));
+        }
+    }
+
+    private void noteViewedImage(ToolCall call) {
+        try {
+            String raw = call.arguments();
+            if (raw == null || raw.isBlank()) {
+                return;
+            }
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(raw);
+            if (!parsed.isJsonObject()) {
+                return;
+            }
+            com.google.gson.JsonElement image = parsed.getAsJsonObject().get("image");
+            if (image != null && image.isJsonPrimitive()) {
+                agent.noteSeenImage(turn.session(), image.getAsString());
+            }
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private String seenImagesNote() {
+        List<String> ids = agent.seenImages(turn.session());
+        if (ids.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("【这条会话里你真的看到过这些图】图片#");
+        sb.append(String.join("、图片#", ids));
+        sb.append("\n上面这些图是系统确认附给你看过画面的（不是你记岔了）。有人问起就照当时看到的答，");
+        sb.append("不要因为这一轮没再附上就否认看过，更不要收回。\n\n");
+        return sb.toString();
     }
 
     private ToolSet defaultTools(WorkspaceStore workspaces) {
@@ -382,7 +425,8 @@ public final class TurnRunner {
                     catalog += "（你已经 " + since + " 条消息没发表情包了，这次情绪合适的话就配一张）\n";
                 }
             }
-            prepared = Prompt.prefixLastUser(prepared, mood.note(persona.id(), turn.session(), lastSpoke)
+            prepared = Prompt.prefixLastUser(prepared, seenImagesNote()
+                    + mood.note(persona.id(), turn.session(), lastSpoke)
                     + presentPeople()
                     + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners), context)
                     + (byOwner() ? agent.elsewhere(turn.session(), !turn.session().startsWith("group:")) : "")
@@ -661,6 +705,7 @@ public final class TurnRunner {
             if (views < MAX_VIEWS) {
                 views++;
                 shown.addAll(outcome.images());
+                noteViewedImage(call);
                 long chars = outcome.images().stream()
                         .mapToLong(i -> i.base64() == null ? 0 : i.base64().length()).sum();
                 System.err.println("[img] " + call.name() + " -> shown " + outcome.images().size()
