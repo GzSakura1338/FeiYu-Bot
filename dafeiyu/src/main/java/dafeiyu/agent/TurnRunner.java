@@ -102,7 +102,7 @@ public final class TurnRunner {
     private List<ToolSpec> tools;
     private final int maxSteps;
     private final Deque<String> recentCalls = new ArrayDeque<>();
-    private String contributed;
+    private String turnNotes;
     private String chatContext;
     private String presentPeople;
     private String system;
@@ -246,7 +246,7 @@ public final class TurnRunner {
             if (step > 1) {
                 interject();
             }
-            if (hasHistory() && estimateContext() >= Compaction.threshold(limits)) {
+            if (hasHistory() && estimateContext() >= Compaction.threshold(limits, turn.session())) {
                 compact(Trigger.AUTO);
             }
             boolean lastStep = step >= maxSteps;
@@ -391,38 +391,42 @@ public final class TurnRunner {
             messages.add(ChatMessage.user(turn.mind() ? Prompt.MIND_STEPS : Prompt.MAX_STEPS));
         }
         List<ChatMessage> prepared = Prompt.mergeUsers(Prompt.forRequest(messages, !tools.isEmpty()));
-        String context = chatContext();
-        String skills = persona == null ? "" : memories.knowledge(persona.id(), context) + agent.skills().relevant(persona.id(), context);
-        if (contributed == null) {
-            contributed = turn.mind() ? "" : agent.extensions().contribute(turn.session(), turn.people());
+        if (turnNotes == null) {
+            turnNotes = turnNotes();
         }
-        skills += contributed;
-        if (!innerVoice() && !skills.isEmpty()) {
-            prepared = Prompt.prefixLastUser(prepared, skills);
-        }
-        if (innerVoice()) {
-            String catalog = stickers.store().note(STICKER_CATALOG);
-            if (!catalog.isEmpty()) {
-                int since = sinceSticker();
-                if (since < FACE_COOLDOWN) {
-                    catalog += "（你刚发过表情包，没人要的话这次就不配了；有人要就照发）\n";
-                } else if (since >= STICKER_NUDGE) {
-                    catalog += "（你已经 " + since + " 条消息没发表情包了，这次情绪合适的话就配一张）\n";
-                }
-            }
-            prepared = Prompt.prefixLastUser(prepared, seenImagesNote()
-                    + mood.note(persona.id(), turn.session(), lastSpoke)
-                    + presentPeople()
-                    + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners), context)
-                    + (byOwner() ? agent.elsewhere(turn.session(), !turn.session().startsWith("group:")) : "")
-                    + memories.style(persona.id(), turn.session(), context)
-                    + skills
-                    + (catalog.isEmpty() ? "" : "<你的表情包>\n" + catalog + "</你的表情包>\n\n"));
+        if (!turnNotes.isEmpty()) {
+            prepared = Prompt.prefixLastUser(prepared, turnNotes);
         }
         if (!systemRole) {
             prepared = Prompt.withInstructions(prepared, system);
         }
         return new ChatRequest(prepared, tools, lastStep, turn.session(), profile.maxTokens(), effort, subagent() ? BackgroundTasks.SUBAGENT : "");
+    }
+
+    private String turnNotes() {
+        String context = chatContext();
+        String skills = persona == null ? "" : memories.knowledge(persona.id(), context) + agent.skills().relevant(persona.id(), context);
+        skills += turn.mind() ? "" : agent.extensions().contribute(turn.session(), turn.people());
+        if (!innerVoice()) {
+            return skills;
+        }
+        String catalog = stickers.store().note(STICKER_CATALOG);
+        if (!catalog.isEmpty()) {
+            int since = sinceSticker();
+            if (since < FACE_COOLDOWN) {
+                catalog += "（你刚发过表情包，没人要的话这次就不配了；有人要就照发）\n";
+            } else if (since >= STICKER_NUDGE) {
+                catalog += "（你已经 " + since + " 条消息没发表情包了，这次情绪合适的话就配一张）\n";
+            }
+        }
+        return seenImagesNote()
+                + mood.note(persona.id(), turn.session(), lastSpoke)
+                + presentPeople()
+                + memories.recall(persona.id(), turn.session(), turn.people(), Set.copyOf(owners), context)
+                + (byOwner() ? agent.elsewhere(turn.session(), !turn.session().startsWith("group:")) : "")
+                + memories.style(persona.id(), turn.session(), context)
+                + skills
+                + (catalog.isEmpty() ? "" : "<你的表情包>\n" + catalog + "</你的表情包>\n\n");
     }
 
     private boolean ambient() {

@@ -130,7 +130,7 @@ public final class SkillStore {
     private record Rendered(String text, List<Skill> brief) {}
 
     public String prompt(String personaId) {
-        return render(list(personaId)).text();
+        return render(db.list("SELECT " + COLUMNS + " FROM skills WHERE persona_id = ? ORDER BY importance DESC, id", SkillStore::map, personaId)).text();
     }
 
     public String detail(String personaId, String name) {
@@ -177,7 +177,7 @@ public final class SkillStore {
                 + "跟眼前特别相关的会直接放在“<用得上的技能>”里。\n");
         out.append(String.join("；", skills.stream().limit(PROMPT_LISTED).map(Skill::name).toList()));
         if (skills.size() > PROMPT_LISTED) {
-            out.append("……还有 ").append(skills.size() - PROMPT_LISTED).append(" 个，用 skill 写关键词也能找到");
+            out.append("……还有更多，用 skill 写关键词也能找到");
         }
         return new Rendered(out.toString(), skills);
     }

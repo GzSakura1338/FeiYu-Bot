@@ -358,38 +358,38 @@ public final class Prompt {
 
     public static List<ChatMessage> pruned(List<ChatMessage> messages) {
         List<ChatMessage> out = new ArrayList<>(messages);
-        Map<Integer, ChatMessage> cut = new HashMap<>();
-        long total = 0;
-        long dropped = 0;
+        int protectFrom = -1;
         int users = 0;
-        for (int i = out.size() - 1; i >= 0; i--) {
-            ChatMessage m = out.get(i);
-            if (m.isUser()) {
-                users++;
-            }
-            if (users < PRUNE_TURNS) {
-                continue;
-            }
-            if (m.isTool() && !PRUNE_KEEP.contains(m.toolName())) {
-                int size = Compaction.estimate(m.content());
-                total += size;
-                if (total > PRUNE_PROTECT) {
-                    dropped += size;
-                    cut.put(i, new ChatMessage(m.role(), "[较早的 " + m.toolName() + " 输出已省略（约 " + m.content().length()
-                            + " 字），需要的话重新调用工具查看]", m.reasoning(), m.images(), m.toolCalls(), m.toolCallId(), m.toolName(), m.toolError()));
-                }
-            } else if (!m.toolCalls().isEmpty()) {
-                int size = m.toolCalls().stream().mapToInt(c -> Compaction.estimate(c.arguments())).sum();
-                total += size;
-                if (total > PRUNE_PROTECT) {
-                    dropped += size;
-                    List<ToolCall> calls = m.toolCalls().stream().map(c -> new ToolCall(c.id(), c.name(), shortArguments(c.arguments()))).toList();
-                    cut.put(i, new ChatMessage(m.role(), m.content(), m.reasoning(), m.images(), calls, m.toolCallId(), m.toolName(), m.toolError()));
-                }
+        for (int i = out.size() - 1; i >= 0 && protectFrom < 0; i--) {
+            if (out.get(i).isUser() && ++users >= PRUNE_TURNS) {
+                protectFrom = i;
             }
         }
-        if (dropped > PRUNE_MINIMUM) {
-            cut.forEach(out::set);
+        long[] sizes = new long[Math.max(0, protectFrom)];
+        long total = 0;
+        for (int i = 0; i < sizes.length; i++) {
+            ChatMessage m = out.get(i);
+            sizes[i] = m.isTool() && !PRUNE_KEEP.contains(m.toolName()) ? Compaction.estimate(m.content())
+                    : !m.isTool() && !m.toolCalls().isEmpty() ? m.toolCalls().stream().mapToInt(c -> Compaction.estimate(c.arguments())).sum() : 0;
+            total += sizes[i];
+        }
+        long cutoff = (total / PRUNE_PROTECT - 1) * PRUNE_PROTECT;
+        if (cutoff <= PRUNE_MINIMUM) {
+            return out;
+        }
+        long seen = 0;
+        for (int i = 0; i < sizes.length && seen + sizes[i] <= cutoff; i++) {
+            if (sizes[i] == 0) {
+                continue;
+            }
+            seen += sizes[i];
+            ChatMessage m = out.get(i);
+            out.set(i, m.isTool()
+                    ? new ChatMessage(m.role(), "[较早的 " + m.toolName() + " 输出已省略（约 " + m.content().length() + " 字），需要的话重新调用工具查看]",
+                            m.reasoning(), m.images(), m.toolCalls(), m.toolCallId(), m.toolName(), m.toolError())
+                    : new ChatMessage(m.role(), m.content(), m.reasoning(), m.images(),
+                            m.toolCalls().stream().map(c -> new ToolCall(c.id(), c.name(), shortArguments(c.arguments()))).toList(),
+                            m.toolCallId(), m.toolName(), m.toolError()));
         }
         return out;
     }
