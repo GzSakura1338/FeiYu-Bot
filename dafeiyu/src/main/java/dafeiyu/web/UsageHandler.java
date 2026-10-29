@@ -39,7 +39,53 @@ final class UsageHandler {
             HttpResponses.json(ex, 405, "{\"error\":\"不支持的请求方法\"}");
             return;
         }
+        if (ex.getRequestURI().getPath().endsWith("/range")) {
+            LocalDate from;
+            LocalDate to;
+            try {
+                from = LocalDate.parse(query(ex, "from"));
+                to = query(ex, "to").isEmpty() ? from : LocalDate.parse(query(ex, "to"));
+            } catch (java.time.format.DateTimeParseException e) {
+                HttpResponses.json(ex, 400, "{\"error\":\"日期要写成 2026-10-28 这样\"}");
+                return;
+            }
+            if (to.isBefore(from) || to.isAfter(from.plusDays(400))) {
+                HttpResponses.json(ex, 400, "{\"error\":\"日期范围不对\"}");
+                return;
+            }
+            HttpResponses.json(ex, range(from, to).toString());
+            return;
+        }
         HttpResponses.json(ex, body().toString());
+    }
+
+    private JsonObject range(LocalDate from, LocalDate to) {
+        String where = UsageStore.between(from, to);
+        UsageStore.Totals totals = usage.totals(where);
+        JsonObject body = new JsonObject();
+        body.addProperty("from", from.toString());
+        body.addProperty("to", to.toString());
+        JsonObject stats = new JsonObject();
+        stats.addProperty("tokens", totals.tokens());
+        stats.addProperty("prompt", totals.prompt());
+        stats.addProperty("completion", totals.completion());
+        stats.addProperty("cached", totals.cached());
+        stats.addProperty("calls", totals.calls());
+        stats.addProperty("longestMs", totals.longestMs());
+        stats.addProperty("avgMs", totals.avgMs());
+        body.add("stats", stats);
+        breakdown(body, where);
+        return body;
+    }
+
+    private void breakdown(JsonObject body, String where) {
+        String and = where.isEmpty() ? "" : " AND " + where;
+        body.add("purposes", shares(usage.by("purpose", where, 10), s -> PURPOSES.getOrDefault(s, s)));
+        body.add("efforts", shares(usage.by("effort", "purpose IN ('chat', 'mind')" + and, 10), s -> s.isEmpty() ? "default" : s));
+        body.add("models", shares(usage.by("model", where, 5), s -> s));
+        QqDirectory.Names names = directory.names();
+        body.add("sessions", shares(usage.by("session", "session <> ''" + and, 6), s -> s.startsWith("mind:") ? "内心"
+                : s.startsWith("web:") ? "网页测试对话" : s.startsWith("task:") ? "后台任务 #" + s.substring(5) : names.of(s)));
     }
 
     private JsonObject body() {
@@ -87,13 +133,20 @@ final class UsageHandler {
         stats.addProperty("longestStreak", streaks[1]);
         body.add("stats", stats);
 
-        body.add("purposes", shares(usage.by("purpose", "", 10), s -> PURPOSES.getOrDefault(s, s)));
-        body.add("efforts", shares(usage.by("effort", "purpose IN ('chat', 'mind')", 10), s -> s.isEmpty() ? "default" : s));
-        body.add("models", shares(usage.by("model", "", 5), s -> s));
-        QqDirectory.Names names = directory.names();
-        body.add("sessions", shares(usage.by("session", "session <> ''", 6), s -> s.startsWith("mind:") ? "内心"
-                : s.startsWith("web:") ? "网页测试对话" : s.startsWith("task:") ? "后台任务 #" + s.substring(5) : names.of(s)));
+        breakdown(body, "");
         return body;
+    }
+
+    private static String query(HttpExchange ex, String key) {
+        String query = ex.getRequestURI().getRawQuery();
+        if (query != null) {
+            for (String pair : query.split("&")) {
+                if (pair.startsWith(key + "=")) {
+                    return java.net.URLDecoder.decode(pair.substring(key.length() + 1), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        }
+        return "";
     }
 
     private static JsonArray shares(List<UsageStore.Share> list, java.util.function.Function<String, String> label) {

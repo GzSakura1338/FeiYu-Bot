@@ -70,13 +70,21 @@ public final class UsageStore {
     }
 
     public Totals totals() {
+        return totals("");
+    }
+
+    public Totals totals(String where) {
         Totals totals = db.one("""
                 SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0),
                        COALESCE(SUM(cached_tokens), 0), COUNT(*), COALESCE(MAX(latency_ms), 0), COALESCE(AVG(latency_ms), 0), COALESCE(MIN(day), '')
                 FROM token_usage
-                """, rs -> new Totals(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7),
-                rs.getString(8)));
+                """ + (where.isEmpty() ? "" : " WHERE " + where), rs -> new Totals(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4),
+                rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getString(8)));
         return totals == null ? new Totals(0, 0, 0, 0, 0, 0, 0, "") : totals;
+    }
+
+    public static String between(java.time.LocalDate from, java.time.LocalDate to) {
+        return "day BETWEEN '" + from + "' AND '" + to + "'";
     }
 
     public List<Share> by(String column, String where, int limit) {

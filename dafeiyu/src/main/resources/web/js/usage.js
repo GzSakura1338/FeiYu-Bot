@@ -17,6 +17,8 @@ let days = [];
 let base = 0;
 let activeDays = 0;
 let activeWeeks = 0;
+let selection = null;
+let rangeData = null;
 
 function fmt(n) {
   if (n >= 1e9) return `${+(n / 1e9).toFixed(1)}B`;
@@ -176,7 +178,9 @@ function daily(animate) {
   }
   [...heat.children].forEach((cell, i) => {
     const d = days[i];
-    cell.className = `usage-cell level-${level(d.tokens)}${i === days.length - 1 ? ' today' : ''}`;
+    const day = key(d.date);
+    cell.className = `usage-cell level-${level(d.tokens)}${i === days.length - 1 ? ' today' : ''}${d.tokens ? ' pickable' : ''}`
+      + (selection && selection.from === day && selection.to === day ? ' selected' : '');
     cell.dataset.index = i;
     cell.setAttribute('aria-label', `${label(d.date)}，${d.tokens.toLocaleString()} token`);
   });
@@ -242,6 +246,8 @@ function yearGrid(kind, play) {
       value: b.tokens,
       title: `${b.year}年 ${short(b.start)}${b.end > b.start ? ` – ${short(b.end)}` : ''}`,
       sub: b.tokens ? `${b.calls.toLocaleString()} 次调用${versus(b.tokens, activeWeeks)}` : '这周没有调用',
+      from: key(b.start),
+      to: key(b.end),
     });
   } else {
     const max = Math.max(0, ...past.map(b => b.ytd));
@@ -272,6 +278,8 @@ function yearGrid(kind, play) {
         const it = item(b);
         cell.classList.add(`level-${level(it.value)}`);
         if (b.current) cell.classList.add('today');
+        if (it.from && b.tokens) cell.classList.add('pickable');
+        if (it.from && selection && selection.from === it.from && selection.to === it.to) cell.classList.add('selected');
         cell.setAttribute('role', 'gridcell');
         cell.setAttribute('aria-label', `${it.title}，${it.value.toLocaleString()} token`);
         cell.dataset.item = plot.items.length;
@@ -311,9 +319,9 @@ function renderChart(animate = false) {
   rendered = mode;
 }
 
-function renderInsights() {
-  const s = data.stats;
-  const efforts = data.efforts ?? [];
+function renderInsights(src) {
+  const s = src.stats;
+  const efforts = src.efforts ?? [];
   const totalCalls = efforts.reduce((sum, e) => sum + e.calls, 0);
   const top = efforts.toSorted((a, b) => b.calls - a.calls)[0];
   const rows = [
@@ -345,14 +353,67 @@ function ranks(host, items, icon, empty) {
   }));
 }
 
+function renderDetails() {
+  const src = selection && rangeData ? rangeData : data;
+  const empty = selection ? '这段时间没有调用' : '还没有调用记录';
+  renderInsights(src);
+  ranks($('#usage-purposes'), src.purposes, item => PURPOSE_ICONS[item.key] ?? 'build', empty);
+  ranks($('#usage-sessions'), src.sessions, item => (item.key?.startsWith('mind:') ? 'neurology' : item.key?.startsWith('group:') ? 'groups' : item.key?.startsWith('web:') ? 'forum' : 'person'), empty);
+  ranks($('#usage-models'), src.models, () => 'memory', empty);
+  const bar = $('#usage-range');
+  bar.hidden = !selection;
+  if (selection) {
+    const total = rangeData ? ` · ${fmt(rangeData.stats.tokens)} token · ${rangeData.stats.calls.toLocaleString()} 次调用` : ' · 读取中…';
+    $('#usage-range-label').textContent = `${selection.label} · ${selection.kind}${total}`;
+  }
+}
+
+async function loadRange() {
+  const wanted = selection;
+  if (!wanted) return;
+  try {
+    const res = await fetch(`/api/usage/range?from=${wanted.from}&to=${wanted.to}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (selection !== wanted) return;
+    rangeData = json;
+    renderDetails();
+  } catch (err) {
+    showSnackbar(`读取这段时间的用量失败：${err.message}`, 'error');
+  }
+}
+
+function select(next) {
+  selection = next;
+  rangeData = null;
+  if (data) {
+    renderChart();
+    renderDetails();
+  }
+  loadRange();
+}
+
+function onPick(e) {
+  const chart = $('#usage-chart');
+  const cell = e.target.closest?.('.usage-cell');
+  if (!cell || !chart.contains(cell) || !cell.classList.contains('pickable')) return;
+  let pick;
+  if (cell.dataset.item !== undefined) {
+    const it = cell.parentElement.items[cell.dataset.item];
+    pick = { from: it.from, to: it.to, label: it.title, kind: '这一周' };
+  } else {
+    const d = days[cell.dataset.index];
+    pick = { from: key(d.date), to: key(d.date), label: label(d.date), kind: '单日' };
+  }
+  if (selection && selection.from === pick.from && selection.to === pick.to) select(null);
+  else select(pick);
+}
+
 function render(animate) {
   renderProfile();
   renderStats();
   renderChart(animate);
-  renderInsights();
-  ranks($('#usage-purposes'), data.purposes, item => PURPOSE_ICONS[item.key] ?? 'build', '还没有调用记录');
-  ranks($('#usage-sessions'), data.sessions, item => (item.key?.startsWith('mind:') ? 'neurology' : item.key?.startsWith('group:') ? 'groups' : item.key?.startsWith('web:') ? 'forum' : 'person'), '还没有调用记录');
-  ranks($('#usage-models'), data.models, () => 'memory', '还没有调用记录');
+  renderDetails();
   $('#usage-note').textContent = data.stats.since
     ? `从 ${label(parse(data.stats.since))}开始统计，之前的调用没有记录。token 数以模型接口返回的为准，包括聊天、内心和审核、识图、整理记忆这些后台调用。`
     : '还没有调用记录，模型被调用后这里就会有数据。';
@@ -364,6 +425,7 @@ async function load(animate = false) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
     render(animate);
+    if (selection) loadRange();
   } catch (err) {
     showSnackbar(`读取用量失败：${err.message}`, 'error');
   }
@@ -383,7 +445,12 @@ function setMode(next) {
   for (const b of $$('#usage-modes button')) b.setAttribute('aria-checked', String(b.dataset.mode === mode));
   movePill();
   hideTip();
-  if (data) renderChart(true);
+  selection = null;
+  rangeData = null;
+  if (data) {
+    renderChart(true);
+    renderDetails();
+  }
 }
 
 
@@ -412,12 +479,13 @@ function onHover(e) {
   const rect = cell.getBoundingClientRect();
   if (cell.dataset.item !== undefined) {
     const item = cell.parentElement.items[cell.dataset.item];
-    showTip({ x: rect.left + rect.width / 2, y: rect.top }, item.title, item.value, item.sub);
+    showTip({ x: rect.left + rect.width / 2, y: rect.top }, item.title, item.value,
+      item.sub + (cell.classList.contains('pickable') ? ' · 点一下看这周明细' : ''));
     return;
   }
   const d = days[cell.dataset.index];
   showTip({ x: rect.left + rect.width / 2, y: rect.top }, label(d.date), d.tokens,
-    d.tokens ? `${d.calls.toLocaleString()} 次调用${versus(d.tokens, activeDays)}` : '没有调用');
+    d.tokens ? `${d.calls.toLocaleString()} 次调用${versus(d.tokens, activeDays)} · 点一下看这天明细` : '没有调用');
 }
 
 export function initUsage() {
@@ -425,6 +493,8 @@ export function initUsage() {
   const chart = $('#usage-chart');
   chart.addEventListener('pointermove', onHover);
   chart.addEventListener('pointerleave', hideTip);
+  chart.addEventListener('click', onPick);
+  $('#usage-range-back').addEventListener('click', () => select(null));
   window.addEventListener('resize', movePill);
   onPageChange(page => {
     clearInterval(timer);

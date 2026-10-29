@@ -87,6 +87,8 @@
 .usage-cell.level-3 { background: color-mix(in oklab, var(--md-sys-color-primary) 70%, var(--md-sys-color-surface-container-high)); }
 .usage-cell.level-4 { background: var(--md-sys-color-primary); }
 
+.usage-heat .usage-cell.pickable { cursor: pointer; }
+.usage-heat .usage-cell.selected { z-index: 1; box-shadow: 0 0 0 2px var(--md-sys-color-surface-container-low), 0 0 0 4px var(--md-sys-color-primary); }
 .usage-heat .usage-cell.blank { visibility: hidden; }
 .usage-heat .usage-cell.future { opacity: .4; }
 .usage-heat .usage-cell.future:hover, .usage-heat .usage-cell.blank:hover { transform: none; box-shadow: none; }
@@ -108,6 +110,11 @@
 .usage-legend span:first-child { margin-right: 4px; }
 .usage-legend span:last-child { margin-left: 4px; }
 
+.usage-range {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 32px; padding: 6px 6px 6px 16px;
+  border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+}
+.usage-range[hidden] { display: none; }
 .usage-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(32px, 6vw, 96px); }
 .usage-columns .usage-block { margin-top: 44px; }
 .usage-list { margin: 12px 0 0; }
