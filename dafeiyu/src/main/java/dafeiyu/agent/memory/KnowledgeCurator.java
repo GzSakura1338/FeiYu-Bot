@@ -1,9 +1,14 @@
 package dafeiyu.agent.memory;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.AgentException.Kind;
 import dafeiyu.agent.ChatAgent;
@@ -12,6 +17,8 @@ import dafeiyu.agent.persona.Persona;
 import dafeiyu.db.Settings;
 import dafeiyu.util.Texts;
 
+import java.io.IOException;
+import java.io.StringReader;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -56,6 +63,7 @@ public final class KnowledgeCurator {
     private static final int MIN_ITEMS = 5;
     private static final double RELATED = 0.1;
     private static final int MAX_SKILL_TEXT = 1_500;
+    private static final int MAX_SKILL_MERGES = 6;
     private static final int MAX_REMOVED_SHOWN = 40;
     private static final Gson GSON = new Gson();
 
@@ -193,8 +201,14 @@ public final class KnowledgeCurator {
             return null;
         }
         long now = System.currentTimeMillis();
-        String reply = Reflection.ask(profile, "curate:" + kind, prompt(persona, kind, items, now));
-        JsonObject json = Reflection.parse(reply);
+        String prompt = prompt(persona, kind, items, now);
+        JsonObject json = readable(Reflection.ask(profile, "curate:" + kind, prompt), kind);
+        if (json == null) {
+            json = readable(Reflection.ask(profile, "curate:" + kind, prompt), kind);
+        }
+        if (json == null) {
+            throw new AgentException(Kind.LOCAL, "两次回的都不是能读的 JSON");
+        }
         writing.lock();
         try {
             return apply(persona.id(), kind, items, json, now, removed);
@@ -242,7 +256,8 @@ public final class KnowledgeCurator {
                 "- scores：每条都打分，看它对你以后聊天、做事有多大用。5 是常常用得上、通用、准确的；3 是偶尔有用；1 是一次性的、过时的、琐碎的、可能是错的。"
                         + "用到过的次数多、最近还在用的要往高打，记下很久一次都没用到的往低打。",
                 "- merge：讲的是同一件事、重复或者高度相近的几条，合成一条。content 要把每条里有用的东西都留下，不要丢细节"
-                        + (kind.equals(SKILL) ? "，可以分行写步骤，2000 字以内" : "，100 字以内") + "。没有能合的就给空数组。",
+                        + (kind.equals(SKILL) ? "，可以分行写步骤，2000 字以内；这次最多合 " + MAX_SKILL_MERGES + " 组，挑重复最明显的，别的下次再合" : "，100 字以内")
+                        + "。没有能合的就给空数组。",
                 "- drop：真的没用了才丢：一次性的小事、过时的、琐碎到不值得记的、明显错的。拿不准就留着；打 1 分、最多 2 分的才考虑丢。合并掉的不用再写进 drop。",
                 "- 你还是你：跟人设里的性格和底线冲突的内容可以丢。"));
     }
@@ -256,8 +271,9 @@ public final class KnowledgeCurator {
         int dropBudget = (int) Math.floor(items.size() * MAX_DROPPED);
         int merged = 0;
         int dropped = 0;
+        int groups = 0;
         for (JsonElement element : array(json, "merge")) {
-            if (!element.isJsonObject()) {
+            if (!element.isJsonObject() || kind.equals(SKILL) && groups >= MAX_SKILL_MERGES) {
                 continue;
             }
             JsonObject op = element.getAsJsonObject();
@@ -290,6 +306,7 @@ public final class KnowledgeCurator {
                 }
             }
             rewrite(personaId, kind, keep, title, optString(op, "description").strip(), content);
+            groups++;
             scores.merge(keep.id(), group.stream().mapToInt(i -> scores.getOrDefault(i.id(), 0)).max().orElse(0), Math::max);
         }
         for (JsonElement element : array(json, "drop")) {
@@ -403,6 +420,50 @@ public final class KnowledgeCurator {
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    private JsonObject readable(String reply, String kind) {
+        try {
+            return Reflection.parse(reply);
+        } catch (AgentException e) {
+            JsonObject partial = salvage(reply);
+            if (partial == null) {
+                warn.accept("agent: tidying up " + kind + " got an unreadable reply (" + e.getMessage() + ")");
+                return null;
+            }
+            warn.accept("agent: tidying up " + kind + " got a broken reply (" + e.getMessage() + "), using the complete parts: "
+                    + String.join(", ", partial.entrySet().stream().map(en -> en.getKey()
+                            + (en.getValue().isJsonArray() ? " " + en.getValue().getAsJsonArray().size() : "")).toList()));
+            return partial;
+        }
+    }
+
+    static JsonObject salvage(String reply) {
+        int start = reply == null ? -1 : reply.indexOf('{');
+        if (start < 0) {
+            return null;
+        }
+        JsonObject out = new JsonObject();
+        try (JsonReader reader = new JsonReader(new StringReader(reply.substring(start)))) {
+            reader.setStrictness(Strictness.LENIENT);
+            reader.beginObject();
+            while (reader.hasNext()) {
+                String name = reader.nextName();
+                if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                    out.add(name, JsonParser.parseReader(reader));
+                    continue;
+                }
+                JsonArray items = new JsonArray();
+                out.add(name, items);
+                reader.beginArray();
+                while (reader.hasNext()) {
+                    items.add(JsonParser.parseReader(reader));
+                }
+                reader.endArray();
+            }
+        } catch (IOException | RuntimeException ignored) {
+        }
+        return out.has("scores") || !array(out, "merge").isEmpty() || !array(out, "drop").isEmpty() ? out : null;
     }
 
     private static com.google.gson.JsonArray array(JsonObject json, String key) {
