@@ -107,11 +107,14 @@ public final class QqChatBridge {
     private static final java.util.regex.Pattern RECORD_FILE_ID = java.util.regex.Pattern.compile("fileid=([A-Za-z0-9_-]{10,})");
     private static final long FAVORITES_EVERY_MS = 6 * 3_600_000L;
     private static final long RECENT_MEDIA_MS = 5 * 60_000L;
+    private static final long ROSTER_MS = 10 * 60_000L;
     private static final int MAX_RECENT_MEDIA = 6;
 
     private enum Mode { ADDRESSED, AMBIENT, NOTE }
 
     private record RecentMedia(String url, long at) {}
+
+    private record Roster(Map<String, String> byName, long at) {}
 
     public interface Observer {
 
@@ -151,6 +154,7 @@ public final class QqChatBridge {
     private final Set<String> ownerNames = ConcurrentHashMap.newKeySet();
     private final Map<String, Long> pokedAt = new ConcurrentHashMap<>();
     private final Map<String, List<RecentMedia>> recentMedia = new ConcurrentHashMap<>();
+    private final Map<String, Roster> rosters = new ConcurrentHashMap<>();
     private final Deque<Long> proactive = new ArrayDeque<>();
     private final QqOutbox outbox;
     private final QqContacts contacts;
@@ -184,6 +188,7 @@ public final class QqChatBridge {
             }
         }
         this.outbox = new QqOutbox(agent, onebot, archive, log, groups);
+        outbox.setRoster(this::roster);
         this.contacts = new QqContacts(agent, onebot, archive, outbox, log);
         this.backfill = new QqBackfill(agent, archive, outbox, log);
         this.images = new QqImages(db, outbox);
@@ -362,6 +367,43 @@ public final class QqChatBridge {
                 out.add(item);
             }
         }
+        return out;
+    }
+
+    private Map<String, String> roster(String groupId) {
+        long now = System.currentTimeMillis();
+        Roster cached = rosters.get(groupId);
+        if (cached != null && now - cached.at() < ROSTER_MS) {
+            return cached.byName();
+        }
+        Map<String, String> byName = new java.util.HashMap<>();
+        Set<String> clash = new java.util.HashSet<>();
+        try {
+            for (JsonElement e : groupMembers(groupId)) {
+                JsonObject m = e.getAsJsonObject();
+                String qq = optString(m, "userId");
+                if (!qq.matches("\\d{5,12}") || qq.equals(outbox.selfId())) {
+                    continue;
+                }
+                byName.put(qq, qq);
+                for (String raw : new String[] {optString(m, "card"), optString(m, "nickname")}) {
+                    String name = QqMessages.displayName(raw);
+                    if (name.length() < 2 || name.matches("\\d+")) {
+                        continue;
+                    }
+                    String holder = byName.putIfAbsent(name, qq);
+                    if (holder != null && !holder.equals(qq)) {
+                        clash.add(name);
+                    }
+                }
+            }
+        } catch (ToolFailure | RuntimeException e) {
+            log.warn("agent [group " + groupId + "] member list for @ not loaded: " + e.getMessage());
+            return cached == null ? Map.of() : cached.byName();
+        }
+        clash.forEach(byName::remove);
+        Map<String, String> out = Map.copyOf(byName);
+        rosters.put(groupId, new Roster(out, now));
         return out;
     }
 

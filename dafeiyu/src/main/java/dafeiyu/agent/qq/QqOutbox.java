@@ -79,6 +79,7 @@ final class QqOutbox {
     private final LogBuffer log;
     private final Map<String, GroupState> groups;
     private volatile MessageGate gate = MessageGate.NONE;
+    private volatile java.util.function.Function<String, Map<String, String>> roster = groupId -> Map.of();
     private final Map<String, String> tempGroups = new ConcurrentHashMap<>();
     private final Map<String, Mute> mutes = new ConcurrentHashMap<>();
     private volatile boolean pathsUnreadable;
@@ -318,8 +319,22 @@ final class QqOutbox {
     }
 
     JsonArray content(Target target, String text) {
-        GroupState state = target.group() ? groups.get(target.groupId()) : null;
-        return state == null ? QqFaces.segments(QqMessages.withoutTails(text)) : QqMessages.content(text, state.speakers());
+        if (!target.group()) {
+            return QqFaces.segments(QqMessages.withoutTails(text));
+        }
+        Map<String, String> names = new HashMap<>();
+        if (text.indexOf('@') >= 0) {
+            names.putAll(roster.apply(target.groupId()));
+        }
+        GroupState state = groups.get(target.groupId());
+        if (state != null) {
+            names.putAll(state.speakers());
+        }
+        return QqMessages.content(text, names);
+    }
+
+    void setRoster(java.util.function.Function<String, Map<String, String>> roster) {
+        this.roster = roster;
     }
 
     FileSink files(Target target) {

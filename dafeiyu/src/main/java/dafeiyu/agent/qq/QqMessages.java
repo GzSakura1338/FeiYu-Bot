@@ -26,6 +26,7 @@ public final class QqMessages {
 
     private static final Pattern CQ_CODE = Pattern.compile("\\[CQ:([a-z_]+)((?:,[^\\]]*)?)]");
     static final String VIDEO_REF = "video:";
+    private static final Pattern QQ_NUMBER = Pattern.compile("\\d{5,12}");
     private static final Pattern VIDEO_FILE = Pattern.compile("(?i)\\.(mp4|mov|m4v|avi|mkv|webm|flv|wmv|3gp)$");
     private static final int MAX_NAME = 24;
     private static final String MENTION_STOP = " \t\n，,。.！!？?：:；;、";
@@ -226,15 +227,16 @@ public final class QqMessages {
 
     private static Mention mentionAt(String text, int from, List<String> names) {
         for (String name : names) {
-            if (text.startsWith(name, from)) {
+            boolean number = QQ_NUMBER.matcher(name).matches();
+            if (text.startsWith(name, from) && !(number && from + name.length() < text.length() && Character.isDigit(text.charAt(from + name.length())))) {
                 return new Mention(name, name.length());
             }
         }
         String token = token(text, from);
-        if (token.isEmpty()) {
+        if (token.isEmpty() || QQ_NUMBER.matcher(token).matches()) {
             return null;
         }
-        List<String> partial = names.stream().filter(n -> n.startsWith(token)).toList();
+        List<String> partial = names.stream().filter(n -> !QQ_NUMBER.matcher(n).matches() && n.startsWith(token)).toList();
         return partial.size() == 1 ? new Mention(partial.getFirst(), token.length()) : null;
     }
 

@@ -53,7 +53,8 @@ public final class ImageViewer implements Tool {
               "grid": {"type": "boolean", "description": "看整张图时要不要画上 4×4 格子当参照，默认不画：画上去的红线和黄色标签会挡住画面，容易被当成图里的东西"}
             }, "required": ["image"]}""");
 
-    private static final String SHOWN = "画面在后面紧跟的那条消息里，照着画面回答。";
+    private static final String SHOWN = "画面在后面紧跟的那条消息里，照着画面回答。"
+            + "画面只附在接下来这一步，聊天记录压缩以后就看不到了（这时只剩这段文字，不代表你当时没看到）；以后要再看，就再调一次 view_image 填同一个编号。";
     private static final int MAX_BYTES = 15 * 1024 * 1024;
     private static final int MAX_SIDE = 1568;
     private static final int MIN_SIDE = 768;
