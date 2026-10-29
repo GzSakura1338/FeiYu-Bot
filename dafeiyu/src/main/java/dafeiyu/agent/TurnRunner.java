@@ -141,7 +141,7 @@ public final class TurnRunner {
         this.limits = ModelLimits.resolve(profile);
         this.measuredBy = profile.id() + "/" + profile.model();
         this.effort = agent.store().reasoningEffort();
-        this.persona = subagent() ? null : agent.personas().active();
+        this.persona = subagent() ? null : agent.personas().forSession(turn.session());
         this.mood = agent.mood();
         this.guard = agent.guard();
         this.stickers = agent.stickers();

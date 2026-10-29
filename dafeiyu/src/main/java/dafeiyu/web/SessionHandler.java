@@ -338,14 +338,15 @@ final class SessionHandler {
     private String status(String session) {
         SessionDetail detail = agent.session(session, 1);
         ModelProfile model = agent.store().active();
-        Persona persona = agent.personas().active();
+        Persona persona = agent.personas().forSession(session);
+        boolean bound = agent.personas().boundTo(session) != null;
         List<String> lines = new java.util.ArrayList<>();
         lines.add("会话：" + directory.names().of(session) + "（" + session + "）");
         lines.add("记录：" + detail.totalTurns() + " 条" + (detail.summary() == null || detail.summary().isBlank() ? "" : "，另有压缩摘要"));
         lines.add("上下文：" + (detail.measuredTokens() > 0 ? "约 " + tokens(detail.measuredTokens()) + " token（上次实测）" : "还没有实测数据"));
         lines.add("压缩次数：" + detail.compactions());
         lines.add("模型：" + (model == null ? "未选择" : model.name() + "（" + model.model() + "）"));
-        lines.add("人格：" + (persona == null ? "不使用人格" : persona.name()));
+        lines.add("人格：" + (persona == null ? "不使用人格" : persona.name()) + (bound ? "（这个会话单独选的）" : "（跟着全局）"));
         lines.add("状态：" + (agent.monitor().busy(session) ? "正在回复" : "空闲"));
         return String.join("\n", lines);
     }

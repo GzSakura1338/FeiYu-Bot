@@ -7,7 +7,8 @@ const PROMPT_MAX = 20000;
 const AVATAR_SIZE = 256;
 const FIELDS = ['name', 'prompt'];
 
-let state = { active: null, personas: [] };
+let state = { active: null, personas: [], bindings: {} };
+let chatSession = null;
 let editing = null;
 let touched = new Set();
 let snapshot = '';
@@ -92,8 +93,8 @@ function iconButton(icon, label, onClick) {
 
 function render() {
   $('#persona-grid').replaceChildren(card(null), ...state.personas.map(card));
-  const active = activePersona();
-  $('#chat-persona span').textContent = active ? active.name : '不使用人格';  if (document.activeElement !== $('#owners-input')) $('#owners-input').value = (state.owners ?? []).join(', ');
+  renderChatPersona();
+  if (document.activeElement !== $('#owners-input')) $('#owners-input').value = (state.owners ?? []).join(', ');
   syncOwners();
   loadBlocklist().catch(() => {});
 }
@@ -305,9 +306,45 @@ async function save(e) {
   }
 }
 
+const qqSession = () => /^(group|private):/.test(chatSession ?? '');
+const boundPersona = () => (qqSession() ? state.personas.find(p => p.id === state.bindings?.[chatSession]) ?? null : null);
+
+function renderChatPersona() {
+  const chip = $('#chat-persona');
+  const active = activePersona();
+  const bound = boundPersona();
+  chip.querySelector('span').textContent = bound ? bound.name : qqSession() ? `跟着全局（${active ? active.name : '不使用人格'}）` : active ? active.name : '不使用人格';
+  chip.title = qqSession() ? '给这个会话单独选人格' : '切换人格';
+}
+
+export function setChatSession(session) {
+  chatSession = session;
+  renderChatPersona();
+}
+
+async function bind(session, id) {
+  try {
+    state = await request('PUT', '/binding', { session, persona: id || '' });
+    const persona = state.personas.find(p => p.id === id);
+    showSnackbar(persona ? `这个会话改用人格「${persona.name}」` : '这个会话跟着全局人格', 'success');
+  } catch (err) {
+    showSnackbar(`设置失败：${err.message}`, 'error');
+  }
+  render();
+}
+
 function openChatPersonaMenu() {
   const anchor = $('#chat-persona');
   if (isMenuOpen(anchor)) return closeMenu();
+  if (qqSession()) {
+    const session = chatSession;
+    const active = activePersona();
+    openMenu(anchor, [{ value: '', label: `跟着全局（${active ? active.name : '不使用人格'}）` }, ...state.personas.map(p => ({ value: p.id, label: p.name }))], {
+      selected: state.bindings?.[session] ?? '',
+      onSelect: id => bind(session, id),
+    });
+    return;
+  }
   const items = [{ value: '', label: '不使用人格' }, ...state.personas.map(p => ({ value: p.id, label: p.name }))];
   openMenu(anchor, items, {
     selected: state.active ?? '',

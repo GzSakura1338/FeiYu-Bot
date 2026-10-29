@@ -123,7 +123,7 @@ public final class Reflection {
     }
 
     public void touched(String session) {
-        if (!qq(session) || !memories.auto() || agent.personas().active() == null || agent.store().active() == null) {
+        if (!qq(session) || !memories.auto() || agent.personas().forSession(session) == null || agent.store().active() == null) {
             return;
         }
         style.touched(session);
@@ -168,7 +168,7 @@ public final class Reflection {
         if (!qq(session)) {
             throw new AgentException(Kind.LOCAL, "only QQ sessions keep memories");
         }
-        Persona persona = persona();
+        Persona persona = persona(session);
         ModelProfile profile = profile();
         if (!running.add(session)) {
             return null;
@@ -219,7 +219,10 @@ public final class Reflection {
     }
 
     public void tidy() throws AgentException {
-        Persona persona = persona();
+        tidy(persona());
+    }
+
+    private void tidy(Persona persona) throws AgentException {
         ModelProfile profile = profile();
         writing.lock();
         try {
@@ -311,8 +314,9 @@ public final class Reflection {
     private void quietly(String session) {
         try {
             reflect(session);
-            if (!memories.scatteredDays(persona().id()).isEmpty()) {
-                tidy();
+            Persona persona = persona(session);
+            if (!memories.scatteredDays(persona.id()).isEmpty()) {
+                tidy(persona);
             }
         } catch (AgentException | RuntimeException e) {
             int count = failures.merge(session, 1, Integer::sum);
@@ -329,7 +333,11 @@ public final class Reflection {
     }
 
     private Persona persona() throws AgentException {
-        Persona persona = agent.personas().active();
+        return persona(null);
+    }
+
+    private Persona persona(String session) throws AgentException {
+        Persona persona = session == null ? agent.personas().active() : agent.personas().forSession(session);
         if (persona == null) {
             throw new AgentException(Kind.LOCAL, "no persona selected");
         }

@@ -74,6 +74,7 @@ public final class ChatAgent {
         this.mood = new Mood(db);
         this.guard = new ContentGuard(db.file().toAbsolutePath().getParent().resolve("content-guard.txt"));
         this.memories = new MemoryStore(db, guard);
+        memories.shareWith(personas::activeId);
         this.skills = new SkillStore(db);
         this.reflection = new Reflection(this, memories, skills);
         this.stickers = new StickerKeeper(this, new StickerStore(db, db.file().toAbsolutePath().getParent().resolve("stickers")), guard);

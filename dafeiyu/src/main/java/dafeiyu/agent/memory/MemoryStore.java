@@ -75,6 +75,7 @@ public final class MemoryStore {
     private final Database db;
     private final Settings settings;
     private final ContentGuard guard;
+    private volatile java.util.function.Supplier<String> shared = () -> null;
 
     public MemoryStore(Database db, ContentGuard guard) {
         this.db = db;
@@ -107,7 +108,20 @@ public final class MemoryStore {
         return settings;
     }
 
+    public void shareWith(java.util.function.Supplier<String> owner) {
+        this.shared = owner == null ? () -> null : owner;
+    }
+
+    private String owner(String personaId, String scope) {
+        if (!KNOWLEDGE.equals(scope) && !STYLE.equals(scope)) {
+            return personaId;
+        }
+        String id = shared.get();
+        return id == null || id.isBlank() ? personaId : id;
+    }
+
     public Map<Long, Usage> usage(String personaId, String scope) {
+        personaId = owner(personaId, scope);
         Map<Long, Usage> out = new java.util.HashMap<>();
         db.list("SELECT id, importance, used_count, used_at FROM memories WHERE persona_id = ? AND scope = ?",
                 rs -> out.put(rs.getLong(1), new Usage(rs.getInt(2), rs.getInt(3), rs.getLong(4))), personaId, scope);
@@ -158,6 +172,7 @@ public final class MemoryStore {
     }
 
     public List<Memory> list(String personaId, String scope) {
+        personaId = owner(personaId, scope);
         String order = scope.equals(DIARY) ? "label DESC, id DESC"
                 : scope.equals(KNOWLEDGE) || scope.equals(STYLE) ? "importance DESC, updated_at DESC, id DESC" : "updated_at DESC, id DESC";
         return db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? ORDER BY " + order,
@@ -250,6 +265,7 @@ public final class MemoryStore {
     }
 
     List<Memory> recent(String personaId, String scope, int limit) {
+        personaId = owner(personaId, scope);
         return db.list("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND scope = ? ORDER BY updated_at DESC, id DESC LIMIT ?",
                 MemoryStore::map, personaId, scope, limit);
     }
@@ -258,10 +274,11 @@ public final class MemoryStore {
         return db.one("SELECT " + COLUMNS + " FROM memories WHERE persona_id = ? AND id = ?", MemoryStore::map, personaId, id);
     }
 
-    public Memory add(String personaId, String scope, String label, String content, String source) {
+    public Memory add(String persona, String scope, String label, String content, String source) {
         if (!validScope(scope)) {
             throw new IllegalArgumentException("记忆分区不对：" + scope);
         }
+        String personaId = owner(persona, scope);
         String text = clean(untail(content));
         if (text.isEmpty()) {
             throw new IllegalArgumentException("记忆内容不能为空");
@@ -289,7 +306,8 @@ public final class MemoryStore {
         return get(personaId, id);
     }
 
-    public Memory learn(String personaId, String note, String source) {
+    public Memory learn(String persona, String note, String source) {
+        String personaId = owner(persona, KNOWLEDGE);
         Matcher m = TERM.matcher(nonNull(note));
         if (!m.matches()) {
             throw new IllegalArgumentException("知识要写成「词」：意思");

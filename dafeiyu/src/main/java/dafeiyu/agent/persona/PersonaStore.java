@@ -1,11 +1,16 @@
 package dafeiyu.agent.persona;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
+import com.google.gson.reflect.TypeToken;
 import dafeiyu.db.Database;
 import dafeiyu.db.Settings;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public final class PersonaStore {
@@ -13,6 +18,9 @@ public final class PersonaStore {
     private static final String ACTIVE_KEY = "agent.persona";
     private static final String OWNERS_KEY = "agent.owners";
     private static final String COLUMNS = "id, name, avatar, prompt";
+    private static final String BINDINGS_KEY = "agent.persona.bindings";
+    private static final Gson GSON = new Gson();
+    private static final java.lang.reflect.Type BINDINGS = new TypeToken<Map<String, String>>() {}.getType();
 
     private final Database db;
     private final Settings settings;
@@ -87,11 +95,51 @@ public final class PersonaStore {
         if (removed && id.equals(settings.get(ACTIVE_KEY))) {
             settings.put(ACTIVE_KEY, "");
         }
+        if (removed) {
+            Map<String, String> all = bindings();
+            if (all.values().removeIf(id::equals)) {
+                settings.put(BINDINGS_KEY, GSON.toJson(all));
+            }
+        }
         return removed;
     }
 
     public synchronized void setActive(String id) {
         settings.put(ACTIVE_KEY, id == null ? "" : id);
+    }
+
+    public synchronized Map<String, String> bindings() {
+        try {
+            Map<String, String> saved = GSON.fromJson(settings.get(BINDINGS_KEY), BINDINGS);
+            return saved == null ? new LinkedHashMap<>() : new LinkedHashMap<>(saved);
+        } catch (JsonParseException e) {
+            return new LinkedHashMap<>();
+        }
+    }
+
+    public synchronized String boundTo(String session) {
+        String id = session == null ? null : bindings().get(session);
+        return id != null && get(id) != null ? id : null;
+    }
+
+    public synchronized void bind(String session, String personaId) {
+        if (session == null || !(session.startsWith("group:") || session.startsWith("private:"))) {
+            throw new IllegalArgumentException("只有群聊和私聊能单独选人格");
+        }
+        Map<String, String> all = bindings();
+        if (personaId == null || personaId.isBlank()) {
+            all.remove(session);
+        } else if (get(personaId) == null) {
+            throw new IllegalArgumentException("没有这个人格");
+        } else {
+            all.put(session, personaId);
+        }
+        settings.put(BINDINGS_KEY, GSON.toJson(all));
+    }
+
+    public synchronized Persona forSession(String session) {
+        String id = boundTo(session);
+        return id == null ? active() : get(id);
     }
 
     private static Persona map(ResultSet rs) throws SQLException {

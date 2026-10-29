@@ -12,6 +12,7 @@ import { attachmentCount, clearAttachments, initAttachments, streamTurn, takeAtt
 import { QUIET, isMind, loadMindStatus, mindEntry, mindMoment, showMindBar } from './agent-mind.js';
 import { attachmentNodes, isPoke, parseAttachments, pokeNote, stripPlaceholders } from './msg-attachments.js';
 import { stickToBottom } from './stick-bottom.js';
+import { setChatSession } from './agent-personas.js';
 
 const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '内心', task: '后台任务' };
 const TASK_STATUS = { queued: '排队中', running: '在做', paused: '暂停了', done: '做好了', failed: '没做成', interrupted: '中断了', ended: '已结束' };
@@ -349,7 +350,10 @@ function renderHeader(s) {
   else if (!mind && !detail) $('#session-stats').replaceChildren();
   $('#session-stop').hidden = !running.has(s.session) && !streaming.has(s.session);
   $('#session-deliver').hidden = web;
-  $('#session-chips').hidden = !web;
+  const qq = isQq(s.kind) && /^(group|private):/.test(s.session ?? '');
+  $('#session-chips').hidden = !web && !qq;
+  $('#chat-model').hidden = !web;
+  setChatSession(qq ? s.session : null);
   $('#chat-attach').hidden = !web;
   $('#session-form').hidden = mind || task;
   $('#session-timeline').classList.toggle('is-web', web);

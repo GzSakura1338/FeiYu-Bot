@@ -17,6 +17,8 @@ final class PersonaHandler {
 
     private record OwnersRequest(List<String> owners) {}
 
+    private record BindingRequest(String session, String persona) {}
+
     private record BlockRequest(Boolean enabled, Integer threshold, List<String> remove) {}
 
     private final Gson gson = new Gson();
@@ -77,6 +79,12 @@ final class PersonaHandler {
             } else if (rest.equals("/owners") && method.equals("PUT")) {
                 List<String> owners = store.setOwners(Requests.readJson(ex, OwnersRequest.class).owners());
                 log.info("agent: owner QQ set to " + (owners.isEmpty() ? "(none)" : String.join(",", owners)));
+                HttpResponses.json(ex, state());
+            } else if (rest.equals("/binding") && method.equals("PUT")) {
+                BindingRequest body = Requests.readJson(ex, BindingRequest.class);
+                store.bind(body.session(), body.persona());
+                String bound = store.boundTo(body.session());
+                log.info("agent: persona for " + body.session() + " " + (bound == null ? "follows the global one" : "set to " + bound));
                 HttpResponses.json(ex, state());
             } else if (rest.equals("/none/activate") && method.equals("POST")) {
                 store.setActive(null);
@@ -155,6 +163,7 @@ final class PersonaHandler {
         body.addProperty("active", store.activeId());
         body.add("personas", gson.toJsonTree(store.list()));
         body.add("owners", gson.toJsonTree(store.owners()));
+        body.add("bindings", gson.toJsonTree(store.bindings()));
         return body.toString();
     }
 
