@@ -288,6 +288,15 @@
               <div class="text-field-box"><input id="block-threshold" inputmode="numeric" placeholder="0"><label for="block-threshold">审核触发几次自动拉黑（0=不自动）</label></div>
             </div>
           </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <div class="text-field" style="flex:0 1 220px;min-width:180px">
+              <div class="text-field-box"><input id="block-qq" inputmode="numeric" placeholder=" " spellcheck="false"><label for="block-qq">要拉黑的 QQ 号</label></div>
+            </div>
+            <div class="text-field" style="flex:1 1 260px;min-width:200px;max-width:420px">
+              <div class="text-field-box"><input id="block-reason" placeholder=" "><label for="block-reason">原因（可以不写）</label></div>
+            </div>
+            <button type="button" class="tonal-button label-large state-layer" id="block-add">拉黑</button>
+          </div>
           <div id="block-list" class="body-medium" style="margin:6px 0"></div>
           <button type="button" class="tonal-button label-large state-layer" id="block-save">保存拉黑设置</button>
         </form>

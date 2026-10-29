@@ -51,7 +51,7 @@ public final class WebConsole {
         server.createContext("/api/agent/image-gen", guarded.apply(new ImageGenHandler(agent, log)::handle));
         server.createContext("/api/agent/video", guarded.apply(new VideoHandler(agent, log)::handle));
         server.createContext("/api/usage", guarded.apply(new UsageHandler(agent, usage, directory, onebot)::handle));
-        server.createContext("/api/personas", guarded.apply(new PersonaHandler(agent.personas(), agent.store(), log)::handle));
+        server.createContext("/api/personas", guarded.apply(new PersonaHandler(agent.personas(), agent.store(), bridge::nicknameOf, log)::handle));
         server.createContext("/api/plugins", guarded.apply(new PluginHandler(plugins, installer, bridge, log)::handle));
         server.createContext("/api/mcp", guarded.apply(new McpHandler(plugins.mcp(), log)::handle));
         server.createContext("/api/media", guarded.apply(new MediaHandler(bridge)::handle));

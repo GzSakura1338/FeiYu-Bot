@@ -1720,6 +1720,31 @@ public final class QqChatBridge {
         return names;
     }
 
+    public String nicknameOf(String userId) {
+        if (userId == null || !userId.matches("\\d{5,12}")) {
+            return "";
+        }
+        String friend = contacts.friends().get(userId);
+        if (friend != null && !friend.isBlank()) {
+            return QqMessages.displayName(friend);
+        }
+        String seen = archive.lastKnownName(userId);
+        if (seen != null && !seen.isBlank()) {
+            return QqMessages.displayName(unforgeable(seen));
+        }
+        if (!onebot.status().connected()) {
+            return "";
+        }
+        try {
+            JsonObject params = new JsonObject();
+            params.addProperty("user_id", Long.parseLong(userId));
+            JsonObject data = optObject(outbox.call("get_stranger_info", params, Duration.ofSeconds(5)), "data");
+            return data == null ? "" : QqMessages.displayName(unforgeable(optString(data, "nickname")));
+        } catch (ToolFailure | RuntimeException e) {
+            return "";
+        }
+    }
+
     public Map<String, String> groupNames() {
         return contacts.groups();
     }

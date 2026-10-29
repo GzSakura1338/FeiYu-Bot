@@ -19,26 +19,68 @@ final class PersonaHandler {
 
     private record BindingRequest(String session, String persona) {}
 
-    private record BlockRequest(Boolean enabled, Integer threshold, List<String> remove) {}
+    private record BlockRequest(Boolean enabled, Integer threshold, List<String> remove, String add, String reason) {}
 
     private final Gson gson = new Gson();
     private final PersonaStore store;
     private final dafeiyu.agent.model.AgentStore agentStore;
+    private final java.util.function.Function<String, String> nickname;
     private final LogBuffer log;
 
-    PersonaHandler(PersonaStore store, dafeiyu.agent.model.AgentStore agentStore, LogBuffer log) {
+    PersonaHandler(PersonaStore store, dafeiyu.agent.model.AgentStore agentStore, java.util.function.Function<String, String> nickname, LogBuffer log) {
         this.store = store;
         this.agentStore = agentStore;
+        this.nickname = nickname;
         this.log = log;
     }
 
     private com.google.gson.JsonObject blockState() {
+        var list = new java.util.LinkedHashMap<>(agentStore.blockList());
+        boolean named = false;
+        for (var e : list.entrySet()) {
+            Object name = e.getValue() == null ? null : e.getValue().get("name");
+            if (name == null || name.toString().isBlank() || name.toString().contains("（QQ ")) {
+                String found = nickname.apply(e.getKey());
+                if (!found.isBlank()) {
+                    var entry = new java.util.LinkedHashMap<String, Object>(e.getValue() == null ? java.util.Map.of() : e.getValue());
+                    entry.put("name", found);
+                    e.setValue(entry);
+                    named = true;
+                }
+            }
+        }
+        if (named) {
+            agentStore.setBlockList(list);
+        }
         com.google.gson.JsonObject out = new com.google.gson.JsonObject();
         out.addProperty("enabled", agentStore.blockEnabled());
         out.addProperty("threshold", agentStore.blockThreshold());
-        out.add("list", gson.toJsonTree(agentStore.blockList()));
+        out.add("list", gson.toJsonTree(list));
         out.add("strikes", gson.toJsonTree(agentStore.blockStrikes()));
         return out;
+    }
+
+    private void block(String userId, String reason) {
+        if (!userId.matches("\\d{5,12}")) {
+            throw new IllegalArgumentException("QQ 号要是 5 到 12 位数字");
+        }
+        if (store.isOwner(userId)) {
+            throw new IllegalArgumentException("那是主人，不能拉黑");
+        }
+        var list = new java.util.LinkedHashMap<>(agentStore.blockList());
+        if (list.containsKey(userId)) {
+            throw new IllegalArgumentException("QQ " + userId + " 已经在黑名单里了");
+        }
+        var entry = new java.util.LinkedHashMap<String, Object>();
+        entry.put("name", nickname.apply(userId));
+        entry.put("at", System.currentTimeMillis());
+        entry.put("reason", reason == null || reason.isBlank() ? "主人在控制台拉黑" : reason.strip());
+        list.put(userId, entry);
+        var strikes = new java.util.LinkedHashMap<>(agentStore.blockStrikes());
+        strikes.remove(userId);
+        agentStore.setBlockList(list);
+        agentStore.setBlockStrikes(strikes);
+        log.info("agent: blocked QQ " + userId + " from the console");
     }
 
     void handle(HttpExchange ex) throws IOException {
@@ -72,6 +114,9 @@ final class PersonaHandler {
                     }
                     agentStore.setBlockList(list);
                     agentStore.setBlockStrikes(strikes);
+                }
+                if (req.add() != null && !req.add().isBlank()) {
+                    block(req.add().strip(), req.reason());
                 }
                 log.info("agent: blocklist changed (enabled " + agentStore.blockEnabled()
                         + ", threshold " + agentStore.blockThreshold() + ", size " + agentStore.blockList().size() + ")");

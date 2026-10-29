@@ -125,13 +125,31 @@ async function loadBlocklist() {
   const strikes = b.strikes ?? {};
   const box = $('#block-list');
   box.replaceChildren(...(items.length ? items.map(([id, e]) => {
-    const row = el('div', null, `🚫 ${id}（${e?.name || '未知'}）${e?.reason ?? ''}${strikes[id] ? ` · 已触发 ${strikes[id]} 次` : ''} `);
+    const row = el('div', null, `🚫 ${e?.name || '昵称未知'}（QQ ${id}）${e?.reason ? ` · ${e.reason}` : ''}${strikes[id] ? ` · 已触发 ${strikes[id]} 次` : ''} `);
     const button = el('button', 'text-button', '解除');
     button.type = 'button';
     button.dataset.unblock = id;
     row.append(button);
     return row;
   }) : [el('span', null, '（没拉黑任何人）')]));
+}
+
+async function addBlock() {
+  const qq = $('#block-qq').value.trim();
+  if (!/^\d{5,12}$/.test(qq)) {
+    showSnackbar('QQ 号要是 5 到 12 位数字', 'error');
+    return;
+  }
+  try {
+    const b = await request('PUT', '/blocklist', { add: qq, reason: $('#block-reason').value.trim() });
+    $('#block-qq').value = '';
+    $('#block-reason').value = '';
+    await loadBlocklist();
+    const name = b.list?.[qq]?.name;
+    showSnackbar(`已拉黑 ${name ? `${name}（QQ ${qq}）` : `QQ ${qq}`}${b.enabled ? '' : '；拉黑功能还没打开，勾上「拉黑功能」并保存后才生效'}`, 'success');
+  } catch (err) {
+    showSnackbar(`拉黑失败：${err.message}`, 'error');
+  }
 }
 
 async function saveBlocklist() {
@@ -386,6 +404,15 @@ export function initAgentPersonas() {
   $('#owners-form').addEventListener('input', syncOwners);
   $('#owners-form').addEventListener('submit', saveOwners);
   $('#block-save').addEventListener('click', saveBlocklist);
+  $('#block-add').addEventListener('click', addBlock);
+  for (const id of ['#block-qq', '#block-reason']) {
+    $(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addBlock();
+      }
+    });
+  }
   $('#block-list').addEventListener('click', async e => {
     const id = e.target?.dataset?.unblock;
     if (!id) return;

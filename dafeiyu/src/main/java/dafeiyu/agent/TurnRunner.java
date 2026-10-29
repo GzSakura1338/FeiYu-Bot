@@ -328,7 +328,8 @@ public final class TurnRunner {
                     blocked = true;
                     content = ambient() || "note".equals(turn.source()) ? "" : ContentGuard.deflection();
                     if (!subagent() && "qq".equals(turn.source()) && turn.qqUser() != null) {
-                        agent.noteStrikes(turn.qqUser(), requester());
+                        agent.noteStrikes(turn.qqUser(), turn.roster().entrySet().stream().filter(e -> e.getValue().equals(turn.qqUser()))
+                                .map(e -> e.getKey().replaceFirst("#\\d{4}$", "")).findFirst().orElse(""));
                     }
                     listener.onBlocked(verdict.category().label(), verdict.byModel(), content);
                     if (content.isEmpty()) {
