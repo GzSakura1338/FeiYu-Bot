@@ -7,9 +7,13 @@ import { onAgentViewChange } from './agent-page.js';
 
 const STATUS = { new: '下载中…', saved: '等她认图…', failed: '下载失败', unsafe: '不合适，她不会用' };
 
+const PAGE = 120;
+
 let filter = 'all';
 let stickers = [];
 let vision = true;
+let shown = 0;
+let watcher = null;
 
 async function request(method, path = '', body) {
   const res = await fetch(`/api/agent/stickers${path}`, {
@@ -32,13 +36,20 @@ function caption(s) {
 function card(s) {
   const node = el('button', 'sticker-card state-layer');
   node.type = 'button';
+  node.dataset.id = s.id;
   node.dataset.status = s.hidden ? 'hidden' : s.status;
   const frame = el('span', 'sticker-frame');
   if (s.file) {
     const img = el('img');
-    img.src = `/api/agent/stickers/${s.id}/image`;
+    const thumb = `/api/agent/stickers/${s.id}/thumb`;
+    img.src = thumb;
     img.alt = s.description || `表情包 ${s.id}`;
     img.loading = 'lazy';
+    img.decoding = 'async';
+    if ((s.mime ?? '').includes('gif')) {
+      node.addEventListener('pointerenter', () => { img.src = `/api/agent/stickers/${s.id}/image`; });
+      node.addEventListener('pointerleave', () => { img.src = thumb; });
+    }
     frame.append(img);
   } else {
     frame.append(createIcon('mood'));
@@ -51,10 +62,55 @@ function card(s) {
   return node;
 }
 
+function more() {
+  if (shown >= stickers.length) return;
+  const next = stickers.slice(shown, shown + PAGE);
+  shown += next.length;
+  $('#sticker-grid').append(...next.map(card));
+  requestAnimationFrame(() => {
+    const end = $('#sticker-more');
+    if (end && end.offsetParent !== null && end.getBoundingClientRect().top < window.innerHeight + 600) more();
+  });
+}
+
 function render() {
-  const grid = $('#sticker-grid');
-  grid.replaceChildren(...stickers.map(card));
+  $('#sticker-grid').replaceChildren();
+  shown = 0;
+  more();
   $('#sticker-empty').hidden = stickers.length > 0;
+}
+
+function replaceCard(s) {
+  const index = stickers.findIndex(x => x.id === s.id);
+  if (index >= 0) stickers[index] = s;
+  $(`#sticker-grid .sticker-card[data-id="${s.id}"]`)?.replaceWith(card(s));
+}
+
+function dropCard(id) {
+  const index = stickers.findIndex(x => x.id === id);
+  if (index < 0) return;
+  stickers.splice(index, 1);
+  const node = $(`#sticker-grid .sticker-card[data-id="${id}"]`);
+  if (node) {
+    node.remove();
+    shown--;
+  }
+  $('#sticker-empty').hidden = stickers.length > 0;
+}
+
+function watchBottom() {
+  const grid = $('#sticker-grid');
+  let end = $('#sticker-more');
+  if (!end) {
+    end = el('div');
+    end.id = 'sticker-more';
+    end.style.height = '1px';
+    grid.after(end);
+  }
+  watcher = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting)) more();
+  }, { rootMargin: '600px 0px' });
+  watcher.observe(end);
 }
 
 async function load() {
@@ -99,7 +155,7 @@ async function chooseTarget(anchor, s) {
       try {
         await request('POST', `/${s.id}/send`, { session });
         showSnackbar('已发送', 'success');
-        load();
+        replaceCard({ ...s, sentCount: (s.sentCount ?? 0) + 1 });
       } catch (err) {
         showSnackbar(`发送失败：${err.message}`, 'error');
       }
@@ -119,19 +175,21 @@ function describe(anchor, s) {
   input.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Enter') update(s, { description: input.value.trim() }, '已保存');
-    if (e.key === 'Escape') render();
+    if (e.key === 'Escape') replaceCard(s);
   });
-  input.addEventListener('blur', () => setTimeout(render, 150));
+  input.addEventListener('blur', () => setTimeout(() => {
+    if (anchor.isConnected) replaceCard(stickers.find(x => x.id === s.id) ?? s);
+  }, 150));
 }
 
 async function update(s, patch, message) {
   try {
-    await request('PUT', `/${s.id}`, patch);
+    replaceCard(await request('PUT', `/${s.id}`, patch));
     showSnackbar(message, 'success');
   } catch (err) {
     showSnackbar(`保存失败：${err.message}`, 'error');
+    replaceCard(s);
   }
-  load();
 }
 
 async function remove(s) {
@@ -140,10 +198,10 @@ async function remove(s) {
   try {
     await request('DELETE', `/${s.id}`, {});
     showSnackbar('已删除', 'success');
+    dropCard(s.id);
   } catch (err) {
     showSnackbar(`删除失败：${err.message}`, 'error');
   }
-  load();
 }
 
 async function sync() {
@@ -175,4 +233,5 @@ export function initAgentStickers() {
   }
   $('#stickers-refresh').addEventListener('click', load);
   $('#stickers-sync').addEventListener('click', sync);
+  watchBottom();
 }

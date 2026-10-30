@@ -2,9 +2,14 @@ package dafeiyu.agent.sticker;
 
 import dafeiyu.db.Database;
 
+import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -41,6 +46,9 @@ public final class StickerStore {
     private static final String COLUMNS = "id, hash, source, url, file, mime, description, status, hidden, seen_count, sent_count, first_seen, last_seen, last_sent";
 
     private final Database db;
+    private static final String THUMBS = "thumbs";
+    private static final int THUMB_SIDE = 192;
+
     private final Path dir;
 
     public StickerStore(Database db, Path dir) {
@@ -85,7 +93,7 @@ public final class StickerStore {
             case "hidden" -> "WHERE hidden = 1 OR status = 'unsafe'";
             default -> "WHERE hidden = 0 AND status <> 'unsafe'";
         };
-        return db.list("SELECT " + COLUMNS + " FROM stickers " + where + " ORDER BY source = 'favorite' DESC, source = 'collected' DESC, last_seen DESC LIMIT 600",
+        return db.list("SELECT " + COLUMNS + " FROM stickers " + where + " ORDER BY source = 'favorite' DESC, source = 'collected' DESC, last_seen DESC LIMIT 5000",
                 StickerStore::map);
     }
 
@@ -140,6 +148,7 @@ public final class StickerStore {
         if (!sticker.file().isEmpty()) {
             try {
                 Files.deleteIfExists(dir.resolve(sticker.file()));
+                Files.deleteIfExists(thumbFile(sticker));
             } catch (IOException ignored) {
             }
         }
@@ -148,6 +157,44 @@ public final class StickerStore {
 
     public Path path(Sticker sticker) {
         return sticker.file().isEmpty() ? null : dir.resolve(sticker.file());
+    }
+
+    private Path thumbFile(Sticker sticker) {
+        return dir.resolve(THUMBS).resolve(sticker.file() + ".thumb");
+    }
+
+    public Path thumbnail(Sticker sticker) {
+        Path source = path(sticker);
+        if (source == null || !Files.isRegularFile(source)) {
+            return null;
+        }
+        Path thumb = thumbFile(sticker);
+        if (Files.isRegularFile(thumb)) {
+            return thumb;
+        }
+        try {
+            BufferedImage image = ImageIO.read(source.toFile());
+            if (image == null) {
+                return null;
+            }
+            double scale = Math.min(1.0, (double) THUMB_SIDE / Math.max(image.getWidth(), image.getHeight()));
+            int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
+            int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
+            boolean alpha = image.getColorModel().hasAlpha();
+            BufferedImage small = new BufferedImage(width, height, alpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = small.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(image, 0, 0, width, height, null);
+            g.dispose();
+            Files.createDirectories(thumb.getParent());
+            Path partial = thumb.resolveSibling(thumb.getFileName() + "." + Thread.currentThread().threadId() + ".tmp");
+            ImageIO.write(small, alpha ? "png" : "jpg", partial.toFile());
+            Files.move(partial, thumb, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            return thumb;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     public String note(int limit) {

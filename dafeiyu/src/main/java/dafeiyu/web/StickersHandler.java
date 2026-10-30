@@ -57,6 +57,17 @@ final class StickersHandler {
                 JsonObject body = new JsonObject();
                 body.addProperty("count", bridge.syncFavorites());
                 HttpResponses.json(ex, body.toString());
+            } else if (rest.endsWith("/thumb") && method.equals("GET")) {
+                Sticker sticker = require(rest.substring(1, rest.length() - "/thumb".length()));
+                Path thumb = store.thumbnail(sticker);
+                Path file = thumb != null ? thumb : store.path(sticker);
+                if (file == null || !Files.isRegularFile(file)) {
+                    HttpResponses.notFound(ex);
+                    return;
+                }
+                byte[] bytes = Files.readAllBytes(file);
+                ex.getResponseHeaders().set("Cache-Control", "max-age=604800");
+                HttpResponses.send(ex, 200, thumb != null ? dafeiyu.agent.model.ImageLoader.mime(bytes) : sticker.mime().isEmpty() ? "image/png" : sticker.mime(), bytes);
             } else if (rest.endsWith("/image") && method.equals("GET")) {
                 Sticker sticker = require(rest.substring(1, rest.length() - "/image".length()));
                 Path file = store.path(sticker);
