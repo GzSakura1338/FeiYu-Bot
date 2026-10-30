@@ -55,6 +55,8 @@ final class ShellTool extends TextTool {
             - Use it to run scripts you wrote, compute things, convert or check files. Prefer the file tools (read, write, edit, glob, grep) for reading and editing files.
             - Commands run in the working directory unless workdir is given. Use relative paths.
             - Output over 200 KB per stream is truncated. Long-running servers or interactive programs will just hit the timeout; do not start them.
+            - Browsers (Edge, Chrome, headless or not, Playwright, Selenium) cannot run in the sandbox: they fail or hang until the timeout.
+              Do not try to screenshot or preview pages with them; send the finished file instead.
             - Chain dependent commands with &&.""";
 
     private static final String SITE_CUSTOMIZE = """

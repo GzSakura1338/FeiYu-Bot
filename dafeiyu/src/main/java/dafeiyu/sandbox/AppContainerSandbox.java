@@ -113,6 +113,16 @@ final class AppContainerSandbox {
     private static final MethodHandle WRITE_FILE = fn(KERNEL32, "WriteFile", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS));
     private static final MethodHandle PROCESS_ID = fn(KERNEL32, "GetProcessId", FunctionDescriptor.of(JAVA_INT, ADDRESS));
     private static final MethodHandle STRING_TO_SID = fn(ADVAPI32, "ConvertStringSidToSidW", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
+    private static final MethodHandle STRING_TO_SD = fn(ADVAPI32, "ConvertStringSecurityDescriptorToSecurityDescriptorW",
+            FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_INT, ADDRESS, ADDRESS));
+    private static final SymbolLookup USER32 = SymbolLookup.libraryLookup("user32", GLOBAL);
+    private static final MethodHandle CREATE_DESKTOP = fn(USER32, "CreateDesktopW",
+            FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS));
+    private static final String DESKTOP = "dafeiyu-sandbox";
+    private static final String DESKTOP_ACCESS = "D:(A;;GA;;;OW)(A;;GA;;;SY)(A;;GA;;;AC)S:(ML;;NW;;;LW)";
+    private static final int GENERIC_ALL = 0x10000000;
+    private static MemorySegment desktop;
+    private static boolean desktopTried;
 
     private static MemorySegment sid;
     private static String sidString;
@@ -120,6 +130,36 @@ final class AppContainerSandbox {
     private static final Map<String, String> NAMED_TEXT = new ConcurrentHashMap<>();
 
     private AppContainerSandbox() {}
+
+    static synchronized MemorySegment desktop() {
+        if (desktopTried) {
+            return desktop;
+        }
+        desktopTried = true;
+        try {
+            MemorySegment sd = GLOBAL.allocate(ADDRESS);
+            if ((int) STRING_TO_SD.invokeExact(wide(GLOBAL, DESKTOP_ACCESS), 1, sd, MemorySegment.NULL) == 0) {
+                return null;
+            }
+            MemorySegment attributes = GLOBAL.allocate(24);
+            attributes.set(JAVA_INT, 0, 24);
+            attributes.set(ADDRESS, 8, sd.get(ADDRESS, 0));
+            attributes.set(JAVA_INT, 16, 0);
+            MemorySegment handle = (MemorySegment) CREATE_DESKTOP.invokeExact(wide(GLOBAL, DESKTOP), MemorySegment.NULL, MemorySegment.NULL,
+                    0, GENERIC_ALL, attributes);
+            if (handle.address() != 0) {
+                desktop = wide(GLOBAL, "WinSta0\\" + DESKTOP);
+            }
+        } catch (Throwable e) {
+            desktop = null;
+        }
+        return desktop;
+    }
+
+    private static MemorySegment desktopOrDefault() {
+        MemorySegment d = desktop();
+        return d == null ? MemorySegment.NULL : d;
+    }
 
     private static MethodHandle fn(SymbolLookup lib, String name, FunctionDescriptor descriptor) {
         return LINKER.downcallHandle(lib.find(name).orElseThrow(() -> new IllegalStateException("missing " + name)), descriptor);
@@ -295,6 +335,7 @@ final class AppContainerSandbox {
 
                 MemorySegment startup = arena.allocate(112);
                 startup.set(JAVA_INT, 0, 112);
+                startup.set(ADDRESS, 16, desktopOrDefault());
                 startup.set(JAVA_INT, 60, STARTF_USESTDHANDLES);
                 startup.set(ADDRESS, 80, in[0]);
                 startup.set(ADDRESS, 88, out[1]);
@@ -412,6 +453,7 @@ final class AppContainerSandbox {
                         MemorySegment.NULL, MemorySegment.NULL), "UpdateProcThreadAttribute(handles)");
                 MemorySegment startup = arena.allocate(112);
                 startup.set(JAVA_INT, 0, 112);
+                startup.set(ADDRESS, 16, desktopOrDefault());
                 startup.set(JAVA_INT, 60, STARTF_USESTDHANDLES);
                 startup.set(ADDRESS, 80, in[0]);
                 startup.set(ADDRESS, 88, out[1]);
