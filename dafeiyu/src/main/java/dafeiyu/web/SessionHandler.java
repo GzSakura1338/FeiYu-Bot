@@ -165,7 +165,11 @@ final class SessionHandler {
                 : kind.equals("task") ? title : names.of(s.session())));
         item.addProperty("busy", busy);
         if (kind.equals("task")) {
-            item.add("task", taskInfo(s.session(), title, names, busy));
+            JsonObject task = taskInfo(s.session(), title, names, busy);
+            if (task.has("result") && task.get("result").isJsonPrimitive()) {
+                task.addProperty("result", dafeiyu.util.Texts.abbreviate(task.get("result").getAsString(), 120));
+            }
+            item.add("task", task);
         }
         return item;
     }

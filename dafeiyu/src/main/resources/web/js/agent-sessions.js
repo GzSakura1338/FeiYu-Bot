@@ -13,6 +13,7 @@ import { QUIET, isMind, loadMindStatus, mindEntry, mindMoment, showMindBar } fro
 import { attachmentNodes, isPoke, parseAttachments, pokeNote, stripPlaceholders } from './msg-attachments.js';
 import { stickToBottom } from './stick-bottom.js';
 import { setChatSession } from './agent-personas.js';
+import { lazyList } from './lazy-list.js';
 
 const KIND_LABEL = { group: '群聊', private: '私聊', web: '测试', mind: '内心', task: '后台任务' };
 const TASK_STATUS = { queued: '排队中', running: '在做', paused: '暂停了', done: '做好了', failed: '没做成', interrupted: '中断了', ended: '已结束' };
@@ -102,6 +103,8 @@ let live = new Map();
 let running = new Map();
 let source = null;
 let listTimer = 0;
+let listFrame = 0;
+let listRows = null;
 let started = false;
 let bottom = null;
 const drafts = new Map();
@@ -240,7 +243,7 @@ function taskGroup(id, tasks) {
   text.append(head, el('div', 'body-small session-item-preview', summary));
   const chevron = createIcon('chevron_right', 'icon-18 session-group-chevron');
   item.append(sessionAvatar({ kind: 'task' }), text, chevron);
-  const sub = fold(groupOpen[id], tasks.map(sessionItem));
+  const sub = fold(groupOpen[id], () => tasks.map(sessionItem));
   onActivate(item, () => {
     openGroup(id, !groupOpen[id]);
     toggleFold(item, sub, groupOpen[id]);
@@ -270,31 +273,41 @@ function fold(open, children) {
   sub.inert = !open;
   const inner = el('ul', 'session-subgroup-list');
   inner.setAttribute('role', 'group');
-  inner.append(...children);
+  if (open) inner.append(...children());
+  else sub.fill = () => inner.append(...children());
   sub.append(inner);
   return sub;
 }
 
 function toggleFold(header, sub, open) {
   header.setAttribute('aria-expanded', String(open));
+  if (open && sub.fill) {
+    sub.fill();
+    sub.fill = null;
+    void sub.offsetHeight;
+  }
   sub.classList.toggle('open', open);
   sub.inert = !open;
 }
 
 function renderList() {
-  const list = $('#session-list');
+  if (!listFrame) listFrame = requestAnimationFrame(drawList);
+}
+
+function drawList() {
+  listFrame = 0;
+  listRows ??= lazyList($('#session-list'));
   const shown = sessions.filter(visible);
   $('#session-list-empty').hidden = shown.length > 0;
   const tasks = shown.filter(s => s.kind === 'task' && (!isArchivedTask(s) || s.session === selected))
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
   const others = shown.filter(s => s.kind !== 'task');
-  const nodes = others.filter(s => s.kind === 'mind').map(sessionItem);
+  const head = others.filter(s => s.kind === 'mind').map(sessionItem);
   for (const id of ['mind', 'qq']) {
     const group = tasks.filter(s => taskGroupOf(s) === id);
-    if (group.length) nodes.push(...taskGroup(id, group));
+    if (group.length) head.push(...taskGroup(id, group));
   }
-  nodes.push(...others.filter(s => s.kind !== 'mind').map(sessionItem));
-  list.replaceChildren(...nodes);
+  listRows.render(head, others.filter(s => s.kind !== 'mind'), sessionItem);
 }
 
 async function loadList() {
@@ -706,6 +719,7 @@ function newChat() {
 function setFilter(value) {
   filter = value;
   for (const b of $$('#session-filter button')) b.setAttribute('aria-checked', String(b.dataset.filter === value));
+  listRows?.reset();
   renderList();
 }
 

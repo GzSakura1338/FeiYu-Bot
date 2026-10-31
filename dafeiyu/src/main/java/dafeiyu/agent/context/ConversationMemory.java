@@ -180,10 +180,9 @@ public final class ConversationMemory {
     public List<SessionSummary> sessions() {
         return db.list("""
                 WITH keys AS (SELECT session FROM conversation_turns UNION SELECT session FROM conversation_sessions),
-                stats AS (SELECT session, COUNT(*) AS turns, MAX(created_at) AS last_turn, MAX(id) AS last_id
-                          FROM conversation_turns GROUP BY session)
+                stats AS (SELECT session, COUNT(*) AS turns, MAX(id) AS last_id FROM conversation_turns GROUP BY session)
                 SELECT k.session, COALESCE(t.turns, 0) AS turns,
-                       MAX(COALESCE(t.last_turn, 0), COALESCE(s.updated_at, 0)) AS last_active,
+                       MAX(COALESCE((SELECT created_at FROM conversation_turns c WHERE c.id = t.last_id), 0), COALESCE(s.updated_at, 0)) AS last_active,
                        COALESCE(s.compactions, 0) AS compactions, COALESCE(s.measured_tokens, 0) AS measured,
                        COALESCE(s.summary, '') <> '' AS has_summary,
                        (SELECT content FROM conversation_turns c WHERE c.session = k.session AND c.role <> 'tool' AND c.content <> ''

@@ -13,12 +13,17 @@ import dafeiyu.db.DatabaseException;
 import dafeiyu.log.LogBuffer;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 final class StickersHandler {
 
     private static final String PREFIX = "/api/agent/stickers";
+    private static final int MAX_PAGE = 200;
+    private static final List<String> UNUSED = List.of("hash", "url", "firstSeen", "lastSent");
 
     private record UpdateRequest(String description, Boolean hidden) {}
 
@@ -43,14 +48,21 @@ final class StickersHandler {
             if (!method.equals("GET") && !Requests.isJson(ex)) {
                 HttpResponses.json(ex, 415, error("请求必须带 Content-Type: application/json"));
             } else if ((rest.isEmpty() || rest.equals("/")) && method.equals("GET")) {
-                String query = ex.getRequestURI().getQuery();
-                String filter = query != null && query.startsWith("filter=") ? query.substring(7) : "all";
+                String filter = query(ex, "filter");
+                int offset = Math.max(0, number(query(ex, "offset"), 0));
+                int limit = Math.clamp(number(query(ex, "limit"), MAX_PAGE), 1, MAX_PAGE);
+                List<Sticker> page = store.list(filter.isEmpty() ? "all" : filter, offset, limit + 1);
                 JsonArray list = new JsonArray();
-                for (Sticker s : store.list(filter)) {
-                    list.add(gson.toJsonTree(s));
+                for (Sticker s : page.subList(0, Math.min(limit, page.size()))) {
+                    JsonObject item = gson.toJsonTree(s).getAsJsonObject();
+                    for (String unused : UNUSED) {
+                        item.remove(unused);
+                    }
+                    list.add(item);
                 }
                 JsonObject body = new JsonObject();
                 body.add("stickers", list);
+                body.addProperty("more", page.size() > limit);
                 body.addProperty("vision", agent.vision());
                 HttpResponses.json(ex, body.toString());
             } else if (rest.equals("/sync") && method.equals("POST")) {
@@ -125,6 +137,26 @@ final class StickersHandler {
             throw new IllegalArgumentException("这张表情包不存在");
         }
         return sticker;
+    }
+
+    private static String query(HttpExchange ex, String key) {
+        String query = ex.getRequestURI().getRawQuery();
+        if (query != null) {
+            for (String pair : query.split("&")) {
+                if (pair.startsWith(key + "=")) {
+                    return URLDecoder.decode(pair.substring(key.length() + 1), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        return "";
+    }
+
+    private static int number(String raw, int fallback) {
+        try {
+            return raw.isEmpty() ? fallback : Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static String error(String message) {

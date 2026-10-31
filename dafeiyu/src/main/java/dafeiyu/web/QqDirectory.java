@@ -9,8 +9,12 @@ import dafeiyu.onebot.OneBotService;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static dafeiyu.util.Jsons.optObject;
 import static dafeiyu.util.Jsons.optString;
@@ -24,10 +28,16 @@ final class QqDirectory {
     private final MessageArchive archive;
     private volatile Map<String, String> groups = Map.of();
     private volatile Map<String, String> friends = Map.of();
-    private volatile long loadedAt;
+    private volatile Map<String, String> senders;
+    private volatile Map<String, String> seen = Map.of();
+    private volatile long checkedAt;
+    private volatile long listedAt;
+    private final AtomicBoolean reloading = new AtomicBoolean();
     private final Map<String, Card> cards = new ConcurrentHashMap<>();
     private final Map<String, String> strangers = new ConcurrentHashMap<>();
     private final Map<String, Long> misses = new ConcurrentHashMap<>();
+    private final Set<String> looking = ConcurrentHashMap.newKeySet();
+    private final ExecutorService lookups = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("qq-stranger").factory());
 
     QqDirectory(OneBotService onebot, MessageArchive archive) {
         this.onebot = onebot;
@@ -83,8 +93,40 @@ final class QqDirectory {
     private record Card(String name, long at) {}
 
     Names names() {
-        refresh();
-        return new Names(groups, friends, archive.privateSenderNames(), this::stranger);
+        if (senders == null) {
+            reload();
+        } else if (stale() && reloading.compareAndSet(false, true)) {
+            Thread.ofVirtual().name("qq-directory").start(() -> {
+                try {
+                    reload();
+                } finally {
+                    reloading.set(false);
+                }
+            });
+        }
+        return new Names(groups, friends, senders, this::stranger);
+    }
+
+    private boolean stale() {
+        return System.currentTimeMillis() - checkedAt >= REFRESH_MS || listedAt == 0 && onebot.status().connected();
+    }
+
+    private void reload() {
+        checkedAt = System.currentTimeMillis();
+        seen = archive.lastKnownNames();
+        senders = archive.privateSenderNames();
+        if (!onebot.status().connected()) {
+            return;
+        }
+        listedAt = checkedAt;
+        Map<String, String> g = load("get_group_list", "group_id", "group_name", null);
+        if (g != null) {
+            groups = g;
+        }
+        Map<String, String> f = load("get_friend_list", "user_id", "nickname", "remark");
+        if (f != null) {
+            friends = f;
+        }
     }
 
     record Names(Map<String, String> groups, Map<String, String> friends, Map<String, String> senders,
@@ -114,6 +156,10 @@ final class QqDirectory {
     }
 
     private String stranger(String qq) {
+        String name = QqMessages.displayName(seen.getOrDefault(qq, ""));
+        if (!name.isBlank()) {
+            return name;
+        }
         String known = strangers.get(qq);
         if (known != null) {
             return known;
@@ -122,41 +168,37 @@ final class QqDirectory {
         if (missed != null && System.currentTimeMillis() - missed < REFRESH_MS * 10) {
             return "";
         }
-        String name = QqMessages.displayName(java.util.Objects.requireNonNullElse(archive.lastKnownName(qq), ""));
-        if (name.isBlank() && onebot.status().connected() && qq.matches("\\d{5,12}")) {
-            try {
-                JsonObject params = new JsonObject();
-                params.addProperty("user_id", Long.parseLong(qq));
-                JsonObject data = optObject(onebot.callAction("get_stranger_info", params, Duration.ofSeconds(2))
-                        .get(2_500, TimeUnit.MILLISECONDS), "data");
-                name = data == null ? "" : optString(data, "nickname");
-            } catch (Exception e) {
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
+        if (onebot.status().connected() && qq.matches("\\d{5,12}") && looking.add(qq)) {
+            lookups.execute(() -> {
+                try {
+                    lookUp(qq);
+                } finally {
+                    looking.remove(qq);
                 }
+            });
+        } else if (!looking.contains(qq)) {
+            misses.put(qq, System.currentTimeMillis());
+        }
+        return "";
+    }
+
+    private void lookUp(String qq) {
+        String name = "";
+        try {
+            JsonObject params = new JsonObject();
+            params.addProperty("user_id", Long.parseLong(qq));
+            JsonObject data = optObject(onebot.callAction("get_stranger_info", params, Duration.ofSeconds(2))
+                    .get(2_500, TimeUnit.MILLISECONDS), "data");
+            name = data == null ? "" : optString(data, "nickname");
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
             }
         }
         if (name.isBlank()) {
             misses.put(qq, System.currentTimeMillis());
-            return "";
-        }
-        strangers.put(qq, name);
-        return name;
-    }
-
-    private void refresh() {
-        long now = System.currentTimeMillis();
-        if (now - loadedAt < REFRESH_MS || !onebot.status().connected()) {
-            return;
-        }
-        loadedAt = now;
-        Map<String, String> g = load("get_group_list", "group_id", "group_name", null);
-        if (g != null) {
-            groups = g;
-        }
-        Map<String, String> f = load("get_friend_list", "user_id", "nickname", "remark");
-        if (f != null) {
-            friends = f;
+        } else {
+            strangers.put(qq, name);
         }
     }
 

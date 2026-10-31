@@ -5,6 +5,7 @@ import { confirmDialog } from './dialog.js';
 import { createAvatar, createGroupAvatar } from './avatar.js';
 import { ago, formatTime } from './format.js';
 import { onAgentViewChange } from './agent-page.js';
+import { lazyList } from './lazy-list.js';
 
 const GROUPS = [
   { title: '她自己', test: s => s.kind === 'self' || s.kind === 'diary' || s.kind === 'knowledge' || s.kind === 'style' || s.kind === 'skill' || s.kind === 'trash' },
@@ -26,6 +27,9 @@ const HINTS = {
 let state = null;
 let selected = 'self';
 let items = [];
+let scopeRows = null;
+let itemRows = null;
+const clamps = [];
 
 async function request(method, path = '', body) {
   const res = await fetch(`/api/agent/memory${path}`, {
@@ -69,35 +73,38 @@ function renderScopes() {
     list.replaceChildren();
     return;
   }
-  const nodes = [];
+  const rows = [];
   for (const group of GROUPS) {
     const scopes = state.scopes.filter(group.test);
     if (!scopes.length) continue;
-    nodes.push(el('li', 'scope-heading label-medium', group.title));
-    for (const s of scopes) {
-      const item = el('li', 'session-item state-layer');
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', String(s.scope === selected));
-      item.tabIndex = 0;
-      const text = el('div', 'session-item-text');
-      const head = el('div', 'session-item-head');
-      head.append(el('span', 'title-small session-item-name', scopeName(s)));
-      head.append(el('span', 'label-small session-item-time', s.updatedAt ? ago(s.updatedAt) : ''));
-      const unit = { diary: ' 天', knowledge: ' 个词', skill: ' 个' }[s.kind] ?? ' 条';
-      text.append(head, el('div', 'body-small session-item-preview', s.count ? `${s.count}${unit}` : '还没有'));
-      item.append(scopeAvatar(s), text);
-      const open = () => select(s.scope);
-      item.addEventListener('click', open);
-      item.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          open();
-        }
-      });
-      nodes.push(item);
-    }
+    rows.push(group.title, ...scopes);
   }
-  list.replaceChildren(...nodes);
+  scopeRows ??= lazyList(list, 60);
+  scopeRows.render([], rows, scopeItem);
+}
+
+function scopeItem(s) {
+  if (typeof s === 'string') return el('li', 'scope-heading label-medium', s);
+  const item = el('li', 'session-item state-layer');
+  item.setAttribute('role', 'option');
+  item.setAttribute('aria-selected', String(s.scope === selected));
+  item.tabIndex = 0;
+  const text = el('div', 'session-item-text');
+  const head = el('div', 'session-item-head');
+  head.append(el('span', 'title-small session-item-name', scopeName(s)));
+  head.append(el('span', 'label-small session-item-time', s.updatedAt ? ago(s.updatedAt) : ''));
+  const unit = { diary: ' 天', knowledge: ' 个词', skill: ' 个' }[s.kind] ?? ' 条';
+  text.append(head, el('div', 'body-small session-item-preview', s.count ? `${s.count}${unit}` : '还没有'));
+  item.append(scopeAvatar(s), text);
+  const open = () => select(s.scope);
+  item.addEventListener('click', open);
+  item.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
+  });
+  return item;
 }
 
 function renderControls() {
@@ -220,14 +227,19 @@ function clampable(content) {
   const more = el('button', 'memory-item-more label-medium', '展开');
   more.type = 'button';
   more.hidden = true;
-  requestAnimationFrame(() => {
-    more.hidden = content.scrollHeight <= content.clientHeight + 2;
-  });
+  if (!clamps.length) requestAnimationFrame(settleClamps);
+  clamps.push([content, more]);
   more.addEventListener('click', () => {
     const clamped = content.classList.toggle('clamped');
     more.textContent = clamped ? '展开' : '收起';
   });
   return more;
+}
+
+function settleClamps() {
+  const batch = clamps.splice(0).filter(([content]) => content.isConnected);
+  const long = batch.map(([content]) => content.scrollHeight > content.clientHeight + 2);
+  batch.forEach(([, more], i) => { more.hidden = !long[i]; });
 }
 
 function memoryItem(m) {
@@ -324,9 +336,9 @@ function renderItems() {
     trash: '回收站是空的',
     skill: '还没学会什么技能。聊天里遇到不会的事、被人教会了，回顾时就会总结成技能',
   }[selected] ?? '这里还没有记忆';
-  list.replaceChildren(...(items.length
-    ? items.map(selected === 'skill' ? skillItem : selected === 'trash' ? trashItem : memoryItem)
-    : [el('div', 'empty-state body-medium', empty)]));
+  itemRows ??= lazyList(list, 30);
+  itemRows.render(items.length ? [] : [el('div', 'empty-state body-medium', empty)], items,
+    selected === 'skill' ? skillItem : selected === 'trash' ? trashItem : memoryItem);
   $('#memory-download-all').hidden = selected !== 'skill' || !items.length;
 }
 
@@ -429,6 +441,8 @@ async function loadState() {
 async function select(scope) {
   selected = scope;
   items = [];
+  itemRows?.reset();
+  $('#memory-list').scrollTop = 0;
   renderScopes();
   renderHeader();
   await loadItems();
@@ -503,8 +517,10 @@ async function toggleAuto() {
 }
 
 async function refresh() {
-  await loadState();
-  await loadItems();
+  const scope = selected;
+  const known = Boolean(state?.persona);
+  await Promise.all([loadState(), known && loadItems()]);
+  if (!known || scope !== selected) await loadItems();
 }
 
 export function initAgentMemory() {

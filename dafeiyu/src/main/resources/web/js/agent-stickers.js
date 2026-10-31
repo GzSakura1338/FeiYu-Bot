@@ -14,6 +14,10 @@ let stickers = [];
 let vision = true;
 let shown = 0;
 let watcher = null;
+let hasMore = false;
+let fetching = false;
+let generation = 0;
+let skew = 0;
 
 async function request(method, path = '', body) {
   const res = await fetch(`/api/agent/stickers${path}`, {
@@ -62,8 +66,37 @@ function card(s) {
   return node;
 }
 
+function inFilter(s) {
+  if (filter === 'hidden') return s.hidden || s.status === 'unsafe';
+  if (s.hidden) return false;
+  return filter === 'all' ? s.status !== 'unsafe' : s.source === filter;
+}
+
+async function fetchMore() {
+  if (fetching || !hasMore) return;
+  const run = generation;
+  fetching = true;
+  let data;
+  try {
+    data = await request('GET', `?filter=${filter}&offset=${stickers.length - skew}&limit=${PAGE}`);
+  } catch (err) {
+    showSnackbar(`读取表情包失败：${err.message}`, 'error');
+    return;
+  } finally {
+    fetching = false;
+  }
+  if (run !== generation) return;
+  const known = new Set(stickers.map(s => s.id));
+  stickers.push(...data.stickers.filter(s => !known.has(s.id)));
+  hasMore = data.more;
+  more();
+}
+
 function more() {
-  if (shown >= stickers.length) return;
+  if (shown >= stickers.length) {
+    fetchMore();
+    return;
+  }
   const next = stickers.slice(shown, shown + PAGE);
   shown += next.length;
   $('#sticker-grid').append(...next.map(card));
@@ -82,13 +115,17 @@ function render() {
 
 function replaceCard(s) {
   const index = stickers.findIndex(x => x.id === s.id);
-  if (index >= 0) stickers[index] = s;
+  if (index >= 0) {
+    skew += inFilter(stickers[index]) - inFilter(s);
+    stickers[index] = s;
+  }
   $(`#sticker-grid .sticker-card[data-id="${s.id}"]`)?.replaceWith(card(s));
 }
 
 function dropCard(id) {
   const index = stickers.findIndex(x => x.id === id);
   if (index < 0) return;
+  if (!inFilter(stickers[index])) skew--;
   stickers.splice(index, 1);
   const node = $(`#sticker-grid .sticker-card[data-id="${id}"]`);
   if (node) {
@@ -109,18 +146,24 @@ function watchBottom() {
   }
   watcher = new IntersectionObserver(entries => {
     if (entries.some(e => e.isIntersecting)) more();
-  }, { rootMargin: '600px 0px' });
+  }, { root: grid.closest('.content'), rootMargin: '600px 0px' });
   watcher.observe(end);
 }
 
 async function load() {
+  const run = ++generation;
   try {
-    const data = await request('GET', `?filter=${filter}`);
+    const data = await request('GET', `?filter=${filter}&offset=0&limit=${PAGE}`);
+    if (run !== generation) return;
     stickers = data.stickers;
     vision = data.vision;
+    hasMore = data.more;
   } catch (err) {
+    if (run !== generation) return;
     showSnackbar(`读取表情包失败：${err.message}`, 'error');
+    hasMore = false;
   }
+  skew = 0;
   render();
 }
 

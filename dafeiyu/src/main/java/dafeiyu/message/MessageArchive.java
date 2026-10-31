@@ -252,6 +252,15 @@ public final class MessageArchive {
         return names;
     }
 
+    public Map<String, String> lastKnownNames() {
+        Map<String, String> names = new HashMap<>();
+        db.list("""
+                SELECT user_id, sender_name FROM messages WHERE id IN (
+                    SELECT MAX(id) FROM messages WHERE direction = 'in' AND sender_name <> '' GROUP BY user_id)
+                """, rs -> names.put(rs.getString(1), rs.getString(2)));
+        return names;
+    }
+
     public Stats stats() {
         long startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
         return db.one("""

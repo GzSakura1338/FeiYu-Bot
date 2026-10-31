@@ -85,7 +85,7 @@ public final class StickerStore {
         return db.one("SELECT " + COLUMNS + " FROM stickers WHERE hash = ?", StickerStore::map, hash);
     }
 
-    public List<Sticker> list(String filter) {
+    public List<Sticker> list(String filter, int offset, int limit) {
         String where = switch (filter == null ? "" : filter) {
             case "favorite" -> "WHERE source = 'favorite' AND hidden = 0";
             case "collected" -> "WHERE source = 'collected' AND hidden = 0";
@@ -93,8 +93,9 @@ public final class StickerStore {
             case "hidden" -> "WHERE hidden = 1 OR status = 'unsafe'";
             default -> "WHERE hidden = 0 AND status <> 'unsafe'";
         };
-        return db.list("SELECT " + COLUMNS + " FROM stickers " + where + " ORDER BY source = 'favorite' DESC, source = 'collected' DESC, last_seen DESC LIMIT 5000",
-                StickerStore::map);
+        return db.list("SELECT " + COLUMNS + " FROM stickers " + where
+                        + " ORDER BY source = 'favorite' DESC, source = 'collected' DESC, last_seen DESC, id DESC LIMIT ? OFFSET ?",
+                StickerStore::map, limit, offset);
     }
 
     List<Sticker> pending(int limit) {
