@@ -54,10 +54,13 @@ public record Markup(String thought, String said, List<Note> notes, List<String>
             + "(?:内心|內心|心里|心裡|心声|心聲|嘀咕|独白|獨白)[^<>＜＞\\n]{0,10}[>＞]");
     private static final Pattern THOUGHT_LINE = Pattern.compile("(?m)^[ \\t]*(?:[【\\[（(][ \\t]*(?:内心|內心)[^】\\]）)\\n]{0,4}[】\\]）)][ \\t]*[:：]?"
             + "|(?:内心|內心)[^:：\\n]{0,4}[:：])(.*)$");
+    private static final Pattern THOUGHT_ENGLISH = Pattern.compile("[<＜]\\s*(/?)\\s*(?:inner(?:[ _-]?(?:voice|thoughts?|monologue|mind|monolog))?|monologue|innervoice)\\s*[>＞]",
+            Pattern.CASE_INSENSITIVE);
     private static final Map<String, String> SIMPLIFIED = Map.of("內心", "内心", "記住", "记住", "承諾", "承诺");
 
     static String normalize(String text) {
-        String aliased = THOUGHT_ALIAS.matcher(text).replaceAll(m -> Matcher.quoteReplacement("<" + m.group(1) + "内心>"));
+        String aliased = THOUGHT_ENGLISH.matcher(text).replaceAll(m -> Matcher.quoteReplacement("<" + m.group(1) + "内心>"));
+        aliased = THOUGHT_ALIAS.matcher(aliased).replaceAll(m -> Matcher.quoteReplacement("<" + m.group(1) + "内心>"));
         aliased = THOUGHT_LINE.matcher(aliased).replaceAll(m -> Matcher.quoteReplacement(THOUGHT_OPEN + m.group(1).strip() + THOUGHT_CLOSE));
         return TAG.matcher(aliased).replaceAll(m -> Matcher.quoteReplacement(
                 "<" + m.group(1) + SIMPLIFIED.getOrDefault(m.group(2), m.group(2)) + m.group(3).stripTrailing() + ">"));

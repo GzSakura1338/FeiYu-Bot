@@ -93,14 +93,19 @@ final class StreamCollector {
                 toolCalls.add(new ToolCall(c.id.isEmpty() ? "call_" + e.getKey() : c.id, c.name, c.arguments.toString()));
             }
         }
-        String content = text.toString().strip();
+        ThinkBlocks.Split split = ThinkBlocks.split(text.toString().strip());
+        String content = split.answer();
+        String thinking = reasoning.toString().strip();
+        if (!split.thinking().isEmpty()) {
+            thinking = thinking.isEmpty() ? split.thinking() : thinking + "\n\n" + split.thinking();
+        }
         if (content.isEmpty() && toolCalls.isEmpty()) {
             throw new AgentException(Kind.EMPTY_REPLY, finishReason.equals(lengthReason)
                     ? "empty reply: output hit the token limit (reasoning may have used it all), raise it or leave it empty"
                     : "empty reply from model");
         }
         long latencyMs = (System.nanoTime() - start) / 1_000_000;
-        return new ChatResult(content, reasoning.toString().strip(), toolCalls, model, latencyMs,
+        return new ChatResult(content, thinking, toolCalls, model, latencyMs,
                 promptTokens, completionTokens, cachedTokens, finishReason);
     }
 }
