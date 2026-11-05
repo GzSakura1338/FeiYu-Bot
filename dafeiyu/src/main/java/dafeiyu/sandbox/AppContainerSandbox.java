@@ -1,6 +1,7 @@
 package dafeiyu.sandbox;
 
 import dafeiyu.agent.tool.ToolFailure;
+import dafeiyu.util.PipeThreads;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -377,8 +378,8 @@ final class AppContainerSandbox {
                 int resumed = (int) RESUME_THREAD.invokeExact(thread);
                 Capture stdout = new Capture(out[0]);
                 Capture stderr = new Capture(err[0]);
-                Thread a = Thread.ofVirtual().start(stdout);
-                Thread b = Thread.ofVirtual().start(stderr);
+                Thread a = PipeThreads.start("appcontainer-stdout", stdout);
+                Thread b = PipeThreads.start("appcontainer-stderr", stderr);
                 int waited = (int) WAIT.invokeExact(process, (int) Math.min(Integer.MAX_VALUE, timeoutMs));
                 boolean timedOut = waited == WAIT_TIMEOUT;
                 int killed = (int) TERMINATE_JOB.invokeExact(job, timedOut ? 1 : 0);

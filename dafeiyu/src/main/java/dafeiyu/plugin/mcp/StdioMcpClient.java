@@ -9,6 +9,7 @@ import dafeiyu.plugin.rpc.RpcChannel.RpcError;
 import dafeiyu.sandbox.Platform;
 import dafeiyu.sandbox.Sandbox;
 import dafeiyu.sandbox.Sandboxes;
+import dafeiyu.util.PipeThreads;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -101,7 +102,7 @@ final class StdioMcpClient extends McpClient {
         }, problem -> stderr.accept("protocol: " + problem), () -> { });
         StdioMcpClient client = new StdioMcpClient(spawned, channel);
         channel.start("mcp-" + config.name());
-        Thread.ofVirtual().name("mcp-stderr-" + config.name()).start(() -> {
+        PipeThreads.start("mcp-stderr-" + config.name(), () -> {
             try (BufferedReader err = new BufferedReader(new InputStreamReader(spawned.stderr(), StandardCharsets.UTF_8))) {
                 String text;
                 while ((text = err.readLine()) != null) {
