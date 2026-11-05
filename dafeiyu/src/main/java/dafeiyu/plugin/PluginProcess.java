@@ -6,6 +6,7 @@ import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.plugin.rpc.RpcChannel;
 import dafeiyu.sandbox.Sandbox;
 import dafeiyu.sandbox.Sandboxes;
+import dafeiyu.util.PipeThreads;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -45,7 +46,7 @@ final class PluginProcess {
         PluginProcess process = new PluginProcess(id, spawned, channel);
         self[0] = process;
         channel.start(id);
-        Thread.ofVirtual().name("plugin-stderr-" + id).start(() -> {
+        PipeThreads.start("plugin-stderr-" + id, () -> {
             try (BufferedReader err = new BufferedReader(new InputStreamReader(spawned.stderr(), StandardCharsets.UTF_8))) {
                 String text;
                 while ((text = err.readLine()) != null) {

@@ -1,6 +1,7 @@
 package dafeiyu.sandbox;
 
 import dafeiyu.agent.tool.ToolFailure;
+import dafeiyu.util.PipeThreads;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -42,8 +43,8 @@ final class Processes {
             process.getOutputStream().close();
             Capture out = new Capture(process.getInputStream());
             Capture err = new Capture(process.getErrorStream());
-            Thread outThread = Thread.ofVirtual().start(out);
-            Thread errThread = Thread.ofVirtual().start(err);
+            Thread outThread = PipeThreads.start("proc-stdout", out);
+            Thread errThread = PipeThreads.start("proc-stderr", err);
             boolean done = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
             if (!done) {
                 killTree(process);

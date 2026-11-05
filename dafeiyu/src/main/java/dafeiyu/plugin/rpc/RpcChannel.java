@@ -5,6 +5,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import dafeiyu.util.PipeThreads;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -81,7 +82,8 @@ public final class RpcChannel {
     }
 
     public void start(String name) {
-        Thread.ofVirtual().name("plugin-rpc-" + name).start(this::readLoop);
+        // 读循环在插件活着期间一直阻塞读管道, 用平台线程 (见 PipeThreads); 处理请求仍交给虚拟线程
+        PipeThreads.start("plugin-rpc-" + name, this::readLoop);
     }
 
     public boolean closed() {
