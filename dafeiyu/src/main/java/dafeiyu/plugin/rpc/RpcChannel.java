@@ -82,7 +82,6 @@ public final class RpcChannel {
     }
 
     public void start(String name) {
-        // 读循环在插件活着期间一直阻塞读管道, 用平台线程 (见 PipeThreads); 处理请求仍交给虚拟线程
         PipeThreads.start("plugin-rpc-" + name, this::readLoop);
     }
 
