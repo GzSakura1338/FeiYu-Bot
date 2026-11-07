@@ -16,6 +16,7 @@ import dafeiyu.agent.SubagentSettings;
 import dafeiyu.agent.ToolCall;
 import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.model.ImageLoader;
+import dafeiyu.agent.model.ModelFailover;
 import dafeiyu.agent.model.ModelLimits;
 import dafeiyu.agent.model.ModelProfile;
 import dafeiyu.agent.protocol.Protocols;
@@ -87,6 +88,22 @@ final class AgentHandler {
                 create(ex);
             } else if (path.startsWith("/profiles/") && path.endsWith("/activate") && method.equals("POST")) {
                 activate(ex, path.substring("/profiles/".length(), path.length() - "/activate".length()));
+            } else if (path.startsWith("/profiles/") && path.endsWith("/fallback") && method.equals("POST")) {
+                fallback(ex, path.substring("/profiles/".length(), path.length() - "/fallback".length()));
+            } else if (path.equals("/fallback") && method.equals("DELETE")) {
+                store.setFallback("");
+                log.info("agent: backup model cleared");
+                HttpResponses.json(ex, state());
+            } else if (path.equals("/failover/restore") && method.equals("POST")) {
+                agent.failover().restore();
+                HttpResponses.json(ex, state());
+            } else if (path.equals("/failover/probe") && method.equals("POST")) {
+                String result = agent.failover().probeNow();
+                if (!result.isEmpty()) {
+                    HttpResponses.json(ex, 502, error("主模型还是不通：" + result));
+                } else {
+                    HttpResponses.json(ex, state());
+                }
             } else if (path.startsWith("/profiles/") && path.endsWith("/probe-vision") && method.equals("POST")) {
                 probeVision(ex, path.substring("/profiles/".length(), path.length() - "/probe-vision".length()));
             } else if (path.startsWith("/profiles/") && method.equals("PUT")) {
@@ -223,8 +240,26 @@ final class AgentHandler {
     private void activate(HttpExchange ex, String id) throws IOException {
         ModelProfile profile = require(id);
         if (!id.equals(store.activeId())) {
+            if (id.equals(store.fallbackId())) {
+                store.setFallback("");
+            }
             store.setActive(id);
             log.info("agent: now using " + profile.name() + " (" + profile.model() + ")");
+        }
+        HttpResponses.json(ex, state());
+    }
+
+    private void fallback(HttpExchange ex, String id) throws IOException {
+        ModelProfile profile = require(id);
+        if (id.equals(store.activeId())) {
+            throw new IllegalArgumentException("正在使用的模型不能同时当备用，先选另一个模型当主模型");
+        }
+        if (id.equals(store.fallbackId())) {
+            store.setFallback("");
+            log.info("agent: backup model cleared");
+        } else {
+            store.setFallback(id);
+            log.info("agent: backup model set to " + profile.name() + " (" + profile.model() + ")");
         }
         HttpResponses.json(ex, state());
     }
@@ -503,6 +538,13 @@ final class AgentHandler {
         body.add("pacing", gson.toJsonTree(store.pacing()));
         body.add("housekeeping", gson.toJsonTree(store.housekeeping()));
         body.addProperty("active", store.activeId());
+        body.addProperty("fallback", store.fallbackId());
+        AgentStore.Failover failover = store.fallbackId() == null ? null : store.failover();
+        if (failover != null) {
+            JsonObject f = gson.toJsonTree(failover).getAsJsonObject();
+            f.addProperty("nextProbeAt", failover.probedAt() + ModelFailover.PROBE_EVERY_MS);
+            body.add("failover", f);
+        }
         body.add("profiles", profiles);
         return body.toString();
     }

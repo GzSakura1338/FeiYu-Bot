@@ -203,6 +203,27 @@ public final class MessageArchive {
                 """, rs -> rs.getString(1), since, limit);
     }
 
+    public record PrivatePeer(String userId, String name, long lastIn, long lastOut, int unread, String latest) {}
+
+    public List<PrivatePeer> privateInbox(long since, int limit) {
+        return db.list("""
+                SELECT p.user_id, p.last_in, p.last_out,
+                  (SELECT COUNT(*) FROM messages m WHERE m.direction = 'in' AND m.message_type = 'private' AND m.user_id = p.user_id
+                     AND m.time > p.last_out) AS unread,
+                  (SELECT m.sender_name FROM messages m WHERE m.direction = 'in' AND m.message_type = 'private' AND m.user_id = p.user_id
+                     ORDER BY m.id DESC LIMIT 1) AS name,
+                  (SELECT m.content FROM messages m WHERE m.direction = 'in' AND m.message_type = 'private' AND m.user_id = p.user_id
+                     ORDER BY m.id DESC LIMIT 1) AS latest
+                FROM (SELECT i.user_id, MAX(i.time) AS last_in,
+                        COALESCE((SELECT MAX(o.time) FROM messages o WHERE o.direction = 'out' AND o.message_type = 'private'
+                          AND o.group_id = i.user_id), 0) AS last_out
+                      FROM messages i WHERE i.direction = 'in' AND i.message_type = 'private' AND i.time >= ?
+                      GROUP BY i.user_id) p
+                ORDER BY p.last_in DESC LIMIT ?
+                """, rs -> new PrivatePeer(rs.getString("user_id"), rs.getString("name"), rs.getLong("last_in"), rs.getLong("last_out"),
+                rs.getInt("unread"), rs.getString("latest")), since, Math.max(1, limit));
+    }
+
     public void recordOutgoing(String messageType, String groupId, String targetUserId, String selfId,
                                String selfName, String messageId, String content) {
         insert(System.currentTimeMillis(), "out", messageType,

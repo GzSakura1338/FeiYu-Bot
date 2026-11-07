@@ -18,6 +18,8 @@ import dafeiyu.agent.tool.ToolFailure;
 import dafeiyu.agent.tool.ToolResult;
 import dafeiyu.agent.tool.Workspace;
 import dafeiyu.log.LogBuffer;
+import dafeiyu.message.MessageArchive;
+import dafeiyu.util.Clock;
 import dafeiyu.util.Jsons;
 
 import java.net.URI;
@@ -64,11 +66,12 @@ public final class QqApiTools {
     private final QqOutbox outbox;
     private final QqActions actions;
     private final QqContacts contacts;
+    private final MessageArchive archive;
     private final LogBuffer log;
     private final Deque<Long> writes = new ArrayDeque<>();
 
     QqApiTools(ChatAgent agent, QqApi api, QqApiPolicy policy, QqChatBridge bridge, QqOutbox outbox, QqActions actions, QqContacts contacts,
-               LogBuffer log) {
+               MessageArchive archive, LogBuffer log) {
         this.agent = agent;
         this.api = api;
         this.policy = policy;
@@ -76,6 +79,7 @@ public final class QqApiTools {
         this.outbox = outbox;
         this.actions = actions;
         this.contacts = contacts;
+        this.archive = archive;
         this.log = log;
     }
 
@@ -350,6 +354,9 @@ public final class QqApiTools {
             out.append("。").append(a.description());
         }
         out.append(policy.access(a.name()) == Access.READ ? "［只读］" : "［会改动东西］");
+        if (QqApiPolicy.locked(a.name()) && policy.allowed(a.name())) {
+            out.append("［高危：").append(QqApiPolicy.lockReason(a.name())).append("］");
+        }
         if (!QqApiPolicy.sideEffect(a.name()).isEmpty()) {
             out.append("［注意：").append(QqApiPolicy.sideEffect(a.name())).append("］");
         }
@@ -632,7 +639,28 @@ public final class QqApiTools {
         if (SEND.contains(name)) {
             return send(name, params, context);
         }
+        if (name.equals("get_recent_contact")) {
+            return recentContacts((int) Math.clamp(number(params, "count", 10), 1, 50), bool(params, "only_unread", false));
+        }
         return null;
+    }
+
+    private String recentContacts(int count, boolean onlyUnread) {
+        List<MessageArchive.PrivatePeer> peers = archive.privateInbox(System.currentTimeMillis() - Duration.ofDays(30).toMillis(), onlyUnread ? 200 : count)
+                .stream().filter(p -> !onlyUnread || p.unread() > 0).limit(count).toList();
+        if (peers.isEmpty()) {
+            return onlyUnread ? "最近 30 天没有没回的私聊：每个人发来的私聊你都回过了。" : "最近 30 天没人私聊过你。";
+        }
+        long waiting = peers.stream().filter(p -> p.unread() > 0).count();
+        StringBuilder out = new StringBuilder(onlyUnread ? "有未读私聊的人（" + peers.size() + " 个）：" : "最近私聊过你的 " + peers.size() + " 个人（其中 " + waiting + " 个有未读）：");
+        for (MessageArchive.PrivatePeer p : peers) {
+            String who = p.name() == null || p.name().isBlank() ? "QQ " + p.userId() : QqMessages.displayName(p.name()) + "（" + p.userId() + "）";
+            out.append("\n- ").append(who).append("：最后一条 ").append(Clock.ago(p.lastIn())).append("「")
+                    .append(abbreviate(QqMessages.plain(p.latest()), 60)).append("」；")
+                    .append(p.unread() > 0 ? (p.lastOut() > 0 ? "你最后一次回 TA 之后又发了 " : "你还没回过 TA，一共发了 ") + p.unread() + " 条未读"
+                            : "你已经回过");
+        }
+        return out.append("\n（这是你自己记下的私聊记录，不是 QQ 客户端的红点；要看具体内容就用 get_friend_msg_history 填 user_id）").toString();
     }
 
     private String send(String name, JsonObject params, ToolContext context) throws ToolFailure {

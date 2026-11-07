@@ -3,6 +3,7 @@ package dafeiyu.agent.qq;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import dafeiyu.agent.AgentException;
 import dafeiyu.agent.ChatAgent;
 import dafeiyu.agent.ChatMessage;
@@ -195,7 +196,7 @@ public final class QqChatBridge {
         outbox.numberSentImages(images::numberSent);
         this.voice = new QqVoice(outbox, db.file().toAbsolutePath().getParent().resolve("voice"));
         this.actions = new QqActions(agent, archive, outbox, contacts, log);
-        this.forwards = new QqForwards(db, archive, outbox, images, log);
+        this.forwards = new QqForwards(db, archive, outbox, images, agent.videoFrames(), log);
         agent.setImageSource(new ChatAgent.ImageSource() {
             @Override
             public byte[] load(long id) throws ToolFailure {
@@ -220,7 +221,7 @@ public final class QqChatBridge {
                 o.requested(requests.line(r));
             }
         });
-        this.qqApi = new QqApiTools(agent, QqApi.load(), new QqApiPolicy(db), this, outbox, actions, contacts, log);
+        this.qqApi = new QqApiTools(agent, QqApi.load(), new QqApiPolicy(db), this, outbox, actions, contacts, archive, log);
         agent.setOwnerTools(() -> {
             List<Tool> tools = new ArrayList<>(requests.ownerTools());
             tools.addAll(qqApi.tools());
@@ -228,7 +229,17 @@ public final class QqChatBridge {
         });
         agent.setSessionTools(session -> session.startsWith("group:") ? List.of(leaveTool(session.substring(6))) : List.of());
         agent.setElsewhere(this::elsewhere);
-        agent.setForwardReader(forwards::describe);
+        agent.setForwardReader(new ChatAgent.ForwardReader() {
+            @Override
+            public String read(String id, int from) throws ToolFailure {
+                return forwards.describe(id, from);
+            }
+
+            @Override
+            public dafeiyu.agent.tool.ToolResult readWithImages(String id, int from, int maxImages) throws ToolFailure {
+                return forwards.readWithImages(id, from, maxImages);
+            }
+        });
         agent.setPoker((session, userId) -> {
             try {
                 return poke(session, userId);
@@ -844,6 +855,15 @@ public final class QqChatBridge {
         }
     }
 
+    private List<String> ambientPictures(List<Line> lines) {
+        if (!agent.vision()) {
+            return List.of();
+        }
+        List<String> pictures = lines.stream().filter(l -> !l.seen()).flatMap(l -> l.imageUrls().stream())
+                .filter(u -> !u.startsWith(QqMessages.VIDEO_REF) && images.numberOf(u) != null).distinct().toList();
+        return pictures.subList(Math.max(0, pictures.size() - MAX_IMAGES), pictures.size());
+    }
+
     private List<String> takeRecentMedia(String groupId, String userId) {
         List<RecentMedia> got = recentMedia.remove(groupId + ":" + userId);
         long now = System.currentTimeMillis();
@@ -1157,8 +1177,9 @@ public final class QqChatBridge {
         Target target = trigger == null
                 ? Target.group(state.groupId, "", selfId, "")
                 : Target.group(state.groupId, trigger.userId(), selfId, trigger.messageId());
-        Media media = trigger == null ? new Media(List.of(), "")
-                : media(target, Stream.concat(trigger.imageUrls().stream(), takeRecentMedia(state.groupId, trigger.userId()).stream()).distinct().toList());
+        Media media = trigger != null
+                ? media(target, Stream.concat(trigger.imageUrls().stream(), takeRecentMedia(state.groupId, trigger.userId()).stream()).distinct().toList())
+                : notes.isEmpty() ? media(target, ambientPictures(lines)) : new Media(List.of(), "");
         if (!media.note().isEmpty()) {
             prompt.append("\n").append(media.note());
         }
@@ -1172,7 +1193,7 @@ public final class QqChatBridge {
         List<String> present = people.stream().distinct().limit(6).toList();
         Map<String, String> roster = state.roster(people.stream().distinct().toList());
         ChatTurn turn = trigger == null
-                ? new ChatTurn(session, ChatMessage.user(prompt.toString()), "0", outbox.files(target),
+                ? new ChatTurn(session, ChatMessage.user(prompt.toString(), images), "0", outbox.files(target),
                         notes.isEmpty() ? "ambient" : "note", present, roster, true)
                 : new ChatTurn(session, ChatMessage.user(prompt.toString(), images), trigger.userId(), outbox.files(target), "qq", present, roster, true);
         if (trigger != null) {
@@ -1874,50 +1895,105 @@ public final class QqChatBridge {
     private record Media(List<ImagePart> parts, String note) {}
 
     private Media media(Target target, List<String> urls) {
-        List<ImagePart> parts = new ArrayList<>(download(target, urls.stream().filter(u -> !u.startsWith(QqMessages.VIDEO_REF)).toList()));
+        List<String> notes = new ArrayList<>();
+        List<ImagePart> parts = new ArrayList<>(download(target, urls.stream().filter(u -> !u.startsWith(QqMessages.VIDEO_REF)).toList(), notes));
         List<String> videos = urls.stream().filter(u -> u.startsWith(QqMessages.VIDEO_REF)).distinct().toList();
         if (videos.isEmpty()) {
-            return new Media(parts, "");
+            return new Media(parts, String.join("\n", notes));
         }
         if (!agent.videoFrames().config().enabled() || !agent.vision()) {
             log.info("agent [" + target.where() + "] " + videos.size() + " video(s) skipped: "
                     + (agent.videoFrames().config().enabled() ? "the model cannot see images" : "watching videos is turned off"));
-            return new Media(parts, "");
+            notes.add("（对方发的视频没给你截图：" + (agent.videoFrames().config().enabled() ? "现在的模型看不了图" : "主人把看视频关了")
+                    + "。你只知道有个视频，别说你看了，也别猜里面是什么）");
+            return new Media(parts, String.join("\n", notes));
         }
-        List<String> notes = new ArrayList<>();
         for (int i = 0; i < videos.size(); i++) {
+            String which = videos.size() > 1 ? "第 " + (i + 1) + " 个视频" : "视频";
             try {
-                VideoFrames.Frames frames = agent.videoFrames().extract(videos.get(i).substring(QqMessages.VIDEO_REF.length()));
+                VideoFrames.Frames frames = frames(target, videos.get(i));
                 int start = parts.size() + 1;
                 parts.addAll(frames.parts());
-                String which = videos.size() > 1 ? "第 " + (i + 1) + " 个视频" : "视频";
                 notes.add(start > 1 || videos.size() > 1 ? "（第 " + start + " 到第 " + parts.size() + " 张图是" + which + "的截图）" + frames.note() : frames.note());
                 log.info("agent [" + target.where() + "] looked at a video through " + frames.parts().size() + " frames");
             } catch (ToolFailure e) {
                 log.warn("agent [" + target.where() + "] video skipped: " + e.getMessage());
+                notes.add("（" + which + "没截到画面：" + abbreviate(String.valueOf(e.getMessage()), 120)
+                        + "。你只知道有个视频，别说你看了，也别猜里面是什么；想知道就请对方说说或者重发）");
             }
         }
         return new Media(parts, String.join("\n", notes));
     }
 
-    private List<ImagePart> download(Target target, List<String> imageUrls) {
+    private VideoFrames.Frames frames(Target target, String ref) throws ToolFailure {
+        String url = QqMessages.videoUrl(ref);
+        String messageId = QqMessages.videoMessage(ref);
+        ToolFailure first = null;
+        if (!url.isEmpty()) {
+            try {
+                return agent.videoFrames().extract(url);
+            } catch (ToolFailure e) {
+                first = e;
+            }
+        }
+        String fresh = messageId.isEmpty() ? "" : freshVideo(messageId);
+        if (!fresh.isEmpty() && !fresh.equals(url)) {
+            log.info("agent [" + target.where() + "] video link refreshed through get_msg " + messageId);
+            return agent.videoFrames().extract(fresh);
+        }
+        throw first != null ? first : new ToolFailure("QQ 没给视频的下载地址");
+    }
+
+    private String freshVideo(String messageId) {
+        JsonObject params = new JsonObject();
+        params.add("message_id", messageId.matches("-?\\d{1,18}") ? new JsonPrimitive(Long.parseLong(messageId)) : new JsonPrimitive(messageId));
+        try {
+            return QqMessages.videoLink(optObject(outbox.call("get_msg", params, Duration.ofSeconds(20)), "data"));
+        } catch (ToolFailure | RuntimeException e) {
+            log.warn("agent: get_msg " + messageId + " for a video link failed: " + e.getMessage());
+            return "";
+        }
+    }
+
+    private List<ImagePart> download(Target target, List<String> imageUrls, List<String> notes) {
         List<ImagePart> parts = new ArrayList<>();
         boolean vision = !imageUrls.isEmpty() && agent.vision();
+        List<String> failed = new ArrayList<>();
         for (String url : imageUrls.subList(0, Math.min(MAX_IMAGES, imageUrls.size()))) {
+            String number = url.startsWith(STICKER_REF) ? null : url.startsWith(PICTURE_REF) ? url.substring(PICTURE_REF.length()) : images.numberOf(url);
             try {
-                parts.add(url.startsWith(PICTURE_REF) ? ImageLoader.fromBytes(images.load(Long.parseLong(url.substring(PICTURE_REF.length()))))
+                parts.add(url.startsWith(PICTURE_REF) ? ImageLoader.fromBytes(images.load(Long.parseLong(number)))
                         : url.startsWith(STICKER_REF) ? stickerPart(Long.parseLong(url.substring(STICKER_REF.length())))
-                        : ImageLoader.download(url));
-                String number = url.startsWith(STICKER_REF) || !vision ? null
-                        : url.startsWith(PICTURE_REF) ? url.substring(PICTURE_REF.length()) : images.numberOf(url);
-                if (number != null) {
+                        : picture(url, number));
+                if (number != null && vision) {
                     agent.noteSeenImage(target.session(), number);
                 }
             } catch (AgentException | ToolFailure | IOException e) {
                 log.warn("agent [" + target.where() + "] image skipped: " + e.getMessage());
+                failed.add(number == null ? "一张图" : "图片#" + number);
             }
         }
+        List<String> over = imageUrls.subList(Math.min(MAX_IMAGES, imageUrls.size()), imageUrls.size()).stream()
+                .map(u -> u.startsWith(STICKER_REF) ? null : u.startsWith(PICTURE_REF) ? u.substring(PICTURE_REF.length()) : images.numberOf(u))
+                .map(n -> n == null ? "一张图" : "图片#" + n).toList();
+        if (vision && !failed.isEmpty()) {
+            notes.add("（" + String.join("、", failed) + " 没加载出来，画面没给你，别猜内容；可以用 view_image 再试一次，还不行就请对方重发）");
+        }
+        if (vision && !over.isEmpty()) {
+            notes.add("（一次最多附 " + MAX_IMAGES + " 张图，" + String.join("、", over) + " 没附上；要看就用 view_image 填编号）");
+        }
         return parts;
+    }
+
+    private ImagePart picture(String url, String number) throws AgentException, ToolFailure {
+        try {
+            return ImageLoader.download(url);
+        } catch (AgentException e) {
+            if (number == null || ImageLoader.TOO_LARGE.equals(e.getMessage())) {
+                throw e;
+            }
+            return ImageLoader.fromBytes(images.load(Long.parseLong(number)));
+        }
     }
 
     private ImagePart stickerPart(long id) throws AgentException, IOException {

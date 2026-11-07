@@ -14,6 +14,7 @@ import dafeiyu.agent.memory.Reflection;
 import dafeiyu.agent.memory.SkillStore;
 import dafeiyu.agent.model.AgentStore;
 import dafeiyu.agent.model.Capabilities;
+import dafeiyu.agent.model.ModelFailover;
 import dafeiyu.agent.model.ModelLimits;
 import dafeiyu.agent.model.ModelProfile;
 import dafeiyu.agent.persona.PersonaStore;
@@ -55,6 +56,7 @@ public final class ChatAgent {
     private final ImageGen imageGen;
     private final VideoFrames videoFrames;
     private final BackgroundTasks tasks;
+    private final ModelFailover failover;
     private final SessionMonitor monitor = new SessionMonitor();
     private final Map<String, ReentrantLock> sessions = new ConcurrentHashMap<>();
 
@@ -84,6 +86,7 @@ public final class ChatAgent {
         this.imageGen = new ImageGen(db);
         this.videoFrames = new VideoFrames(db);
         this.housekeeping = new Housekeeping(db, store);
+        this.failover = new ModelFailover(store);
     }
 
     public Housekeeping housekeeping() {
@@ -199,15 +202,15 @@ public final class ChatAgent {
 
     public interface ForwardReader {
 
-        String read(String id) throws dafeiyu.agent.tool.ToolFailure;
+        String read(String id, int from) throws dafeiyu.agent.tool.ToolFailure;
 
-        default dafeiyu.agent.tool.ToolResult readWithImages(String id, int maxImages)
+        default dafeiyu.agent.tool.ToolResult readWithImages(String id, int from, int maxImages)
                 throws dafeiyu.agent.tool.ToolFailure {
-            return dafeiyu.agent.tool.ToolResult.text(read(id));
+            return dafeiyu.agent.tool.ToolResult.text(read(id, from));
         }
     }
 
-    private volatile ForwardReader forwards = id -> {
+    private volatile ForwardReader forwards = (id, from) -> {
         throw new dafeiyu.agent.tool.ToolFailure("QQ 没连上，读不了合并转发");
     };
 
@@ -215,12 +218,12 @@ public final class ChatAgent {
         this.forwards = forwards;
     }
 
-    String readForward(String id) throws dafeiyu.agent.tool.ToolFailure {
-        return forwards.read(id);
+    String readForward(String id, int from) throws dafeiyu.agent.tool.ToolFailure {
+        return forwards.read(id, from);
     }
 
-    dafeiyu.agent.tool.ToolResult readForwardWithImages(String id) throws dafeiyu.agent.tool.ToolFailure {
-        return vision() ? forwards.readWithImages(id, 6) : dafeiyu.agent.tool.ToolResult.text(forwards.read(id));
+    dafeiyu.agent.tool.ToolResult readForwardWithImages(String id, int from) throws dafeiyu.agent.tool.ToolFailure {
+        return vision() ? forwards.readWithImages(id, from, 10) : dafeiyu.agent.tool.ToolResult.text(forwards.read(id, from));
     }
 
     private volatile java.util.function.Consumer<String> subagentResults = text -> intercom().report(BackgroundTasks.MIND, text);
@@ -328,6 +331,64 @@ public final class ChatAgent {
         }
     }
 
+    private static final class Progress implements StreamListener {
+
+        private final StreamListener inner;
+        private volatile boolean moved;
+
+        Progress(StreamListener inner) {
+            this.inner = inner;
+        }
+
+        @Override
+        public void onText(String delta) {
+            moved = true;
+            inner.onText(delta);
+        }
+
+        @Override
+        public void onReasoning(String delta) {
+            inner.onReasoning(delta);
+        }
+
+        @Override
+        public void onCompaction(String reason) {
+            inner.onCompaction(reason);
+        }
+
+        @Override
+        public void onRetry(int attempt, long delayMs, String error) {
+            inner.onRetry(attempt, delayMs, error);
+        }
+
+        @Override
+        public void onToolCall(ToolCall call) {
+            moved = true;
+            inner.onToolCall(call);
+        }
+
+        @Override
+        public void onToolResult(ToolCall call, String output, boolean error) {
+            inner.onToolResult(call, output, error);
+        }
+
+        @Override
+        public void onBlocked(String category, boolean byModel, String replacement) {
+            moved = true;
+            inner.onBlocked(category, byModel, replacement);
+        }
+
+        @Override
+        public void onSaved() {
+            moved = true;
+            inner.onSaved();
+        }
+    }
+
+    public ModelFailover failover() {
+        return failover;
+    }
+
     @FunctionalInterface
     private interface Work<T> {
         T run(TurnRunner runner) throws AgentException;
@@ -428,7 +489,17 @@ public final class ChatAgent {
             }
             try {
                 monitor.running(watch);
-                result = work.run(new TurnRunner(this, memory, compactor, capabilities, turn, monitor.listener(watch, listener), watch::cancelled));
+                Progress progress = new Progress(monitor.listener(watch, listener));
+                TurnRunner runner = new TurnRunner(this, memory, compactor, capabilities, turn, progress, watch::cancelled);
+                try {
+                    result = work.run(runner);
+                } catch (AgentException e) {
+                    if (watch.cancelled() || !failover.handle(e, runner.profile()) || progress.moved) {
+                        throw e;
+                    }
+                    listener.onRetry(1, 0, "main model failed, retrying with the backup model");
+                    result = work.run(new TurnRunner(this, memory, compactor, capabilities, turn, progress, watch::cancelled));
+                }
                 return result;
             } finally {
                 lock.unlock();

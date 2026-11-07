@@ -31,7 +31,21 @@ public final class QqApi {
 
     private record Catalog(String version, List<String> categories, List<Action> actions) {}
 
+    private record Patch(String summary, String description, List<Param> params) {}
+
     private static final String RESOURCE = "/snowluma-api.json";
+    private static final Map<String, Patch> PATCHES = Map.of(
+            "get_recent_contact", new Patch("最近私聊过的人和未读私信",
+                    "按最近来消息排序，列出每个人的 QQ、名字、最后一条私聊和时间，以及你最后一次回 TA 之后 TA 又发了几条（未读）。"
+                            + "数据来自你自己记下的私聊记录（最近 30 天）；SnowLuma 原版这个接口是占位、恒返回空，这里换成了本地记录",
+                    List.of(new Param("count", "number", false, "最多列几个人，默认 10，最多 50"),
+                            new Param("only_unread", "boolean", false, "填 true 只列有未读的人"))),
+            "set_group_leave", new Patch("退出群（真的会退，自己是群主时直接解散群）",
+                    "不是查询接口：调用就立刻退出 group_id 这个群，自己是群主时会解散群，撤销不了。"
+                            + "想退群请用 leave_group 工具，它会先把话说完、告诉主人，还有次数限制", null),
+            "get_friend_msg_history", new Patch("获取和某个好友的私聊记录（一次只能查一个人）",
+                    "返回：{ messages }：好友消息事件对象数组（每项为 OneBot 消息事件，内部字段不固定）。"
+                            + "想知道谁私聊过你、谁有未读，先用 get_recent_contact，再用这个看具体内容", null));
 
     private final String version;
     private final List<String> categories;
@@ -43,7 +57,10 @@ public final class QqApi {
         this.categories = catalog.categories() == null ? List.of() : List.copyOf(catalog.categories());
         for (Action a : catalog.actions() == null ? List.<Action>of() : catalog.actions()) {
             if (a != null && a.name() != null && !a.name().isBlank()) {
-                Action action = new Action(a.name(), a.aliases(), a.summary(), a.description(), a.category(), a.origin(), a.params());
+                Patch patch = PATCHES.get(a.name());
+                Action action = patch == null ? new Action(a.name(), a.aliases(), a.summary(), a.description(), a.category(), a.origin(), a.params())
+                        : new Action(a.name(), a.aliases(), patch.summary(), patch.description(), a.category(), a.origin(),
+                                patch.params() == null ? a.params() : patch.params());
                 actions.put(action.name(), action);
                 action.aliases().forEach(alias -> aliases.put(alias, action.name()));
             }

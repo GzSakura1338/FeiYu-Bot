@@ -96,6 +96,8 @@ public final class Main {
         agent.reflection().setLog(log);
         agent.reflection().start();
         agent.stickers().setLog(log);
+        agent.failover().setLog(log::warn);
+        agent.failover().start();
         QqChatBridge bridge = new QqChatBridge(agent, onebot, archive, db, log);
         bridge.startLife();
         Path dataDir = db.file().toAbsolutePath().getParent();

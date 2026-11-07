@@ -57,6 +57,10 @@ public final class QqApiPolicy {
         return !ALSO_WRITE.contains(name) && (READ.matcher(name).find() || ALSO_READ.contains(name)) ? Access.READ : Access.WRITE;
     }
 
+    public static boolean pinned(String name) {
+        return LOCKED.containsKey(name) && defaultAccess(name) == Access.WRITE;
+    }
+
     public static String sideEffect(String name) {
         return SIDE_EFFECTS.getOrDefault(name, "");
     }
@@ -110,7 +114,7 @@ public final class QqApiPolicy {
         JsonObject access = new JsonObject();
         current.access().forEach((name, kind) -> access.addProperty(name, kind.name()));
         accessChanges.forEach((name, kind) -> {
-            if (kind == defaultAccess(name)) {
+            if (kind == defaultAccess(name) || pinned(name)) {
                 access.remove(name);
             } else {
                 access.addProperty(name, kind.name());
@@ -123,7 +127,7 @@ public final class QqApiPolicy {
     }
 
     public Access access(String name) {
-        return config().access().getOrDefault(name, defaultAccess(name));
+        return pinned(name) ? Access.WRITE : config().access().getOrDefault(name, defaultAccess(name));
     }
 
     public boolean allowed(String name) {
