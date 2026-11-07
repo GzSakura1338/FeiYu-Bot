@@ -19,14 +19,25 @@ public final class ModelRetry {
     private static final int MAX_RETRIES = 10;
     private static final int MAX_TIMEOUT_RETRIES = 3;
 
+    private static final int QUICK_RETRIES = 1;
+    private static final int QUICK_TIMEOUT_RETRIES = 0;
+
     private final StreamListener listener;
     private final BooleanSupplier cancelled;
+    private final int maxRetries;
+    private final int maxTimeoutRetries;
     private int retries;
     private int timeouts;
 
     public ModelRetry(StreamListener listener, BooleanSupplier cancelled) {
+        this(listener, cancelled, false);
+    }
+
+    public ModelRetry(StreamListener listener, BooleanSupplier cancelled, boolean quick) {
         this.listener = listener;
         this.cancelled = cancelled;
+        this.maxRetries = quick ? QUICK_RETRIES : MAX_RETRIES;
+        this.maxTimeoutRetries = quick ? QUICK_TIMEOUT_RETRIES : MAX_TIMEOUT_RETRIES;
     }
 
     public <T> T run(Attempt<T> attempt) throws AgentException {
@@ -57,10 +68,10 @@ public final class ModelRetry {
     }
 
     private long decide(AgentException e) {
-        if (!e.retryable() || retries >= MAX_RETRIES) {
+        if (!e.retryable() || retries >= maxRetries) {
             return -1;
         }
-        if (e.kind() == Kind.TIMEOUT && ++timeouts > MAX_TIMEOUT_RETRIES) {
+        if (e.kind() == Kind.TIMEOUT && ++timeouts > maxTimeoutRetries) {
             return -1;
         }
         long gap = Math.min(BASE_MS << Math.min(retries, 20), GAP_MAX_MS);

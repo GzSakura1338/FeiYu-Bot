@@ -18,6 +18,8 @@ import java.util.UUID;
 public final class AgentStore {
 
     private static final String ACTIVE_KEY = "agent.active";
+    private static final String FALLBACK_KEY = "agent.fallback";
+    private static final String FAILOVER_KEY = "agent.failover";
     private static final String HOUSEKEEPING_KEY = "agent.housekeeping";
     private static final String QQ_REPLY_KEY = "agent.qqReply";
     private static final String GROUP_MODE_KEY = "agent.groupMode";
@@ -69,8 +71,68 @@ public final class AgentStore {
     }
 
     public synchronized ModelProfile active() {
+        String fallback = failover() == null ? null : fallbackId();
+        if (fallback != null && !fallback.equals(activeId())) {
+            ModelProfile backup = get(fallback);
+            if (backup != null) {
+                return backup;
+            }
+        }
+        return primary();
+    }
+
+    public synchronized ModelProfile primary() {
         String id = activeId();
         return id == null ? null : get(id);
+    }
+
+    public record Failover(long since, String reason, long probedAt, String probe) {}
+
+    public synchronized String fallbackId() {
+        String id = settings.get(FALLBACK_KEY);
+        return id == null || id.isEmpty() || get(id) == null ? null : id;
+    }
+
+    public synchronized void setFallback(String id) {
+        settings.put(FALLBACK_KEY, id == null ? "" : id);
+        if (id == null || id.isEmpty()) {
+            settings.put(FAILOVER_KEY, "");
+        }
+    }
+
+    public synchronized Failover failover() {
+        String raw = settings.get(FAILOVER_KEY);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return GSON.fromJson(raw, Failover.class);
+        } catch (JsonParseException e) {
+            return null;
+        }
+    }
+
+    public synchronized boolean failOver(String reason) {
+        String fallback = fallbackId();
+        if (fallback == null || fallback.equals(activeId()) || failover() != null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        settings.put(FAILOVER_KEY, GSON.toJson(new Failover(now, reason == null ? "" : reason, now, "")));
+        return true;
+    }
+
+    public synchronized void probed(String result) {
+        Failover f = failover();
+        if (f != null) {
+            settings.put(FAILOVER_KEY, GSON.toJson(new Failover(f.since(), f.reason(), System.currentTimeMillis(), result == null ? "" : result)));
+        }
+    }
+
+    public synchronized boolean restorePrimary() {
+        boolean was = failover() != null;
+        settings.put(FAILOVER_KEY, "");
+        return was;
     }
 
     public synchronized ModelProfile add(ModelProfile profile) {
@@ -153,6 +215,7 @@ public final class AgentStore {
 
     public synchronized void setActive(String id) {
         settings.put(ACTIVE_KEY, id);
+        settings.put(FAILOVER_KEY, "");
     }
 
     public boolean qqReply() {

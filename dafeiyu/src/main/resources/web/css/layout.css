@@ -250,6 +250,16 @@ body {
   background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
 }
 .ws-item .ws-actions { display: flex; flex: none; }
+.ws-item .ws-actions .icon-button.selected { color: var(--md-sys-color-primary); background: var(--md-sys-color-secondary-container); }
+.failover-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 8px; padding: 10px 16px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface-variant);
+}
+.failover-banner.active { background: var(--md-custom-color-warning-container); color: var(--md-custom-color-on-warning-container); }
+.failover-banner .failover-text { flex: 1 1 320px; display: grid; gap: 2px; }
+.failover-banner .failover-reason { opacity: .85; word-break: break-all; }
+.failover-banner .failover-actions { display: flex; gap: 8px; flex: none; }
 .ws-item.busy { opacity: .6; pointer-events: none; }
 
 .ws-preview {

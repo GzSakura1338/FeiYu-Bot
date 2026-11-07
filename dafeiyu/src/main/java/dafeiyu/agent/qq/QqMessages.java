@@ -42,6 +42,7 @@ public final class QqMessages {
     static Incoming parse(JsonObject event, String selfId, BiFunction<String, String, String> nameOf, BiFunction<String, String, String> stickers,
                           BiFunction<String, String, String> photos) {
         JsonElement message = event.get("message");
+        String messageId = optString(event, "message_id");
         StringBuilder text = new StringBuilder();
         List<String> images = new ArrayList<>();
         Set<String> mentions = new LinkedHashSet<>();
@@ -74,7 +75,7 @@ public final class QqMessages {
                         String label = other(optString(seg, "type"), name -> optString(data, name));
                         text.append(label);
                         attachOther(attachments, optString(seg, "type"), name -> optString(data, name), label);
-                        addVideo(images, optString(seg, "type"), optString(data, "url"), optString(data, "file"), optString(data, "name"));
+                        addVideo(images, messageId, optString(seg, "type"), optString(data, "url"), optString(data, "file"), optString(data, "name"));
                     }
                 }
             }
@@ -100,7 +101,7 @@ public final class QqMessages {
                         String label = other(m.group(1), name -> params.getOrDefault(name, ""));
                         text.append(label);
                         attachOther(attachments, m.group(1), name -> params.getOrDefault(name, ""), label);
-                        addVideo(images, m.group(1), params.getOrDefault("url", ""), params.getOrDefault("file", ""), params.getOrDefault("name", ""));
+                        addVideo(images, messageId, m.group(1), params.getOrDefault("url", ""), params.getOrDefault("file", ""), params.getOrDefault("name", ""));
                     }
                 }
                 last = m.end();
@@ -272,10 +273,54 @@ public final class QqMessages {
         return false;
     }
 
-    private static void addVideo(List<String> images, String type, String url, String file, String name) {
-        if ((type.equals("video") || videoFile(type, file, name)) && (url.startsWith("http://") || url.startsWith("https://"))) {
-            images.add(VIDEO_REF + url);
+    private static void addVideo(List<String> images, String messageId, String type, String url, String file, String name) {
+        if (!type.equals("video") && !videoFile(type, file, name)) {
+            return;
         }
+        String link = web(url) ? url : web(file) ? file : "";
+        String id = messageId == null ? "" : messageId.strip();
+        if (!link.isEmpty() || type.equals("video") && !id.isEmpty()) {
+            images.add(VIDEO_REF + id + " " + link);
+        }
+    }
+
+    private static boolean web(String url) {
+        return url != null && (url.startsWith("http://") || url.startsWith("https://"));
+    }
+
+    static String videoUrl(String ref) {
+        String rest = ref.substring(VIDEO_REF.length());
+        int space = rest.indexOf(' ');
+        return space < 0 ? rest : rest.substring(space + 1);
+    }
+
+    static String videoMessage(String ref) {
+        String rest = ref.substring(VIDEO_REF.length());
+        int space = rest.indexOf(' ');
+        return space < 0 ? "" : rest.substring(0, space);
+    }
+
+    static String videoLink(JsonObject event) {
+        JsonElement message = event == null ? null : event.get("message");
+        if (message != null && message.isJsonArray()) {
+            for (JsonElement element : message.getAsJsonArray()) {
+                JsonObject seg = element.isJsonObject() ? element.getAsJsonObject() : null;
+                JsonObject data = seg == null ? null : optObject(seg, "data");
+                if (data != null && "video".equals(optString(seg, "type"))) {
+                    String url = optString(data, "url");
+                    return web(url) ? url : web(optString(data, "file")) ? optString(data, "file") : "";
+                }
+            }
+        }
+        Matcher m = CQ_CODE.matcher(event == null ? "" : optString(event, "raw_message"));
+        while (m.find()) {
+            if (m.group(1).equals("video")) {
+                Map<String, String> params = cqParams(m.group(2));
+                String url = params.getOrDefault("url", "");
+                return web(url) ? url : web(params.getOrDefault("file", "")) ? params.get("file") : "";
+            }
+        }
+        return "";
     }
 
     private static void addImage(StringBuilder text, List<String> images, String url, String summary, String type,

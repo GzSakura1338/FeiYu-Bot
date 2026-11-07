@@ -226,6 +226,10 @@ public final class TurnRunner {
         return set.build();
     }
 
+    ModelProfile profile() {
+        return profile;
+    }
+
     ChatResult run() throws AgentException {
         long started = System.nanoTime();
         conversation = memory.load(turn.session());
@@ -262,7 +266,7 @@ public final class TurnRunner {
             }
             ChatResult result;
             try {
-                result = new ModelRetry(listener, cancelled).run(() -> protocol.stream(profile, request, listener));
+                result = new ModelRetry(listener, cancelled, agent.failover().ready(profile)).run(() -> protocol.stream(profile, request, listener));
             } catch (AgentException e) {
                 checkCancelled();
                 if (e.isContextOverflow() && recoverOverflow && hasHistory()) {

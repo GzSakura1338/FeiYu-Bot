@@ -97,7 +97,9 @@ function renderList() {
 
     const headline = el('div', 'list-headline body-large');
     headline.append(el('span', null, profile.name));
-    if (active) headline.append(el('span', 'in-use label-small', '使用中'));
+    const backup = profile.id === state.fallback;
+    if (active) headline.append(el('span', state.failover ? 'system-chip label-small' : 'in-use label-small', state.failover ? '主模型 · 故障暂停' : '使用中'));
+    if (backup) headline.append(el('span', state.failover ? 'in-use label-small' : 'vision-chip label-small', state.failover ? '备用 · 代班中' : '备用'));
     const vision = VISION[profile.vision ?? null];
     headline.append(el('span', `vision-chip label-small ${vision.className}`, vision.label));
     if (profile.systemRole === false) {
@@ -117,7 +119,14 @@ function renderList() {
 
     const actions = el('div', 'ws-actions');
     const probe = iconButton('image_search', `检测「${profile.name}」能否看图`, () => probeVision(profile, probe));
-    actions.append(probe, iconButton('edit', `编辑「${profile.name}」`, () => openEditor(profile)));
+    actions.append(probe);
+    if (!active) {
+      const guard = iconButton('shield', backup ? `取消「${profile.name}」的备用` : `把「${profile.name}」设为备用：主模型调用失败时自动切过去`,
+        () => toggleFallback(profile));
+      if (backup) guard.classList.add('selected');
+      actions.append(guard);
+    }
+    actions.append(iconButton('edit', `编辑「${profile.name}」`, () => openEditor(profile)));
     if (!active || !state.qqReply) actions.append(iconButton('delete', `删除「${profile.name}」`, () => remove(profile)));
 
     item.append(el('span', 'radio'), text, actions);
@@ -132,8 +141,81 @@ function renderList() {
   });
   $('#model-list').replaceChildren(...items);
   $('#model-empty').hidden = items.length > 0;
+  renderFailover();
   renderEffort();
   renderPacing(document.activeElement !== $('#pacing-interval'));
+}
+
+const clock = ms => new Date(ms).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+function renderFailover() {
+  let box = $('#model-failover');
+  if (!box) {
+    box = el('div', 'failover-banner');
+    box.id = 'model-failover';
+    $('#model-list').before(box);
+  }
+  const f = state.failover;
+  const primary = activeProfile();
+  const backup = state.profiles.find(p => p.id === state.fallback);
+  if (!f || !primary || !backup) {
+    box.hidden = !backup;
+    if (backup) {
+      box.className = 'failover-banner idle body-medium';
+      box.replaceChildren(el('span', null, `备用模型：「${backup.name}」。主模型调用失败时自动切过去，之后每 30 分钟探测主模型，恢复了自动切回。`));
+    }
+    return;
+  }
+  box.hidden = false;
+  box.className = 'failover-banner active body-medium';
+  const text = el('div', 'failover-text');
+  text.append(
+    el('div', null, `主模型「${primary.name}」从 ${clock(f.since)} 起调用失败，现在由备用「${backup.name}」代班。`),
+    el('div', 'failover-reason', `原因：${f.reason || '未知'}${f.probe ? `；最近一次探测：${f.probe}` : ''}`),
+    el('div', 'failover-reason', `每 30 分钟探测一次，下次约 ${clock(f.nextProbeAt)}；探测通过会自动切回。`),
+  );
+  const buttons = el('div', 'failover-actions');
+  const probe = el('button', 'text-button state-layer', '立即探测');
+  probe.type = 'button';
+  probe.addEventListener('click', () => probeNow(probe));
+  const back = el('button', 'tonal-button state-layer', '切回主模型');
+  back.type = 'button';
+  back.addEventListener('click', restorePrimary);
+  buttons.append(probe, back);
+  box.replaceChildren(text, buttons);
+}
+
+async function toggleFallback(profile) {
+  const clearing = profile.id === state.fallback;
+  try {
+    state = await request('POST', `/profiles/${profile.id}/fallback`, {});
+    showSnackbar(clearing ? `「${profile.name}」不再当备用` : `「${profile.name}」设为备用模型`, 'success');
+  } catch (err) {
+    showSnackbar(`设置失败：${err.message}`, 'error');
+  }
+  renderAll();
+}
+
+async function probeNow(button) {
+  button.disabled = true;
+  try {
+    state = await request('POST', '/failover/probe', {});
+    showSnackbar('主模型通了，已切回', 'success');
+  } catch (err) {
+    showSnackbar(err.message, 'error');
+    state = await request('GET').catch(() => state);
+  }
+  renderAll();
+}
+
+async function restorePrimary() {
+  try {
+    state = await request('POST', '/failover/restore', {});
+    showSnackbar('已切回主模型；再失败会重新切到备用', 'success');
+  } catch (err) {
+    showSnackbar(`切换失败：${err.message}`, 'error');
+  }
+  renderAll();
 }
 
 const EFFORT_HINT = {
@@ -570,4 +652,16 @@ export function initAgentModels() {
   $('#agent-group-switch').addEventListener('click', toggleGroupMode);
   $('#agent-free-switch').addEventListener('click', toggleFreeWill);
   load();
+  setInterval(async () => {
+    if (document.hidden || (!state.fallback && !state.failover)) return;
+    try {
+      const next = await request('GET');
+      if (JSON.stringify(next.failover ?? null) !== JSON.stringify(state.failover ?? null) || next.fallback !== state.fallback) {
+        state = next;
+        renderAll();
+      }
+    } catch {
+      return;
+    }
+  }, 60_000);
 }

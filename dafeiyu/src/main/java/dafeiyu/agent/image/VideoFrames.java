@@ -50,6 +50,7 @@ public final class VideoFrames {
     private record Probe(double seconds, String size, double fps, boolean audio) {}
 
     public static final int MAX_GIF_FRAMES = 12;
+    private static final int MAX_FRAMES = 24;
     private static final int DEFAULT_INTERVAL_MS = 1000;
     private static final int DEFAULT_GIF_FRAMES = 6;
     private static final List<String> COMMON_DIRS = Platform.windows()
@@ -183,6 +184,9 @@ public final class VideoFrames {
             PublicWeb.save(url, video, Long.MAX_VALUE, DOWNLOAD);
             Probe probe = probe(exe, dir, video);
             double wanted = 1000.0 / config.intervalMs();
+            if (probe.seconds() > 0) {
+                wanted = Math.min(wanted, MAX_FRAMES / probe.seconds());
+            }
             double fps = probe.fps() > 0 ? Math.min(wanted, probe.fps()) : wanted;
             long expected = probe.seconds() > 0 ? (long) Math.ceil(probe.seconds() * fps) : 0;
             int side = expected <= 300 ? 1024 : expected <= 600 ? 768 : expected <= 1200 ? 512 : 384;
@@ -193,8 +197,13 @@ public final class VideoFrames {
                     "-q:v", "4", dir.resolve("f%06d.jpg").toString()), runMs);
             List<ImagePart> parts = new ArrayList<>();
             try (Stream<Path> files = Files.list(dir)) {
-                for (Path frame : files.filter(p -> p.getFileName().toString().matches("f\\d+\\.jpg")).sorted(Comparator.naturalOrder()).toList()) {
-                    parts.add(ImageLoader.fromBytes(Files.readAllBytes(frame)));
+                List<Path> all = files.filter(p -> p.getFileName().toString().matches("f\\d+\\.jpg")).sorted(Comparator.naturalOrder()).toList();
+                int keep = Math.min(all.size(), MAX_FRAMES);
+                for (int i = 0; i < keep; i++) {
+                    parts.add(ImageLoader.fromBytes(Files.readAllBytes(all.get(keep == all.size() ? i : (int) ((long) i * all.size() / keep)))));
+                }
+                if (keep < all.size()) {
+                    fps = fps * keep / all.size();
                 }
             }
             if (parts.isEmpty()) {
