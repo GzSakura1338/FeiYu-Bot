@@ -95,9 +95,7 @@ public final class AgentStore {
 
     public synchronized void setFallback(String id) {
         settings.put(FALLBACK_KEY, id == null ? "" : id);
-        if (id == null || id.isEmpty()) {
-            settings.put(FAILOVER_KEY, "");
-        }
+        settings.put(FAILOVER_KEY, "");
     }
 
     public synchronized Failover failover() {
@@ -160,6 +158,9 @@ public final class AgentStore {
     }
 
     public synchronized boolean remove(String id) {
+        if (id.equals(settings.get(FALLBACK_KEY))) {
+            setFallback("");
+        }
         return db.update("DELETE FROM model_profiles WHERE id = ?", id) > 0;
     }
 
